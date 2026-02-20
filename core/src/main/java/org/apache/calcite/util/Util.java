@@ -116,7 +116,6 @@ import java.util.stream.Collector;
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 import static org.apache.calcite.util.ReflectUtil.isStatic;
 
-import static java.lang.Integer.parseInt;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -221,7 +220,10 @@ public class Util {
    * you are not interested in, but you don't want the compiler to warn that
    * you are not using it.
    */
-  public static void discard(@Nullable Object unused) {
+  public static void discard(@Nullable Object o) {
+    if (false) {
+      discard(o);
+    }
   }
 
   /**
@@ -229,7 +231,10 @@ public class Util {
    * you are not interested in, but you don't want the compiler to warn that
    * you are not using it.
    */
-  public static void discard(int unused) {
+  public static void discard(int i) {
+    if (false) {
+      discard(i);
+    }
   }
 
   /**
@@ -237,7 +242,10 @@ public class Util {
    * you are not interested in, but you don't want the compiler to warn that
    * you are not using it.
    */
-  public static void discard(boolean unused) {
+  public static void discard(boolean b) {
+    if (false) {
+      discard(b);
+    }
   }
 
   /**
@@ -245,7 +253,10 @@ public class Util {
    * you are not interested in, but you don't want the compiler to warn that
    * you are not using it.
    */
-  public static void discard(double unused) {
+  public static void discard(double d) {
+    if (false) {
+      discard(d);
+    }
   }
 
   /**
@@ -535,21 +546,6 @@ public class Util {
   }
 
   /**
-   * Formats a double value to a String ensuring that the output
-   * is in scientific notation if the value is not "special".
-   * (Special values include infinities and NaN.)
-   */
-  public static String toScientificNotation(Double d) {
-    String repr = Double.toString(d);
-    if (!repr.toLowerCase(Locale.ENGLISH).contains("e")
-        && !d.isInfinite()
-        && !d.isNaN()) {
-      repr += "E0";
-    }
-    return repr;
-  }
-
-  /**
    * Formats a {@link BigDecimal} value to a string in scientific notation For
    * example<br>
    *
@@ -573,10 +569,6 @@ public class Util {
     int len = unscaled.length();
     int scale = bd.scale();
     int e = len - scale - 1;
-    if (bd.stripTrailingZeros().equals(BigDecimal.ZERO)) {
-      // Without this adjustment 0.0 generates 0E-1
-      e = 0;
-    }
 
     StringBuilder ret = new StringBuilder();
     if (bd.signum() < 0) {
@@ -1083,7 +1075,7 @@ public class Util {
    * feature has not been implemented, but should be.
    *
    * <p>If every 'hole' in our functionality uses this method, it will be
-   * easier for us to identify the holes. Throwing a
+   * easier for us to identity the holes. Throwing a
    * {@link java.lang.UnsupportedOperationException} isn't as good, because
    * sometimes we actually want to partially implement an API.
    *
@@ -1572,7 +1564,7 @@ public class Util {
     String value =
         requireNonNull(matcher.group(index),
             () -> "no group for index " + index + ", matcher " + matcher);
-    return parseInt(value);
+    return Integer.parseInt(value);
   }
 
   /**
@@ -2647,9 +2639,7 @@ public class Util {
   /** Transforms a list, applying a function to each element. */
   public static <F, T> List<T> transform(List<? extends F> list,
       java.util.function.Function<? super F, ? extends T> function) {
-    if (list.isEmpty() && list instanceof ImmutableList) {
-      return ImmutableList.of(); // save ourselves some effort
-    } else if (list instanceof RandomAccess) {
+    if (list instanceof RandomAccess) {
       return new RandomAccessTransformingList<>(list, function);
     } else {
       return new TransformingList<>(list, function);
@@ -2660,9 +2650,7 @@ public class Util {
    * the element's index in the list. */
   public static <F, T> List<T> transformIndexed(List<? extends F> list,
       BiFunction<? super F, Integer, ? extends T> function) {
-    if (list.isEmpty() && list instanceof ImmutableList) {
-      return ImmutableList.of(); // save ourselves some effort
-    } else if (list instanceof RandomAccess) {
+    if (list instanceof RandomAccess) {
       return new RandomAccessTransformingIndexedList<>(list, function);
     } else {
       return new TransformingIndexedList<>(list, function);

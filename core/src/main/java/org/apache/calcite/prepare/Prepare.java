@@ -390,7 +390,7 @@ public abstract class Prepare {
     // For now, don't trim if there are more than 3 joins. The projects
     // near the leaves created by trim migrate past joins and seem to
     // prevent join-reordering.
-    return THREAD_TRIM.get() || RelOptUtil.countJoins(rootRel) < 2;
+    return castNonNull(THREAD_TRIM.get()) || RelOptUtil.countJoins(rootRel) < 2;
   }
 
   protected abstract void init(Class runtimeContextClass);
@@ -410,7 +410,7 @@ public abstract class Prepare {
 
     ThreadLocal<@Nullable CatalogReader> THREAD_LOCAL = new ThreadLocal<>();
   }
-
+  //PreparingTable是为了校验和优化而定义的表
   /** Definition of a table, for the purposes of the validator and planner. */
   public interface PreparingTable
       extends RelOptTable, SqlValidatorTable {
@@ -427,7 +427,7 @@ public abstract class Prepare {
       final Table table = this.unwrap(Table.class);
       if (table instanceof Wrapper) {
         final InitializerExpressionFactory initializerExpressionFactory =
-            ((Wrapper) table).unwrap(InitializerExpressionFactory.class);
+            ((Wrapper) table).unwrap(InitializerExpressionFactory.class); //通过InitializerExpressionFactory接口，创建默认值
         if (initializerExpressionFactory != null) {
           return initializerExpressionFactory
               .newColumnDefaultValue(this, ordinal, initializerContext)
@@ -652,9 +652,10 @@ public abstract class Prepare {
 
     public Materialization(CalciteSchema.TableEntry materializedTable,
         String sql, List<String> viewSchemaPath) {
-      this.materializedTable =
-          requireNonNull(materializedTable, "materializedTable");
-      this.sql = requireNonNull(sql, "sql");
+      assert materializedTable != null;
+      assert sql != null;
+      this.materializedTable = materializedTable;
+      this.sql = sql;
       this.viewSchemaPath = viewSchemaPath;
     }
 

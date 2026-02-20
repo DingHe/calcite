@@ -40,7 +40,7 @@ import net.hydromatic.quidem.Command;
 import net.hydromatic.quidem.CommandHandler;
 import net.hydromatic.quidem.Quidem;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 import java.sql.Connection;
@@ -64,13 +64,21 @@ class BabelQuidemTest extends QuidemTest {
    * </blockquote> */
   public static void main(String[] args) throws Exception {
     for (String arg : args) {
-      Unsafe.setDefaultLocale(Locale.US);
+      Locale.setDefault(Locale.US);
       new BabelQuidemTest().test(arg);
     }
   }
 
+  private Locale originalLocale;
+
   @BeforeEach public void setup() {
+    originalLocale = Locale.getDefault();
+    Locale.setDefault(Locale.US);
     MaterializationService.setThreadLocal();
+  }
+
+  @AfterEach public void cleanup() {
+    Locale.setDefault(originalLocale);
   }
 
   /** For {@link QuidemTest#test(String)} parameters. */
@@ -159,11 +167,13 @@ class BabelQuidemTest extends QuidemTest {
   static class ExplainValidatedCommand extends AbstractCommand {
     private final ImmutableList<String> lines;
     private final ImmutableList<String> content;
+    private final Set<String> productSet;
 
     ExplainValidatedCommand(List<String> lines, List<String> content,
-        Set<String> unusedProductSet) {
+        Set<String> productSet) {
       this.lines = ImmutableList.copyOf(lines);
       this.content = ImmutableList.copyOf(content);
+      this.productSet = ImmutableSet.copyOf(productSet);
     }
 
     @Override public void execute(Context x, boolean execute) throws Exception {
@@ -204,7 +214,7 @@ class BabelQuidemTest extends QuidemTest {
   /** Command handler that adds a "!explain-validated-on dialect..." command
    * (see {@link ExplainValidatedCommand}). */
   private static class BabelCommandHandler implements CommandHandler {
-    @Override public @Nullable Command parseCommand(List<String> lines,
+    @Override public Command parseCommand(List<String> lines,
         List<String> content, String line) {
       final String prefix = "explain-validated-on";
       if (line.startsWith(prefix)) {

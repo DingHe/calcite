@@ -25,6 +25,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlWindow;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
@@ -49,6 +50,8 @@ import static java.util.Objects.requireNonNull;
  * locate "foo". If successful, this returns a
  * {@link SqlValidatorNamespace namespace} describing the type of the resulting
  * object.
+ *
+ * SqlValidatorScope 管理标识符的可见性
  */
 public interface SqlValidatorScope {
   //~ Methods ----------------------------------------------------------------
@@ -139,7 +142,7 @@ public interface SqlValidatorScope {
               && SqlValidatorUtil.isMeasure(select.getSelectList().get(f.getIndex()));
         }
         return f != null
-            && f.getType().isMeasure();
+            && f.getType().getSqlTypeName() == SqlTypeName.MEASURE;
       }
     }
     return false;

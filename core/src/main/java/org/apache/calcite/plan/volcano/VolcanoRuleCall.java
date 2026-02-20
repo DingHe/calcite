@@ -96,15 +96,15 @@ public class VolcanoRuleCall extends RelOptRuleCall {
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  //rel 表示新的关系节点，表示规则应用后得到的优化结果，Map<RelNode, RelNode> equiv：等价关系的映射，表示哪些关系节点在语义上是等价的，用于优化器的注册和优化判断
   @Override public void transformTo(RelNode rel, Map<RelNode, RelNode> equiv,
       RelHintsPropagator handler) {
     if (rel instanceof PhysicalNode
-        && rule instanceof TransformationRule) {
+        && rule instanceof TransformationRule) {  //TransformationRule代表逻辑rule -> 逻辑rule，所以不能转为PhysicalNode
       throw new RuntimeException(
           rel + " is a PhysicalNode, which is not allowed in " + rule);
     }
-
+    //调用 handler 的 propagate 方法传播当前关系节点的等价关系。rels[0] 是当前的关系节点，rel 是新的关系节点。propagate 方法可能会将新的节点传递给处理器，以便根据上下文传播等价信息
     rel = handler.propagate(rels[0], rel);
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Transform to: rel#{} via {}{}", rel.getId(), getRule(),
@@ -126,12 +126,13 @@ public class VolcanoRuleCall extends RelOptRuleCall {
                 true);
         volcanoPlanner.getListener().ruleProductionSucceeded(event);
       }
-
+      //如果当前应用的规则是 SubstitutionRule 类型，并且规则设置了 autoPruneOld() 为 true，则表示在应用规则时，应该自动修剪旧的关系节点。调用 volcanoPlanner.prune(rels[0]) 来删除当前的旧节点。
       if (this.getRule() instanceof SubstitutionRule
           && ((SubstitutionRule) getRule()).autoPruneOld()) {
         volcanoPlanner.prune(rels[0]);
       }
-
+      //这段代码遍历 equiv 映射中的每个条目，注册等价的关系节点。
+      // volcanoPlanner.ensureRegistered 会确保这些节点被注册到 Volcano 规划器中，以便它们参与后续的优化过程
       // Registering the root relational expression implicitly registers
       // its descendants. Register any explicit equivalences first, so we
       // don't register twice and cause churn.
@@ -139,6 +140,7 @@ public class VolcanoRuleCall extends RelOptRuleCall {
         volcanoPlanner.ensureRegistered(
             entry.getKey(), entry.getValue());
       }
+      //这一步确保新的关系节点 rel 被注册到 Volcano 规划器中，并将其与原始关系节点 rels[0] 进行关联。RelSubset 用于表示一个关系节点的子集，但在此代码中，它仅用于调试目的
       // The subset is not used, but we need it, just for debugging
       @SuppressWarnings("unused")
       RelSubset subset = volcanoPlanner.ensureRegistered(rel, rels[0]);
@@ -162,15 +164,15 @@ public class VolcanoRuleCall extends RelOptRuleCall {
    * Called when all operands have matched.
    */
   protected void onMatch() {
-    assert getRule().matches(this);
-    volcanoPlanner.checkCancel();
+    assert getRule().matches(this); //确保当前规则（getRule()）确实与当前的 VolcanoRuleCall 对象匹配
+    volcanoPlanner.checkCancel(); //检查是否有外部取消信号的函数，如果当前操作被取消了（例如，由于时间超限），则后续的规则应用将停止
     try {
-      if (volcanoPlanner.isRuleExcluded(getRule())) {
+      if (volcanoPlanner.isRuleExcluded(getRule())) {   //判断是否要过滤此规则
         LOGGER.debug("Rule [{}] not fired due to exclusion filter", getRule());
         return;
       }
 
-      if (isRuleExcluded()) {
+      if (isRuleExcluded()) { //判断是否有排除提示（Hint）
         LOGGER.debug("Rule [{}] not fired due to exclusion hint", getRule());
         return;
       }
@@ -179,7 +181,7 @@ public class VolcanoRuleCall extends RelOptRuleCall {
         RelNode rel = rels[i];
         RelSubset subset = volcanoPlanner.getSubset(rel);
 
-        if (subset == null) {
+        if (subset == null) { //获取关系节点的子集。子集用于存储和管理等价关系。若没有找到子集，表示该节点不在任何等价类中，规则应用失败
           LOGGER.debug(
               "Rule [{}] not fired because operand #{} ({}) has no subset",
               getRule(), i, rel);
@@ -190,14 +192,14 @@ public class VolcanoRuleCall extends RelOptRuleCall {
             // When rename RelNode via VolcanoPlanner#rename(RelNode rel),
             // we may remove rel from its subset: "subset.set.rels.remove(rel)".
             // Skip rule match when the rel has been removed from set.
-            || (subset != rel && !subset.contains(rel))) {
+            || (subset != rel && !subset.contains(rel))) { //如果子集的等价集不为空，或者子集不包含当前节点，则认为该操作数已经过时或不再有效，跳过该规则
           LOGGER.debug(
               "Rule [{}] not fired because operand #{} ({}) belongs to obsolete set",
               getRule(), i, rel);
           return;
         }
 
-        if (volcanoPlanner.prunedNodes.contains(rel)) {
+        if (volcanoPlanner.prunedNodes.contains(rel)) { //检查该节点是否已被修剪。如果节点被修剪（即没有进一步的优化意义），则跳过该规则
           LOGGER.debug("Rule [{}] not fired because operand #{} ({}) has importance=0",
               getRule(), i, rel);
           return;
@@ -217,9 +219,10 @@ public class VolcanoRuleCall extends RelOptRuleCall {
       if (LOGGER.isDebugEnabled()) {
         this.generatedRelList = new ArrayList<>();
       }
-
+      //将当前的规则调用推入栈中。ruleCallStack 是一个栈结构，用于跟踪规则的调用。通过将当前调用推入栈中，可以确保在规则应用期间维护正确的调用上下文
       volcanoPlanner.ruleCallStack.push(this);
-      try {
+      try {  //调用规则的 onMatch 方法，执行实际的规则应用逻辑。规则的 onMatch 方法会在规则匹配成功后执行自定义的优化逻辑。
+        // 无论 onMatch 是否成功执行，都会在 finally 块中将当前规则调用从栈中弹出，保证栈的完整性
         getRule().onMatch(this);
       } finally {
         volcanoPlanner.ruleCallStack.pop();
@@ -268,10 +271,11 @@ public class VolcanoRuleCall extends RelOptRuleCall {
    * @param solve Solve order of operand (&gt; 0 and &le; the operand count)
    */
   private void matchRecurse(int solve) {
-    assert solve > 0;
+    assert solve > 0;  //两个断言确保 solve 的值在合法范围内。solve 表示当前正在匹配的操作数的索引，必须大于 0 且小于等于规则操作数的数量
     assert solve <= rule.operands.size();
     final List<RelOptRuleOperand> operands = getRule().operands;
-    if (solve == operands.size()) {
+    if (solve == operands.size()) { //当 solve 达到操作数的数量时，表示所有的操作数都已经被匹配。
+      // 此时，调用规则的 matches 方法来检查规则的副条件（side-conditions）是否满足。如果满足，则调用 onMatch() 应用规则
       // We have matched all operands. Now ask the rule whether it
       // matches; this gives the rule chance to apply side-conditions.
       // If the side-conditions are satisfied, we have a match.
@@ -279,18 +283,23 @@ public class VolcanoRuleCall extends RelOptRuleCall {
         onMatch();
       }
     } else {
+      //solveOrder 数组存储了操作数匹配的顺序。operandOrdinal 和 previousOperandOrdinal 分别表示当前和前一个操作数的顺序。
+      // 如果当前操作数的顺序小于前一个操作数，则设置 ascending 为 true，表示我们是在逐步递增地匹配操作数，否则就是递减匹配
       final int[] solveOrder = castNonNull(operand0.solveOrder);
       final int operandOrdinal = solveOrder[solve];
       final int previousOperandOrdinal = solveOrder[solve - 1];
       boolean ascending = operandOrdinal < previousOperandOrdinal;
       final RelOptRuleOperand previousOperand =
-          operands.get(previousOperandOrdinal);
-      final RelOptRuleOperand operand = operands.get(operandOrdinal);
-      final RelNode previous = rels[previousOperandOrdinal];
+          operands.get(previousOperandOrdinal);  //前一个操作数
+      final RelOptRuleOperand operand = operands.get(operandOrdinal); //当前操作数
+      final RelNode previous = rels[previousOperandOrdinal]; //前一个短息节点
 
       final RelOptRuleOperand parentOperand;
       final Collection<? extends RelNode> successors;
       if (ascending) {
+        //如果是递增模式（ascending），表示当前操作数是前一个操作数的子节点。
+        // getSubsetNonNull(previous) 获取前一个操作数的子集（RelSubset），
+        // 然后获取该子集的所有父关系节点作为后继节点。
         assert previousOperand.getParent() == operand;
         assert operand.getMatchedClass() != RelSubset.class;
         if (previousOperand.getMatchedClass() != RelSubset.class
@@ -302,6 +311,7 @@ public class VolcanoRuleCall extends RelOptRuleCall {
         final RelSubset subset = volcanoPlanner.getSubsetNonNull(previous);
         successors = subset.getParentRels();
       } else {
+        //如果不是递增模式，表示当前操作数是前一个操作数的父节点。在这种情况下，需要获取当前操作数的父操作数，并从父节点的输入列表中获取后继节点
         parentOperand =
             requireNonNull(operand.getParent(),
                 () -> "operand.getParent() for " + operand);
@@ -354,13 +364,15 @@ public class VolcanoRuleCall extends RelOptRuleCall {
       }
 
       for (RelNode rel : successors) {
+        //如果 TransformationRule 规则并且后继节点的 convention 与前一个节点不同，跳过该节点
         if (operand.getRule() instanceof TransformationRule
             && rel.getConvention() != previous.getConvention()) {
           continue;
         }
-        if (!operand.matches(rel)) {
+        if (!operand.matches(rel)) { //使用 operand.matches(rel) 检查后继节点是否符合当前操作数的要求
           continue;
         }
+        //如果是递增模式并且当前操作数的 childPolicy 不是无序的，则进一步检查当前节点是否是前一个操作数的有效子节点
         if (ascending && operand.childPolicy != RelOptRuleOperandChildPolicy.UNORDERED) {
           // We know that the previous operand was *a* child of its parent,
           // but now check that it is the *correct* child.

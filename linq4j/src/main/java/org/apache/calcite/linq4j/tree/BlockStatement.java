@@ -25,20 +25,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static java.util.Objects.requireNonNull;
-
-/**
+/** 通过ExpressionType.Block声明是一个语句块
  * Represents a block that contains a sequence of expressions where variables
  * can be defined.
  */
 public class BlockStatement extends Statement {
-  public final List<Statement> statements;
+  public final List<Statement> statements; //语句列表
   /** Cached hash code for the expression. */
   private int hash;
 
   BlockStatement(List<Statement> statements, Type type) {
     super(ExpressionType.Block, type);
-    this.statements = requireNonNull(statements, "statements");
+    assert statements != null : "statements should not be null";
+    this.statements = statements;
     assert distinctVariables(true);
   }
 
@@ -68,7 +67,7 @@ public class BlockStatement extends Statement {
   @Override public <R> R accept(Visitor<R> visitor) {
     return visitor.visit(this);
   }
-
+  //生成的java代码
   @Override void accept0(ExpressionWriter writer) {
     if (statements.isEmpty()) {
       writer.append("{}");
@@ -80,7 +79,7 @@ public class BlockStatement extends Statement {
     }
     writer.end("}\n");
   }
-
+  //计算语句快的返回结果
   @Override public @Nullable Object evaluate(Evaluator evaluator) {
     Object o = null;
     for (Statement statement : statements) {

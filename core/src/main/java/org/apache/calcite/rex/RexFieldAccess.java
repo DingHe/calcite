@@ -39,7 +39,7 @@ import static com.google.common.base.Preconditions.checkArgument;
  * purpose. So in practice, <code>RexFieldAccess</code> is usually used to
  * access fields of correlating variables, for example the expression
  * <code>emp.deptno</code> in
- *
+ *  用户访问相关自查询中的变量，例如下面例子的emp.deptno
  * <blockquote>
  * <pre>SELECT ename
  * FROM dept
@@ -53,8 +53,8 @@ import static com.google.common.base.Preconditions.checkArgument;
 public class RexFieldAccess extends RexNode {
   //~ Instance fields --------------------------------------------------------
 
-  private final RexNode expr;
-  private final RelDataTypeField field;
+  private final RexNode expr; //表达式
+  private final RelDataTypeField field; //哪个字段
 
   //~ Constructors -----------------------------------------------------------
 

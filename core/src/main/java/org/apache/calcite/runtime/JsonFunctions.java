@@ -141,8 +141,7 @@ public class JsonFunctions {
       switch (mode) {
       case STRICT:
         if (input.hasException()) {
-          return JsonPathContext.withStrictException(pathSpec,
-              requireNonNull(input.exc));
+          return JsonPathContext.withStrictException(pathSpec, input.exc);
         }
         ctx =
             JsonPath.parse(input.obj(),
@@ -226,7 +225,7 @@ public class JsonFunctions {
         case FALSE:
           return Boolean.FALSE;
         case ERROR:
-          throw toUnchecked(requireNonNull(context.exc));
+          throw toUnchecked(context.exc);
         case UNKNOWN:
           return null;
         default:
@@ -300,7 +299,7 @@ public class JsonFunctions {
       }
       switch (errorBehavior) {
       case ERROR:
-        throw toUnchecked(requireNonNull(exc, "exc"));
+        throw toUnchecked(exc);
       case NULL:
         return null;
       case DEFAULT:
@@ -400,7 +399,7 @@ public class JsonFunctions {
       }
       switch (errorBehavior) {
       case ERROR:
-        throw toUnchecked(requireNonNull(exc, "exc"));
+        throw toUnchecked(exc);
       case NULL:
         return null;
       case EMPTY_ARRAY:
@@ -572,9 +571,13 @@ public class JsonFunctions {
       for (int i = 0; i < size; ++i) {
         Object obj = q.poll();
         if (obj instanceof Map) {
-          q.addAll(((LinkedHashMap) obj).values());
+          for (Object value : ((LinkedHashMap) obj).values()) {
+            q.add(value);
+          }
         } else if (obj instanceof Collection) {
-          q.addAll((Collection) obj);
+          for (Object value : (Collection) obj) {
+            q.add(value);
+          }
         }
       }
       ++depth;
@@ -603,7 +606,7 @@ public class JsonFunctions {
     final Object value;
     try {
       if (context.hasException()) {
-        throw toUnchecked(requireNonNull(context.exc));
+        throw toUnchecked(context.exc);
       }
       value = context.obj;
 
@@ -648,7 +651,7 @@ public class JsonFunctions {
     final Object value;
     try {
       if (context.hasException()) {
-        throw toUnchecked(requireNonNull(context.exc));
+        throw toUnchecked(context.exc);
       }
       value = context.obj;
 
@@ -830,10 +833,7 @@ public class JsonFunctions {
     }
   }
 
-  public static @Nullable Boolean isJsonValue(@Nullable String input) {
-    if (input == null) {
-      return null;
-    }
+  public static boolean isJsonValue(String input) {
     try {
       dejsonize(input);
       return true;
@@ -842,10 +842,7 @@ public class JsonFunctions {
     }
   }
 
-  public static @Nullable Boolean isJsonObject(@Nullable String input) {
-    if (input == null) {
-      return null;
-    }
+  public static boolean isJsonObject(String input) {
     try {
       Object o = dejsonize(input);
       return o instanceof Map;
@@ -854,10 +851,7 @@ public class JsonFunctions {
     }
   }
 
-  public static @Nullable Boolean isJsonArray(@Nullable String input) {
-    if (input == null) {
-      return null;
-    }
+  public static boolean isJsonArray(String input) {
     try {
       Object o = dejsonize(input);
       return o instanceof Collection;
@@ -866,10 +860,7 @@ public class JsonFunctions {
     }
   }
 
-  public static @Nullable Boolean isJsonScalar(@Nullable String input) {
-    if (input == null) {
-      return null;
-    }
+  public static boolean isJsonScalar(String input) {
     try {
       Object o = dejsonize(input);
       return !(o instanceof Map) && !(o instanceof Collection);

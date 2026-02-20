@@ -37,10 +37,10 @@ import org.apache.calcite.util.Util;
 
 import com.google.common.collect.ImmutableSet;
 
+import java.util.Objects;
+
 import static org.apache.calcite.sql.validate.SqlNonNullableAccessors.getOperandLiteralValueOrThrow;
 import static org.apache.calcite.util.Static.RESOURCE;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * The SQL <code>EXTRACT</code> operator. Extracts a specified field value from
@@ -152,7 +152,9 @@ public class SqlExtractFunction extends SqlFunction {
     if (call.operand(0) instanceof SqlCharStringLiteral) {
       final SqlCharStringLiteral stringLiteral = call.operand(0);
       qualifier =
-          new SqlIntervalQualifier(requireNonNull(stringLiteral.toValue()),
+          new SqlIntervalQualifier(
+              Objects.requireNonNull(
+                  stringLiteral.toValue()),
               call.operand(0).getParserPosition());
     } else {
       qualifier = call.operand(0);
@@ -223,7 +225,7 @@ public class SqlExtractFunction extends SqlFunction {
       value =
           TimeUnitRange.of(
               SqlIntervalQualifier.stringToDatePartTimeUnit(
-                  requireNonNull(call.getOperandLiteralValue(0, String.class))),
+              Objects.requireNonNull(call.getOperandLiteralValue(0, String.class))),
           null);
     } else {
       value = getOperandLiteralValueOrThrow(call, 0, TimeUnitRange.class);

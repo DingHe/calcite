@@ -35,7 +35,7 @@ import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
-/**
+/** 用于管理未处理的规则匹配
  * Priority queue of relexps whose rules have not been called, and rule-matches
  * which have not yet been acted upon.
  */
@@ -47,6 +47,14 @@ class IterativeRuleQueue extends RuleQueue {
   //~ Instance fields --------------------------------------------------------
 
   /**
+   *
+   * 特性	IterativeRuleQueue	TopDownRuleQueue
+   * 替换规则优先级	替换规则放入 preQueue，普通规则放入 queue。替换规则优先处理。	替换规则放在队列尾部，普通规则放在队列头部，替换规则稍后处理。
+   * 匹配存储结构	使用 MatchList 来区分替换规则和普通规则。	使用 matches 字典存储每个 RelNode 的匹配队列。
+   * 规则匹配弹出	弹出规则时，逐个检查并跳过无效匹配。	弹出规则时，根据 Predicate 过滤匹配。
+   * 日志和调试	提供详细的调试日志，记录规则匹配的加入和弹出。	记录规则匹配的加入，但没有像 IterativeRuleQueue 那样的详细日志。
+   * 规则匹配删除	使用 matchList.matchMap.remove() 删除规则匹配。	通过操作 matches 字典来删除规则匹配。
+   *
    * The list of rule-matches. Initially, there is an empty {@link MatchList}.
    * As the planner invokes {@link #addMatch(VolcanoRuleMatch)} the rule-match
    * is added to the appropriate MatchList(s). As the planner completes the
@@ -136,7 +144,7 @@ class IterativeRuleQueue extends RuleQueue {
     return match;
   }
 
-  /**
+  /** 打印日志
    * Dumps rules queue to the logger when debug level is set to {@code TRACE}.
    */
   private static void dumpRuleQueue(MatchList matchList) {
@@ -179,25 +187,25 @@ class IterativeRuleQueue extends RuleQueue {
    */
   private static class MatchList {
 
-    /**
+    /** 替换规则的队列
      * Rule match queue for SubstitutionRule.
      */
     private final Queue<VolcanoRuleMatch> preQueue = new ArrayDeque<>();
 
-    /**
+    /** 存储普通规则匹配的队列
      * Current list of VolcanoRuleMatches for this phase. New rule-matches
      * are appended to the end of this queue.
      * The rules are not sorted in any way.
      */
     private final Queue<VolcanoRuleMatch> queue = new ArrayDeque<>();
 
-    /**
+    /** 存储匹配名称的集合，用于检测重复的规则匹配
      * A set of rule-match names contained in {@link #queue}. Allows fast
      * detection of duplicate rule-matches.
      */
     final Set<String> names = new HashSet<>();
 
-    /**
+    /** 将 RelSubset 和规则匹配关联起来
      * Multi-map of RelSubset to VolcanoRuleMatches.
      */
     final Multimap<RelSubset, VolcanoRuleMatch> matchMap =
@@ -209,7 +217,7 @@ class IterativeRuleQueue extends RuleQueue {
 
     @Nullable VolcanoRuleMatch poll() {
       VolcanoRuleMatch match = preQueue.poll();
-      if (match == null) {
+      if (match == null) {  //先从替换规则队列出，再从普通规则队列出
         match = queue.poll();
       }
       return match;
@@ -217,7 +225,7 @@ class IterativeRuleQueue extends RuleQueue {
 
     void offer(VolcanoRuleMatch match) {
       if (match.getRule() instanceof SubstitutionRule) {
-        preQueue.offer(match);
+        preQueue.offer(match);  //替换规则队列和普通规则队列分开
       } else {
         queue.offer(match);
       }

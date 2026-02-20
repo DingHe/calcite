@@ -88,9 +88,6 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -150,7 +147,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
           .add(new CeilOperatorConversion())
           .add(new SubstringOperatorConversion())
           .build();
-  protected @Nullable QuerySpec querySpec;
+  protected QuerySpec querySpec;
 
   final RelOptTable table;
   final DruidTable druidTable;
@@ -576,10 +573,8 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost =
-        requireNonNull(Util.last(rels)
-            .computeSelfCost(planner, mq));
-    return cost
+    return Util.last(rels)
+        .computeSelfCost(planner, mq)
         // Cost increases with the number of fields queried.
         // A plan returning 100 or more columns will have 2x the cost of a
         // plan returning 2 columns.
@@ -645,8 +640,8 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
 
   public QuerySpec getQuerySpec() {
     if (querySpec == null) {
-      querySpec =
-          checkNotNull(deriveQuerySpec(), "null querySpec for %s", this);
+      querySpec = deriveQuerySpec();
+      assert querySpec != null : this;
     }
     return querySpec;
   }
@@ -923,9 +918,9 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
     final List<JsonAggregation> aggregations = new ArrayList<>();
     for (Pair<AggregateCall, String> agg : Pair.zip(aggCalls, aggNames)) {
       final String fieldName;
-      final @Nullable String expression;
-      final AggregateCall aggCall = agg.left;
-      final @Nullable RexNode filterNode;
+      final String expression;
+      final  AggregateCall aggCall = agg.left;
+      final RexNode filterNode;
       // Type check First
       final RelDataType type = aggCall.getType();
       final SqlTypeName sqlTypeName = type.getSqlTypeName();
@@ -951,7 +946,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
       } else {
         filterNode = null;
       }
-      if (aggCall.getArgList().isEmpty()) {
+      if (aggCall.getArgList().size() == 0) {
         fieldName = null;
         expression = null;
       } else {
@@ -989,15 +984,13 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
     return aggregations;
   }
 
-  protected QuerySpec getQuery(RelDataType rowType, Filter filter,
-      @Nullable Project project, @Nullable ImmutableBitSet groupSet,
-      @Nullable List<AggregateCall> aggCalls, @Nullable List<String> aggNames,
-      @Nullable List<Integer> collationIndexes,
-      @Nullable List<Direction> collationDirections,
-      ImmutableBitSet numericCollationIndexes, @Nullable Integer fetch,
-      @Nullable Project postProject, @Nullable Filter havingFilter) {
+  protected QuerySpec getQuery(RelDataType rowType, Filter filter, Project project,
+      ImmutableBitSet groupSet, List<AggregateCall> aggCalls, List<String> aggNames,
+      List<Integer> collationIndexes, List<Direction> collationDirections,
+      ImmutableBitSet numericCollationIndexes, Integer fetch, Project postProject,
+      Filter havingFilter) {
     // Handle filter
-    final @Nullable DruidJsonFilter jsonFilter = computeFilter(filter);
+    final DruidJsonFilter jsonFilter = computeFilter(filter);
 
     if (groupSet == null) {
       // It is Scan Query since no Grouping
@@ -1027,9 +1020,9 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
     // Handling aggregate and sort is more complex, since
     // we need to extract the conditions to know whether the query will be executed as a
     // Timeseries, TopN, or GroupBy in Druid
-    requireNonNull(aggCalls, "aggCalls");
-    requireNonNull(aggNames, "aggNames");
-    checkArgument(aggCalls.size() == aggNames.size());
+    assert aggCalls != null;
+    assert aggNames != null;
+    assert aggCalls.size() == aggNames.size();
 
     final List<JsonExpressionPostAgg> postAggs = new ArrayList<>();
     final JsonLimit limit;
@@ -1038,7 +1031,6 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
 
     Pair<List<DimensionSpec>, List<VirtualColumn>> projectGroupSet =
         computeProjectGroupSet(project, groupSet, aggInputRowType, this);
-    requireNonNull(projectGroupSet, "projectGroupSet");
 
     final List<DimensionSpec> groupByKeyDims = projectGroupSet.left;
     final List<VirtualColumn> virtualColumnList = projectGroupSet.right;
@@ -1047,13 +1039,12 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
     }
     final List<JsonAggregation> aggregations =
         computeDruidJsonAgg(aggCalls, aggNames, project, this);
-    requireNonNull(aggregations, "aggregations");
     for (JsonAggregation jsonAgg : aggregations) {
       aggregateStageFieldNames.add(jsonAgg.name);
     }
 
 
-    final @Nullable DruidJsonFilter havingJsonFilter;
+    final DruidJsonFilter havingJsonFilter;
     if (havingFilter != null) {
       havingJsonFilter =
           DruidJsonFilter.toDruidFilters(havingFilter.getCondition(),
@@ -1155,13 +1146,12 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
    * @param queryOutputFieldNames query output fields
    */
   private static JsonLimit computeSort(@Nullable Integer fetch,
-      @Nullable List<Integer> collationIndexes,
-      @Nullable List<Direction> collationDirections,
+      List<Integer> collationIndexes, List<Direction> collationDirections,
       ImmutableBitSet numericCollationIndexes,
       List<String> queryOutputFieldNames) {
     final List<JsonCollation> collations;
     if (collationIndexes != null) {
-      requireNonNull(collationDirections, "collationDirections");
+      assert collationDirections != null;
       ImmutableList.Builder<JsonCollation> colBuilder = ImmutableList.builder();
       for (Pair<Integer, Direction> p : Pair.zip(collationIndexes, collationDirections)) {
         final String dimensionOrder = numericCollationIndexes.get(p.left)
@@ -1179,10 +1169,9 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   }
 
   private @Nullable String planAsTimeSeries(List<DimensionSpec> groupByKeyDims,
-      @Nullable DruidJsonFilter jsonFilter,
+      DruidJsonFilter jsonFilter,
       List<VirtualColumn> virtualColumnList, List<JsonAggregation> aggregations,
-      List<JsonExpressionPostAgg> postAggregations, JsonLimit limit,
-      @Nullable DruidJsonFilter havingFilter) {
+      List<JsonExpressionPostAgg> postAggregations, JsonLimit limit, DruidJsonFilter havingFilter) {
     if (havingFilter != null) {
       return null;
     }
@@ -1247,9 +1236,9 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
       writeFieldIf(generator, "filter", jsonFilter);
       writeField(generator, "aggregations", aggregations);
       writeFieldIf(generator, "virtualColumns",
-          virtualColumnList.isEmpty() ? null : virtualColumnList);
+          virtualColumnList.size() > 0 ? virtualColumnList : null);
       writeFieldIf(generator, "postAggregations",
-          postAggregations.isEmpty() ? null : postAggregations);
+          postAggregations.size() > 0 ? postAggregations : null);
       writeField(generator, "intervals", intervals);
       generator.writeFieldName("context");
       // The following field is necessary to conform with SQL semantics (CALCITE-1589)
@@ -1295,12 +1284,12 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
       writeField(generator, "granularity", Granularities.all());
       writeField(generator, "dimension", groupByKeyDims.get(0));
       writeFieldIf(generator, "virtualColumns",
-          virtualColumnList.isEmpty() ? null : virtualColumnList);
+          virtualColumnList.size() > 0 ? virtualColumnList : null);
       generator.writeStringField("metric", topNMetricColumnName);
       writeFieldIf(generator, "filter", jsonFilter);
       writeField(generator, "aggregations", aggregations);
       writeFieldIf(generator, "postAggregations",
-          postAggregations.isEmpty() ? null : postAggregations);
+          postAggregations.size() > 0 ? postAggregations : null);
       writeField(generator, "intervals", intervals);
       generator.writeNumberField("threshold", limit.limit);
       generator.writeEndObject();
@@ -1326,12 +1315,12 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
       writeField(generator, "granularity", Granularities.all());
       writeField(generator, "dimensions", groupByKeyDims);
       writeFieldIf(generator, "virtualColumns",
-          virtualColumnList.isEmpty() ? null : virtualColumnList);
+          virtualColumnList.size() > 0 ? virtualColumnList : null);
       writeFieldIf(generator, "limitSpec", limit);
       writeFieldIf(generator, "filter", jsonFilter);
       writeField(generator, "aggregations", aggregations);
       writeFieldIf(generator, "postAggregations",
-          postAggregations.isEmpty() ? null : postAggregations);
+          postAggregations.size() > 0 ? postAggregations : null);
       writeField(generator, "intervals", intervals);
       writeFieldIf(generator, "having",
           havingFilter == null ? null : new DruidJsonFilter.JsonDimHavingFilter(havingFilter));
@@ -1346,23 +1335,23 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   /** Druid Scan Query body. */
   private static class ScanQuery {
 
-    private final String dataSource;
+    private String dataSource;
 
-    private final List<Interval> intervals;
+    private List<Interval> intervals;
 
-    private final @Nullable DruidJsonFilter jsonFilter;
+    private DruidJsonFilter jsonFilter;
 
-    private final List<VirtualColumn> virtualColumnList;
+    private List<VirtualColumn> virtualColumnList;
 
-    private final List<String> columns;
+    private List<String> columns;
 
-    private final @Nullable Integer fetchLimit;
+    private Integer fetchLimit;
 
     ScanQuery(String dataSource, List<Interval> intervals,
-        @Nullable DruidJsonFilter jsonFilter,
+        DruidJsonFilter jsonFilter,
         List<VirtualColumn> virtualColumnList,
         List<String> columns,
-        @Nullable Integer fetchLimit) {
+        Integer fetchLimit) {
       this.dataSource = dataSource;
       this.intervals = intervals;
       this.jsonFilter = jsonFilter;
@@ -1382,7 +1371,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
         writeField(generator, "intervals", intervals);
         writeFieldIf(generator, "filter", jsonFilter);
         writeFieldIf(generator, "virtualColumns",
-            virtualColumnList.isEmpty() ? null : virtualColumnList);
+            virtualColumnList.size() > 0 ? virtualColumnList : null);
         writeField(generator, "columns", columns);
         generator.writeStringField("resultFormat", "compactedList");
         if (fetchLimit != null) {
@@ -1398,8 +1387,8 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   }
 
   private static @Nullable JsonAggregation getJsonAggregation(
-      String name, AggregateCall aggCall, @Nullable RexNode filterNode,
-      @Nullable String fieldName, @Nullable String aggExpression,
+      String name, AggregateCall aggCall, RexNode filterNode, String fieldName,
+      String aggExpression,
       DruidQuery druidQuery) {
     final boolean fractional;
     final RelDataType type = aggCall.getType();
@@ -1510,7 +1499,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   }
 
   protected static void writeFieldIf(JsonGenerator generator, String fieldName,
-      @Nullable Object o) throws IOException {
+      Object o) throws IOException {
     if (o != null) {
       writeField(generator, fieldName, o);
     }
@@ -1599,8 +1588,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
           + ", fieldNames: " + fieldNames + "}";
     }
 
-    public String getQueryString(@Nullable String pagingIdentifier,
-        int offset) {
+    public String getQueryString(String pagingIdentifier, int offset) {
       if (pagingIdentifier == null) {
         return queryString;
       }
@@ -1624,7 +1612,7 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
       Hook.QUERY_PLAN.run(querySpec);
     }
 
-    @Override public void run() {
+    @Override public void run() throws InterruptedException {
       final List<ColumnMetaData.Rep> fieldTypes = new ArrayList<>();
       for (RelDataTypeField field : query.getRowType().getFieldList()) {
         fieldTypes.add(getPrimitive(field));
@@ -1677,11 +1665,10 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   private static class JsonAggregation implements DruidJson {
     final String type;
     final String name;
-    final @Nullable String fieldName;
-    final @Nullable String expression;
+    final String fieldName;
+    final String expression;
 
-    private JsonAggregation(String type, String name, @Nullable String fieldName,
-        @Nullable String expression) {
+    private JsonAggregation(String type, String name, String fieldName, String expression) {
       this.type = type;
       this.name = name;
       this.fieldName = fieldName;
@@ -1702,11 +1689,10 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
    * Druid Json Expression post aggregate.
    */
   private static class JsonExpressionPostAgg extends JsonPostAggregation {
-    private final String expression;
-    private final @Nullable String ordering;
 
-    private JsonExpressionPostAgg(String name, String expression,
-        @Nullable String ordering) {
+    private final String expression;
+    private final String ordering;
+    private JsonExpressionPostAgg(String name, String expression, String ordering) {
       super(name, "expression");
       this.expression = expression;
       this.ordering = ordering;
@@ -1723,11 +1709,10 @@ public class DruidQuery extends AbstractRelNode implements BindableRel {
   /** Collation element of a Druid "groupBy" query. */
   private static class JsonLimit implements DruidJson {
     final String type;
-    final @Nullable Integer limit;
-    final @Nullable List<JsonCollation> collations;
+    final Integer limit;
+    final List<JsonCollation> collations;
 
-    private JsonLimit(String type, @Nullable Integer limit,
-        @Nullable List<JsonCollation> collations) {
+    private JsonLimit(String type, Integer limit, List<JsonCollation> collations) {
       this.type = type;
       this.limit = limit;
       this.collations = collations;

@@ -159,7 +159,7 @@ public class RelMdMaxRowCount
     return rowCount * rel.getGroupSets().size();
   }
 
-  static boolean allGroupKeysAreConstant(Aggregate aggregate,
+  private static boolean allGroupKeysAreConstant(Aggregate aggregate,
       RelOptPredicateList predicateList) {
     final RexBuilder rexBuilder = aggregate.getCluster().getRexBuilder();
     for (int key : aggregate.getGroupSet()) {

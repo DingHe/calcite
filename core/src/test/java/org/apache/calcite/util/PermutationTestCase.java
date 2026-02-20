@@ -28,11 +28,9 @@ import com.google.common.collect.ImmutableList;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -43,72 +41,106 @@ import static org.junit.jupiter.api.Assertions.fail;
 class PermutationTestCase {
   @Test void testOne() {
     final Permutation perm = new Permutation(4);
-    assertThat(perm, hasToString("[0, 1, 2, 3]"));
-    assertThat(perm.size(), hasToString("4"));
+    assertEquals(
+        "[0, 1, 2, 3]",
+        perm.toString());
+    assertEquals(
+        4,
+        perm.size());
 
     perm.set(0, 2);
-    assertThat(perm, hasToString("[2, 1, 0, 3]"));
+    assertEquals(
+        "[2, 1, 0, 3]",
+        perm.toString());
 
     perm.set(1, 0);
-    assertThat(perm, hasToString("[2, 0, 1, 3]"));
+    assertEquals(
+        "[2, 0, 1, 3]",
+        perm.toString());
 
     final Permutation invPerm = perm.inverse();
-    assertThat(invPerm, hasToString("[1, 2, 0, 3]"));
+    assertEquals(
+        "[1, 2, 0, 3]",
+        invPerm.toString());
 
     // changing perm doesn't change inverse
     perm.set(0, 0);
-    assertThat(perm, hasToString("[0, 2, 1, 3]"));
-    assertThat(invPerm, hasToString("[1, 2, 0, 3]"));
+    assertEquals(
+        "[0, 2, 1, 3]",
+        perm.toString());
+    assertEquals(
+        "[1, 2, 0, 3]",
+        invPerm.toString());
   }
 
   @Test void testTwo() {
     final Permutation perm = new Permutation(new int[]{3, 2, 0, 1});
     assertFalse(perm.isIdentity());
-    assertThat(perm, hasToString("[3, 2, 0, 1]"));
+    assertEquals(
+        "[3, 2, 0, 1]",
+        perm.toString());
 
     Permutation perm2 = (Permutation) perm.clone();
-    assertThat(perm2, hasToString("[3, 2, 0, 1]"));
-    assertThat(perm, is(perm2));
-    assertThat(perm2, is(perm));
+    assertEquals(
+        "[3, 2, 0, 1]",
+        perm2.toString());
+    assertTrue(perm.equals(perm2));
+    assertTrue(perm2.equals(perm));
 
     perm.set(2, 1);
-    assertThat(perm, hasToString("[3, 2, 1, 0]"));
-    assertThat(perm, not(equalTo(perm2)));
+    assertEquals(
+        "[3, 2, 1, 0]",
+        perm.toString());
+    assertFalse(perm.equals(perm2));
 
     // clone not affected
-    assertThat(perm2, hasToString("[3, 2, 0, 1]"));
+    assertEquals(
+        "[3, 2, 0, 1]",
+        perm2.toString());
 
     perm2.set(2, 3);
-    assertThat(perm2, hasToString("[0, 2, 3, 1]"));
+    assertEquals(
+        "[0, 2, 3, 1]",
+        perm2.toString());
   }
 
   @Test void testInsert() {
     Permutation perm = new Permutation(new int[]{3, 0, 4, 2, 1});
     perm.insertTarget(2);
-    assertThat(perm, hasToString("[4, 0, 5, 3, 1, 2]"));
+    assertEquals(
+        "[4, 0, 5, 3, 1, 2]",
+        perm.toString());
 
     // insert at start
     perm = new Permutation(new int[]{3, 0, 4, 2, 1});
     perm.insertTarget(0);
-    assertThat(perm, hasToString("[4, 1, 5, 3, 2, 0]"));
+    assertEquals(
+        "[4, 1, 5, 3, 2, 0]",
+        perm.toString());
 
     // insert at end
     perm = new Permutation(new int[]{3, 0, 4, 2, 1});
     perm.insertTarget(5);
-    assertThat(perm, hasToString("[3, 0, 4, 2, 1, 5]"));
+    assertEquals(
+        "[3, 0, 4, 2, 1, 5]",
+        perm.toString());
 
     // insert into empty
     perm = new Permutation(new int[]{});
     perm.insertTarget(0);
-    assertThat(perm, hasToString("[0]"));
+    assertEquals(
+        "[0]",
+        perm.toString());
   }
 
   @Test void testEmpty() {
     final Permutation perm = new Permutation(0);
     assertTrue(perm.isIdentity());
-    assertThat(perm, hasToString("[]"));
-    assertThat(perm, is(perm));
-    assertThat(perm, is(perm.inverse()));
+    assertEquals(
+        "[]",
+        perm.toString());
+    assertTrue(perm.equals(perm));
+    assertTrue(perm.equals(perm.inverse()));
 
     try {
       perm.set(1, 0);

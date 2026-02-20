@@ -38,7 +38,7 @@ public abstract class RuleQueue {
 
   /**
    * Add a RuleMatch into the queue.
-   *
+   * 添加待调用的规则
    * @param match rule match to add
    */
   public abstract void addMatch(VolcanoRuleMatch match);
@@ -46,12 +46,12 @@ public abstract class RuleQueue {
   /**
    * clear this rule queue.
    * The return value indicates whether the rule queue was empty before clear.
-   *
+   * 清空队列中的规则
    * @return true if the rule queue was not empty
    */
   public abstract boolean clear();
 
-
+  //如果是规则匹配中包含要裁剪的关系节点，则跳过。如果相同的subset出现在不同的路径，也要跳过
   /** Returns whether to skip a match. This happens if any of the
    * {@link RelNode}s have importance zero. */
   protected boolean skipMatch(VolcanoRuleMatch match) {

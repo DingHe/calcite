@@ -111,15 +111,18 @@ public abstract class FilterJoinRule<C extends FilterJoinRule.Config>
     // Try to push down above filters. These are typically where clause
     // filters. They can be pushed down if they are not on the NULL
     // generating side.
-    boolean filterPushed =
-        RelOptUtil.classifyFilters(join,
-            aboveFilters,
-            joinType.canPushIntoFromAbove(),
-            joinType.canPushLeftFromAbove(),
-            joinType.canPushRightFromAbove(),
-            joinFilters,
-            leftFilters,
-            rightFilters);
+    boolean filterPushed = false;
+    if (RelOptUtil.classifyFilters(
+        join,
+        aboveFilters,
+        joinType.canPushIntoFromAbove(),
+        joinType.canPushLeftFromAbove(),
+        joinType.canPushRightFromAbove(),
+        joinFilters,
+        leftFilters,
+        rightFilters)) {
+      filterPushed = true;
+    }
 
     // Move join filters up if needed
     validateJoinFilters(aboveFilters, joinFilters, join, joinType);
@@ -349,7 +352,7 @@ public abstract class FilterJoinRule<C extends FilterJoinRule.Config>
         }
       }
       // Only need one equal condition for each equal set.
-      if (!leftSet.isEmpty() && !rightSet.isEmpty()) {
+      if (leftSet.size() > 0 && rightSet.size() > 0) {
         result.add(
             rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
                 leftSet.get(0),

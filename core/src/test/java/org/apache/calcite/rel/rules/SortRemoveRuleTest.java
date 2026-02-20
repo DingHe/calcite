@@ -62,7 +62,7 @@ public final class SortRemoveRuleTest {
    * <p>Since join inputs are sorted, and this join preserves the order of the
    * left input, there shouldn't be any sort operator above the join.
    */
-  @Test void removeSortOverEnumerableHashJoin() {
+  @Test void removeSortOverEnumerableHashJoin() throws Exception {
     RuleSet prepareRules =
         RuleSets.ofList(CoreRules.SORT_PROJECT_TRANSPOSE,
             EnumerableRules.ENUMERABLE_JOIN_RULE,
@@ -90,7 +90,7 @@ public final class SortRemoveRuleTest {
    * <p>Since join inputs are sorted, and this join preserves the order of the
    * left input, there shouldn't be any sort operator above the join.
    */
-  @Test void removeSortOverEnumerableNestedLoopJoin() {
+  @Test void removeSortOverEnumerableNestedLoopJoin() throws Exception {
     RuleSet prepareRules =
         RuleSets.ofList(CoreRules.SORT_PROJECT_TRANSPOSE,
             EnumerableRules.ENUMERABLE_JOIN_RULE,

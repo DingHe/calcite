@@ -22,7 +22,7 @@ import org.apache.calcite.rel.RelNode;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-/**
+/** 实现该接口表示可以把一个物理属性转为另一个，但不改变逻辑表达式的行数量和值
  * A relational expression implements the interface <code>Converter</code> to
  * indicate that it converts a physical attribute, or
  * {@link org.apache.calcite.plan.RelTrait trait}, of a relational expression
@@ -51,7 +51,7 @@ public interface Converter extends RelNode {
 
   /**
    * Returns the trait of the input relational expression.
-   *
+   * 返回输入关系表达式的特征值
    * @return input trait
    */
   RelTraitSet getInputTraits();
@@ -70,7 +70,7 @@ public interface Converter extends RelNode {
 
   /**
    * Returns the sole input relational expression.
-   *
+   * 返回输入关系表达式
    * @return child relational expression
    */
   RelNode getInput();

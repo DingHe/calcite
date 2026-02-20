@@ -22,10 +22,7 @@ import org.apache.calcite.util.Util;
 
 import com.google.common.collect.Ordering;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.io.PrintStream;
-import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -39,12 +36,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
 
-import static org.apache.calcite.test.Matchers.isListOf;
-
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
-
-import static java.util.Objects.requireNonNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Helpers for test suite of the File adapter. */
 abstract class FileAdapterTests {
@@ -62,7 +54,7 @@ abstract class FileAdapterTests {
       try {
         final List<String> lines = new ArrayList<>();
         collect(lines, resultSet);
-        assertThat(lines, isListOf(expected));
+        assertEquals(Arrays.asList(expected), lines);
       } catch (SQLException e) {
         throw TestUtil.rethrow(e);
       }
@@ -79,7 +71,7 @@ abstract class FileAdapterTests {
         final List<String> lines = new ArrayList<>();
         collect(lines, resultSet);
         Collections.sort(lines);
-        assertThat(lines, is(expectedLines));
+        assertEquals(expectedLines, lines);
       } catch (SQLException e) {
         throw TestUtil.rethrow(e);
       }
@@ -144,9 +136,7 @@ abstract class FileAdapterTests {
   }
 
   static String resourcePath(String path) {
-    final URL url =
-        requireNonNull(FileAdapterTest.class.getResource("/" + path), "url");
-    return Sources.of(url).file().getAbsolutePath();
+    return Sources.of(FileAdapterTest.class.getResource("/" + path)).file().getAbsolutePath();
   }
 
   private static void output(ResultSet resultSet, PrintStream out)
@@ -174,8 +164,7 @@ abstract class FileAdapterTests {
     }
   }
 
-  static void close(@Nullable Connection connection,
-      @Nullable Statement statement) {
+  static void close(Connection connection, Statement statement) {
     if (statement != null) {
       try {
         statement.close();

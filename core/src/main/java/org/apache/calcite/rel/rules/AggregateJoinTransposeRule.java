@@ -320,10 +320,7 @@ public class AggregateJoinTransposeRule
     // Update condition
     final Mapping mapping =
         (Mapping) Mappings.target(map::get,
-            join.getJoinType().projectsRight()
-                ? join.getRowType().getFieldCount()
-                : join.getLeft().getRowType().getFieldCount()
-                    + join.getRight().getRowType().getFieldCount(),
+            join.getRowType().getFieldCount(),
             belowOffset);
     final RexNode newCondition =
         RexUtil.apply(mapping, join.getCondition());

@@ -23,7 +23,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.lang.reflect.Type;
 import java.util.Iterator;
 
-/**
+/** 把表达式转为JAVA代码
  * Converts an expression to Java code.
  */
 class ExpressionWriter {

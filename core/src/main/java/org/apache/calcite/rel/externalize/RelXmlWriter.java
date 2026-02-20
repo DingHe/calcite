@@ -35,7 +35,7 @@ public class RelXmlWriter extends RelWriterImpl {
   //~ Instance fields --------------------------------------------------------
 
   private final XmlOutput xmlOutput;
-  final boolean generic = true;
+  boolean generic = true;
 
   //~ Constructors -----------------------------------------------------------
 

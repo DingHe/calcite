@@ -51,8 +51,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 import static org.apache.calcite.sql.type.SqlTypeName.CHAR;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Implementation of
  * {@link Filter} relational expression in Geode.
@@ -75,8 +73,7 @@ public class GeodeFilter extends Filter implements GeodeRel {
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(0.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(0.1);
   }
 
   @Override public GeodeFilter copy(RelTraitSet traitSet, RelNode input, RexNode condition) {
@@ -93,15 +90,17 @@ public class GeodeFilter extends Filter implements GeodeRel {
    * Translates {@link RexNode} expressions into Geode expression strings.
    */
   static class Translator {
+    @SuppressWarnings("unused")
+    private final RelDataType rowType;
 
     private final List<String> fieldNames;
 
     @SuppressWarnings("unused")
-    private final RexBuilder rexBuilder;
+    private RexBuilder rexBuilder;
 
     Translator(RelDataType rowType, RexBuilder rexBuilder) {
-      requireNonNull(rowType, "rowType");
-      this.rexBuilder = requireNonNull(rexBuilder, "rexBuilder");
+      this.rowType = rowType;
+      this.rexBuilder = rexBuilder;
       this.fieldNames = GeodeRules.geodeFieldNames(rowType);
     }
 
@@ -118,14 +117,14 @@ public class GeodeFilter extends Filter implements GeodeRel {
       case TIMESTAMP:
       case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
         assert valueComparable instanceof TimestampString;
-        return "TIMESTAMP '" + valueComparable + "'";
+        return "TIMESTAMP '" + valueComparable.toString() + "'";
       case DATE:
         assert valueComparable instanceof DateString;
-        return "DATE '" + valueComparable + "'";
+        return "DATE '" + valueComparable.toString() + "'";
       case TIME:
       case TIME_WITH_LOCAL_TIME_ZONE:
         assert valueComparable instanceof TimeString;
-        return "TIME '" + valueComparable + "'";
+        return "TIME '" + valueComparable.toString() + "'";
       default:
         return String.valueOf(literal.getValue3());
       }
@@ -170,7 +169,7 @@ public class GeodeFilter extends Filter implements GeodeRel {
 
     /** Returns the field name for the left node to use for {@code IN SET}
      * query. */
-    private @Nullable String getLeftNodeFieldName(RexNode left) {
+    private String getLeftNodeFieldName(RexNode left) {
       switch (left.getKind()) {
       case INPUT_REF:
         final RexInputRef left1 = (RexInputRef) left;
@@ -210,7 +209,11 @@ public class GeodeFilter extends Filter implements GeodeRel {
         }
 
         String name = getLeftNodeFieldName(left);
-        return name != null;
+        if (name == null) {
+          return false;
+        }
+
+        return true;
       });
     }
 
@@ -237,7 +240,7 @@ public class GeodeFilter extends Filter implements GeodeRel {
           String.join(", ", rightLiteralValueList));
     }
 
-    private @Nullable String getLeftNodeFieldNameForNode(RexNode node) {
+    private String getLeftNodeFieldNameForNode(RexNode node) {
       final RexCall call = (RexCall) node;
       final RexNode left = call.operands.get(0);
       return getLeftNodeFieldName(left);
@@ -343,11 +346,11 @@ public class GeodeFilter extends Filter implements GeodeRel {
     private String translateBinary(String op, String rop, RexCall call) {
       final RexNode left = call.operands.get(0);
       final RexNode right = call.operands.get(1);
-      String expression = translateBinary2Opt(op, left, right);
+      String expression = translateBinary2(op, left, right);
       if (expression != null) {
         return expression;
       }
-      expression = translateBinary2Opt(rop, right, left);
+      expression = translateBinary2(rop, right, left);
       if (expression != null) {
         return expression;
       }
@@ -355,19 +358,9 @@ public class GeodeFilter extends Filter implements GeodeRel {
     }
 
     /**
-     * Translates a call to a binary operator. Throws on failure.
-     */
-    private String translateBinary2(String op, RexNode left,
-        RexNode right) {
-      final String s = translateBinary2Opt(op, left, right);
-      return requireNonNull(s, "s");
-    }
-
-    /**
      * Translates a call to a binary operator. Returns null on failure.
      */
-    private @Nullable String translateBinary2Opt(String op, RexNode left,
-        RexNode right) {
+    private String translateBinary2(String op, RexNode left, RexNode right) {
       switch (right.getKind()) {
       case LITERAL:
         break;

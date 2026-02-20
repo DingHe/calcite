@@ -46,12 +46,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import static org.apache.calcite.util.DateTimeStringUtils.ISO_DATETIME_FRACTIONAL_SECOND_FORMAT;
 import static org.apache.calcite.util.DateTimeStringUtils.getDateFormatter;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Implementation of a {@link org.apache.calcite.rel.core.Filter}
@@ -93,8 +92,7 @@ public class CassandraFilter extends Filter implements CassandraRel {
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(0.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(0.1);
   }
 
   @Override public CassandraFilter copy(RelTraitSet traitSet, RelNode input,
@@ -299,7 +297,7 @@ public class CassandraFilter extends Filter implements CassandraRel {
       String valueString = value.toString();
       if (value instanceof String) {
         RelDataTypeField field =
-            requireNonNull(rowType.getField(name, true, false));
+            Objects.requireNonNull(rowType.getField(name, true, false));
         SqlTypeName typeName = field.getType().getSqlTypeName();
         if (typeName != SqlTypeName.CHAR) {
           valueString = "'" + valueString + "'";

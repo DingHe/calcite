@@ -278,25 +278,6 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
     sql(sql).ok();
   }
 
-  @Test void testAsOfJoin() {
-    final String sql = "select emp.empno from emp asof join dept\n"
-        + "match_condition emp.deptno <= dept.deptno\n"
-        + "on ename = name";
-    sql(sql).ok();
-  }
-
-  /** Test case for <a href="https://issues.apache.org/jira/browse/CALCITE-6540">
-   * RelOptUtil.pushDownJoinConditions does not correctly adjust ASOF joins match conditions</a>.
-   */
-  @Test void testAsOfCast() {
-    final String sql = "SELECT * "
-        + "FROM (SELECT deptno % 10 as m, CAST(deptno AS BIGINT) as deptno FROM dept) D\n"
-        + "LEFT ASOF JOIN (SELECT CAST(empno as BIGINT) as empno, CAST(deptno AS BIGINT) AS deptno FROM emp) E\n"
-        + "MATCH_CONDITION D.deptno >= E.deptno\n"
-        + "ON D.m = E.empno";
-    sql(sql).withConformance(SqlConformanceEnum.LENIENT).ok();
-  }
-
   @Test void testJoinOnInSubQuery() {
     final String sql = "select * from emp left join dept\n"
         + "on emp.empno = 1\n"
@@ -2544,30 +2525,6 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
     sql(sql).ok();
   }
 
-  /** As {@link #testOverDefaultBracket()}, but no {@code ORDER BY},
-   * which makes more things equivalent. */
-  @Test void testOverDefaultBracketNoOrderBy() {
-    // c2 is invalid (therefore commented out);
-    // c3, c6, c7 are equivalent to c1;
-    // c5 is equivalent to c4.
-    final String sql = "select\n"
-        + "  count(*) over () c1,\n"
-        + "--count(*) over (\n"
-        + "--  range unbounded preceding) c2,\n"
-        + "  count(*) over (\n"
-        + "    range between unbounded preceding and current row) c3,\n"
-        + "  count(*) over (\n"
-        + "    rows unbounded preceding) c4,\n"
-        + "  count(*) over (\n"
-        + "    rows between unbounded preceding and current row) c5,\n"
-        + "  count(*) over (\n"
-        + "    range between unbounded preceding and unbounded following) c6,\n"
-        + " count(*) over (\n"
-        + "    rows between unbounded preceding and unbounded following) c7\n"
-        + "from emp";
-    sql(sql).ok();
-  }
-
   /** Test case for
    * <a href="https://issues.apache.org/jira/browse/CALCITE-750">[CALCITE-750]
    * Allow windowed aggregate on top of regular aggregate</a>. */
@@ -3770,46 +3727,6 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
     sql(sql).withExpand(false).withDecorrelate(false).ok();
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6554">[CALCITE-6554]
-   * Nested correlated sub-query in aggregation does not have inner correlation variable bound
-   * to inner projection</a>. */
-  @Test void testCorrelationInProjectionWith1xNestedCorrelatedProjection() {
-    final String sql = "select e1.empno,\n"
-          + "  (select sum(e2.sal +\n"
-          + "    (select sum(e3.sal) from emp e3 where e3.mgr = e2.empno)\n"
-          + "   ) from emp e2 where e2.mgr = e1.empno)\n"
-          + "from emp e1";
-    sql(sql).withExpand(false).withDecorrelate(false).ok();
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6554">[CALCITE-6554]
-   * Nested correlated sub-query in aggregation does not have inner correlation variable bound
-   * to inner projection</a>. */
-  @Test void testCorrelationInProjectionWith2xNestedCorrelatedProjection() {
-    final String sql = "select e1.empno,\n"
-        + "  (select sum(e2.sal +\n"
-        + "    (select sum(e3.sal + (select sum(e4.sal) from emp e4 where e4.mgr = e3.empno)\n"
-        + "      ) from emp e3 where e3.mgr = e2.empno)\n"
-        + "   ) from emp e2 where e2.mgr = e1.empno)\n"
-        + "from emp e1";
-    sql(sql).withExpand(false).withDecorrelate(false).ok();
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6554">[CALCITE-6554]
-   * Nested correlated sub-query in aggregation does not have inner correlation variable bound
-   * to inner projection</a>. */
-  @Test void testCorrelationInProjectionWithCorrelatedProjectionWithNestedNonCorrelatedSubquery() {
-    final String sql = "select e1.empno,\n"
-        + "  (select sum(e2.sal +\n"
-        + "    (select sum(e3.sal) from emp e3 where e3.mgr = e1.empno)\n"
-        + "   ) from emp e2 where e2.mgr = e1.empno)\n"
-        + "from emp e1";
-    sql(sql).withExpand(false).withDecorrelate(false).ok();
-  }
-
   @Test void testCustomColumnResolving() {
     final String sql = "select k0 from struct.t";
     sql(sql).ok();
@@ -4847,80 +4764,10 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
         .ok();
   }
 
-  /** A query that references a measure that does not contain any aggregate
-   * functions. The measure is fully expanded in the plan. */
-  @Test void testMeasure1() {
-    final String sql = "select * from (\n"
-        + "  select deptno,\n"
-        + "    empno + 1 as measure e1,\n"
-        + "    e1 + deptno as measure e2\n"
-        + "  from emp)";
-    sql(sql).ok();
-  }
-
-  /** As {@link #testMeasure1()} but references a non-measure. */
-  @Test void testMeasure2() {
-    final String sql = "select * from (\n"
-        + "  select deptno,\n"
-        + "    empno + 1 as e1,\n"
-        + "    e1 + deptno as measure e2\n"
-        + "  from emp)";
-    sql(sql).ok();
-  }
-
-  /** As {@link #testMeasure1()} but uses an aggregate measure. The plan
-   * contains a call to {@code AGG_M2V} on top of a call to {@code V2M}. */
-  @Test void testMeasure3() {
-    final String sql = "select deptno, count_plus_10, min(job) as min_job\n"
-        + "from (\n"
-        + "  select deptno,\n"
-        + "    job,\n"
-        + "    count(*) + 10 as measure count_plus_10,\n"
-        + "    count_plus_10 + deptno as measure e2\n"
-        + "  from emp)\n"
-        + "group by deptno";
-    sql(sql).ok();
-  }
-
-  /** As {@link #testMeasure3()} but no {@code GROUP BY}.
-   * The measure is expanded to {@code OVER}. */
-  @Test void testMeasure3b() {
-    final String sql = "select deptno, count_plus_10\n"
-        + "from (\n"
-        + "  select deptno,\n"
-        + "    job,\n"
-        + "    count(*) + 10 as measure count_plus_10,\n"
-        + "    count_plus_10 + deptno as measure e2\n"
-        + "  from emp)";
-    sql(sql).ok();
-  }
-
-  /** Measures defined in the outermost query are converted to values. */
-  @Test void testMeasure4() {
-    final String sql = "select deptno, count(*) as measure c,\n"
-        + "  t.uno as measure uno, 2 as measure two\n"
-        + "from (select deptno, job, 1 as measure uno from emp) as t";
-    sql(sql).ok();
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6343">[CALCITE-6343]
-   * Ensure that AS operator doesn't change return type of measures</a>. */
-  @Test void testMeasureRefWithAlias() {
-    final String sql = "select count_plus_100 as c\n"
-        + "from empm";
-    fixture()
-        .withFactory(c ->
-            c.withOperatorTable(t ->
-              SqlValidatorTest.operatorTableFor(SqlLibrary.CALCITE)))
-        .withCatalogReader(MockCatalogReaderExtended::create)
-        .withSql(sql)
-        .ok();
-  }
-
-  /** Test case for
+  /** Test case for:
    * <a href="https://issues.apache.org/jira/browse/CALCITE-6013">[CALCITE-6013]
-   * Unnecessary measures added as projects during rel construction</a>. */
+   * Unnecessary measures added as projects during rel construction</a>.
+   */
   @Test void testAvoidUnnecessaryMeasureProject() {
     final String sql = "select deptno\n"
         + "from empm\n"
@@ -4934,10 +4781,11 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
         .ok();
   }
 
-  /** Test case for
+  /** Test case for:
    * <a href="https://issues.apache.org/jira/browse/CALCITE-3310">[CALCITE-3310]
    * Approximate and exact aggregate calls are recognized as the same
-   * during sql-to-rel conversion</a>. */
+   * during sql-to-rel conversion</a>.
+   */
   @Test void testProjectApproximateAndExactAggregates() {
     final String sql = "SELECT empno, count(distinct ename),\n"
             + "approx_count_distinct(ename)\n"
@@ -4961,7 +4809,8 @@ class SqlToRelConverterTest extends SqlToRelTestBase {
   /** Test case for
    * <a href="https://issues.apache.org/jira/browse/CALCITE-3456">[CALCITE-3456]
    * AssertionError throws when aggregation same digest in sub-query in same
-   * scope</a>. */
+   * scope</a>.
+   */
   @Test void testAggregateWithSameDigestInSubQueries() {
     final String sql = "select\n"
         + "  CASE WHEN job IN ('810000', '820000') THEN job\n"

@@ -37,8 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Implementation of {@link TableFactory} for Druid.
  *
@@ -133,7 +131,7 @@ public class DruidTableFactory implements TableFactory {
           fieldBuilder.put(metricName, druidType.sqlType);
           metricNameBuilder.add(metricName);
         } else {
-          requireNonNull(fieldName, "fieldName");
+          assert fieldName != null;
           // Only add the complex metric if there exists an alias for it
           if (complexMetrics.containsKey(fieldName)) {
             SqlTypeName type = fieldBuilder.get(fieldName);

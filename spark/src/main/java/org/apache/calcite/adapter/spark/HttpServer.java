@@ -16,7 +16,6 @@
  */
 package org.apache.calcite.adapter.spark;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
@@ -48,7 +47,7 @@ class HttpServer {
     this.resourceBase = resourceBase;
   }
 
-  private @Nullable Server server;
+  private Server server;
   private int port = -1;
 
   void start() {

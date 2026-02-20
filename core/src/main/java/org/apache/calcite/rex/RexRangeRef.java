@@ -43,8 +43,8 @@ import java.util.Objects;
 public class RexRangeRef extends RexNode {
   //~ Instance fields --------------------------------------------------------
 
-  private final RelDataType type;
-  private final int offset;
+  private final RelDataType type; //表示范围的类型（RelDataType）。它定义了这个范围所代表的列类型，比如一个表或子查询的多个列
+  private final int offset; //表示范围的偏移量，即列在输入记录中的起始位置。这个偏移量是相对于当前查询上下文中的字段的索引（通常是从 0 开始的整数）
 
   //~ Constructors -----------------------------------------------------------
 

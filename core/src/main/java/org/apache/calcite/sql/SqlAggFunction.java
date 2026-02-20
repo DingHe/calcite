@@ -31,8 +31,7 @@ import org.apache.calcite.util.Optionality;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Abstract base class for the definition of an aggregate function: an operator
@@ -41,8 +40,8 @@ import static java.util.Objects.requireNonNull;
  * @see SqlBasicAggFunction
  */
 public abstract class SqlAggFunction extends SqlFunction implements Context {
-  private final boolean requiresOrder;
-  private final boolean requiresOver;
+  private final boolean requiresOrder; //是否排序
+  private final boolean requiresOver; //是否有over语句
   private final Optionality requiresGroupOrder;
 
   //~ Constructors -----------------------------------------------------------
@@ -112,8 +111,7 @@ public abstract class SqlAggFunction extends SqlFunction implements Context {
         operandTypeChecker, funcType);
     this.requiresOrder = requiresOrder;
     this.requiresOver = requiresOver;
-    this.requiresGroupOrder =
-        requireNonNull(requiresGroupOrder, "requiresGroupOrder");
+    this.requiresGroupOrder = Objects.requireNonNull(requiresGroupOrder, "requiresGroupOrder");
   }
 
   //~ Methods ----------------------------------------------------------------

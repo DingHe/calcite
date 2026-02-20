@@ -30,6 +30,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.junit.jupiter.api.Assertions;
 import org.opentest4j.AssertionFailedError;
 import org.w3c.dom.CDATASection;
 import org.w3c.dom.Comment;
@@ -56,9 +57,6 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
 
 import static java.util.Objects.requireNonNull;
 
@@ -175,7 +173,7 @@ public class DiffRepository {
   private static final LoadingCache<Key, DiffRepository> REPOSITORY_CACHE =
       CacheBuilder.newBuilder().build(CacheLoader.from(Key::toRepo));
 
-  private static final ThreadLocal<DocumentBuilderFactory> DOCUMENT_BUILDER_FACTORY =
+  private static final ThreadLocal<@Nullable DocumentBuilderFactory> DOCUMENT_BUILDER_FACTORY =
       ThreadLocal.withInitial(() -> {
         final DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
         documentBuilderFactory.setXIncludeAware(false);
@@ -200,7 +198,7 @@ public class DiffRepository {
   private final Element root;
   private final URL refFile;
   private final File logFile;
-  private final @Nullable Filter filter;
+  private final Filter filter;
   private int modCount;
   private int modCountAtLastWrite;
 
@@ -214,8 +212,7 @@ public class DiffRepository {
    * @param indent    Indentation of XML file
    */
   private DiffRepository(URL refFile, File logFile,
-      @Nullable DiffRepository baseRepository, @Nullable Filter filter,
-      int indent) {
+      @Nullable DiffRepository baseRepository, Filter filter, int indent) {
     this.baseRepository = baseRepository;
     this.filter = filter;
     this.indent = indent;
@@ -227,7 +224,7 @@ public class DiffRepository {
     // Load the document.
     try {
       DocumentBuilder docBuilder =
-          DOCUMENT_BUILDER_FACTORY.get().newDocumentBuilder();
+          Nullness.castNonNull(DOCUMENT_BUILDER_FACTORY.get()).newDocumentBuilder();
       try (InputStream inputStream = refFile.openStream()) {
         // Parse the reference file.
         this.doc = docBuilder.parse(inputStream);
@@ -272,7 +269,7 @@ public class DiffRepository {
     // The reference file for class "com.foo.Bar" is "com/foo/Bar.xml"
     String rest = "/" + clazz.getName().replace('.', File.separatorChar)
         + suffix;
-    return requireNonNull(clazz.getResource(rest));
+    return clazz.getResource(rest);
   }
 
   /** Returns the diff repository, checking that it is not null.
@@ -293,12 +290,15 @@ public class DiffRepository {
    * if there is one variable.)
    */
   public String expand(String tag, String text) {
-    requireNonNull(tag, "tag");
-    requireNonNull(text, "text");
-    if (text.startsWith("${")
+    if (text == null) {
+      return null;
+    } else if (text.startsWith("${")
         && text.endsWith("}")) {
-      final String testCaseName = getCurrentTestCaseName();
+      final String testCaseName = getCurrentTestCaseName(true);
       final String token = text.substring(2, text.length() - 1);
+      if (tag == null) {
+        tag = token;
+      }
       assert token.startsWith(tag) : "token '" + token
           + "' does not match tag '" + tag + "'";
       String expanded = get(testCaseName, token);
@@ -309,16 +309,16 @@ public class DiffRepository {
         return text;
       }
       if (filter != null) {
-        expanded = filter.filter(this, testCaseName, tag, text, expanded);
+        expanded =
+            filter.filter(this, testCaseName, tag, text, expanded);
       }
       return expanded;
     } else {
       // Make sure what appears in the resource file is consistent with
       // what is in the Java. It helps to have a redundant copy in the
       // resource file.
-      final String testCaseName = getCurrentTestCaseName();
-      if (baseRepository == null
-          || baseRepository.get(testCaseName, tag) == null) {
+      final String testCaseName = getCurrentTestCaseName(true);
+      if (baseRepository == null || baseRepository.get(testCaseName, tag) == null) {
         set(tag, text);
       }
       return text;
@@ -332,8 +332,8 @@ public class DiffRepository {
    * @param value        Value of the resource
    */
   public synchronized void set(String resourceName, String value) {
-    requireNonNull(resourceName, "resourceName");
-    final String testCaseName = getCurrentTestCaseName();
+    assert resourceName != null;
+    final String testCaseName = getCurrentTestCaseName(true);
     update(testCaseName, resourceName, value);
   }
 
@@ -352,7 +352,7 @@ public class DiffRepository {
    * @param resourceName Name of resource, e.g. "sql", "plan"
    * @return The value of the resource, or null if not found
    */
-  private synchronized @Nullable String get(
+  private synchronized String get(
       final String testCaseName,
       String resourceName) {
     Element testCaseElement = getTestCaseElement(testCaseName, true, null);
@@ -363,7 +363,7 @@ public class DiffRepository {
         return null;
       }
     }
-    final @Nullable Element resourceElement =
+    final Element resourceElement =
         getResourceElement(testCaseElement, resourceName);
     if (resourceElement != null) {
       return getText(resourceElement);
@@ -409,7 +409,7 @@ public class DiffRepository {
   private synchronized @Nullable Element getTestCaseElement(
       final String testCaseName,
       boolean checkOverride,
-      @Nullable List<Pair<String, Element>> elements) {
+      List<Pair<String, Element>> elements) {
     final NodeList childNodes = root.getChildNodes();
     for (int i = 0; i < childNodes.getLength(); i++) {
       Node child = childNodes.item(i);
@@ -452,7 +452,7 @@ public class DiffRepository {
    * @param fail Whether to fail if no method is found
    * @return Name of current test case, or null if not found
    */
-  private static @Nullable String getCurrentTestCaseName(boolean fail) {
+  private static String getCurrentTestCaseName(boolean fail) {
     // REVIEW jvs 12-Mar-2006: Too clever by half.  Someone might not know
     // about this and use a private helper method whose name also starts
     // with test. Perhaps just require them to pass in getName() from the
@@ -478,13 +478,6 @@ public class DiffRepository {
     }
   }
 
-  /** Returns the current test case name;
-   * equivalent to {@link #getCurrentTestCaseName}(true),
-   * this method throws if not found, and never returns null. */
-  private static String getCurrentTestCaseName() {
-    return requireNonNull(getCurrentTestCaseName(true));
-  }
-
   public void assertEquals(String tag, String expected, String actual) {
     final String testCaseName = getCurrentTestCaseName(true);
     String expected2 = expand(tag, expected);
@@ -503,7 +496,7 @@ public class DiffRepository {
             expected2.replace(Util.LINE_SEPARATOR, "\n");
         String actualCanonical =
             actual.replace(Util.LINE_SEPARATOR, "\n");
-        assertThat(tag, actualCanonical, is(expected2Canonical));
+        Assertions.assertEquals(expected2Canonical, actualCanonical, tag);
       } catch (AssertionFailedError e) {
         amend(expected, actual);
         throw e;
@@ -541,12 +534,12 @@ public class DiffRepository {
       resourceElement.setAttribute(RESOURCE_NAME_ATTR, resourceName);
       testCaseElement.appendChild(resourceElement);
       ++modCount;
-      if (!value.isEmpty()) {
+      if (!value.equals("")) {
         resourceElement.appendChild(doc.createCDATASection(value));
       }
     } else {
       final List<Node> newChildList;
-      if (value.isEmpty()) {
+      if (value.equals("")) {
         newChildList = ImmutableList.of();
       } else {
         newChildList = ImmutableList.of(doc.createCDATASection(value));
@@ -560,7 +553,7 @@ public class DiffRepository {
     flushDoc();
   }
 
-  private static @Nullable Node ref(String testCaseName,
+  private static Node ref(String testCaseName,
       List<Pair<String, Element>> map) {
     if (map.isEmpty()) {
       return null;
@@ -667,7 +660,7 @@ public class DiffRepository {
    * @param resourceName    Name of resource, e.g. "sql", "plan"
    * @return The value of the resource, or null if not found
    */
-  private static @Nullable Element getResourceElement(
+  private static Element getResourceElement(
       Element testCaseElement,
       String resourceName) {
     return getResourceElement(testCaseElement, resourceName, false);
@@ -683,7 +676,7 @@ public class DiffRepository {
    *                        name and the same parent that are eclipsed
    * @return The value of the resource, or null if not found
    */
-  private static @Nullable Element getResourceElement(Element testCaseElement,
+  private static Element getResourceElement(Element testCaseElement,
       String resourceName, boolean killYoungerSiblings) {
     final NodeList childNodes = testCaseElement.getChildNodes();
     Element found = null;
@@ -879,8 +872,7 @@ public class DiffRepository {
    * @return The diff repository shared between test cases in this class
    */
   public static DiffRepository lookup(Class<?> clazz,
-      @Nullable DiffRepository baseRepository, @Nullable Filter filter,
-      int indent) {
+      DiffRepository baseRepository, Filter filter, int indent) {
     final Key key = new Key(clazz, baseRepository, filter, indent);
     return REPOSITORY_CACHE.getUnchecked(key);
   }
@@ -910,12 +902,12 @@ public class DiffRepository {
   /** Cache key. */
   private static class Key {
     private final Class<?> clazz;
-    private final @Nullable DiffRepository baseRepository;
-    private final @Nullable Filter filter;
+    private final DiffRepository baseRepository;
+    private final Filter filter;
     private final int indent;
 
-    Key(Class<?> clazz, @Nullable DiffRepository baseRepository,
-        @Nullable Filter filter, int indent) {
+    Key(Class<?> clazz, DiffRepository baseRepository, Filter filter,
+        int indent) {
       this.clazz = requireNonNull(clazz, "clazz");
       this.baseRepository = baseRepository;
       this.filter = filter;

@@ -66,9 +66,12 @@ import static java.util.Objects.requireNonNull;
 public class RelMetadataQueryBase {
   //~ Instance fields --------------------------------------------------------
 
-  /** Set of active metadata queries, and cache of previous results. */
+  /** Set of active metadata queries, and cache of previous results.
+   * 缓存活跃的元数据查询及其先前的结果。使用 Google Guava 的 HashBasedTable 实现，允许通过 RelNode 和元数据类型的对象对结果进行快速访问
+   * */
   public final Table<RelNode, Object, Object> map = HashBasedTable.create();
 
+  /*提供一个用于获取元数据处理程序的接口实例。该接口负责根据请求的元数据类型返回相应的处理程序*/
   private final @Nullable MetadataHandlerProvider metadataHandlerProvider;
 
   @Deprecated // to be removed before 2.0

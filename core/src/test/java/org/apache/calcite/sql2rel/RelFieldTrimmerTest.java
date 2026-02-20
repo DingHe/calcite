@@ -47,7 +47,6 @@ import java.util.List;
 
 import static org.apache.calcite.test.Matchers.hasTree;
 
-import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -233,11 +232,11 @@ class RelFieldTrimmerTest {
         + "      LogicalTableScan(table=[[scott, DEPT]])\n";
     assertThat(trimmed, hasTree(expected));
 
-    assertThat(original.getInput(0), instanceOf(Join.class));
+    assertTrue(original.getInput(0) instanceof Join);
     final Join originalJoin = (Join) original.getInput(0);
     assertTrue(originalJoin.getHints().contains(noHashJoinHint));
 
-    assertThat(trimmed.getInput(0), instanceOf(Join.class));
+    assertTrue(trimmed.getInput(0) instanceof Join);
     final Join join = (Join) trimmed.getInput(0);
     assertTrue(join.getHints().contains(noHashJoinHint));
   }
@@ -267,11 +266,11 @@ class RelFieldTrimmerTest {
         + "    LogicalTableScan(table=[[scott, EMP]])\n";
     assertThat(trimmed, hasTree(expected));
 
-    assertThat(original, instanceOf(Aggregate.class));
+    assertTrue(original instanceof Aggregate);
     final Aggregate originalAggregate = (Aggregate) original;
     assertTrue(originalAggregate.getHints().contains(aggHint));
 
-    assertThat(trimmed, instanceOf(Aggregate.class));
+    assertTrue(trimmed instanceof Aggregate);
     final Aggregate aggregate = (Aggregate) trimmed;
     assertTrue(aggregate.getHints().contains(aggHint));
   }
@@ -303,11 +302,11 @@ class RelFieldTrimmerTest {
         + "    LogicalTableScan(table=[[scott, EMP]])\n";
     assertThat(trimmed, hasTree(expected));
 
-    assertThat(original.getInput(0).getInput(0), instanceOf(Project.class));
+    assertTrue(original.getInput(0).getInput(0) instanceof Project);
     final Project originalProject = (Project) original.getInput(0).getInput(0);
     assertTrue(originalProject.getHints().contains(projectHint));
 
-    assertThat(trimmed.getInput(0), instanceOf(Project.class));
+    assertTrue(trimmed.getInput(0) instanceof Project);
     final Project project = (Project) trimmed.getInput(0);
     assertTrue(project.getHints().contains(projectHint));
   }
@@ -438,15 +437,15 @@ class RelFieldTrimmerTest {
         + "        LogicalTableScan(table=[[scott, EMP]])\n";
     assertThat(trimmed, hasTree(expected));
 
-    assertThat(original.getInput(0).getInput(0), instanceOf(Project.class));
+    assertTrue(original.getInput(0).getInput(0) instanceof Project);
     final Project originalProject = (Project) original.getInput(0).getInput(0);
     assertTrue(originalProject.getHints().contains(calcHint));
 
-    assertThat(relNode.getInput(0).getInput(0), instanceOf(Calc.class));
+    assertTrue(relNode.getInput(0).getInput(0) instanceof Calc);
     final Calc originalCalc = (Calc) relNode.getInput(0).getInput(0);
     assertTrue(originalCalc.getHints().contains(calcHint));
 
-    assertThat(trimmed.getInput(0).getInput(0), instanceOf(Calc.class));
+    assertTrue(trimmed.getInput(0).getInput(0) instanceof Calc);
     final Calc calc = (Calc) trimmed.getInput(0).getInput(0);
     assertTrue(calc.getHints().contains(calcHint));
   }

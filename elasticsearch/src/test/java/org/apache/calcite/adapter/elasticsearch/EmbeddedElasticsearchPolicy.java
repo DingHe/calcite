@@ -35,8 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Used to initialize a single Elasticsearch node. For performance reasons (node
@@ -79,7 +78,7 @@ class EmbeddedElasticsearchPolicy {
   }
 
   private EmbeddedElasticsearchPolicy(EmbeddedElasticsearchNode resource) {
-    this.node = requireNonNull(resource, "resource");
+    this.node = Objects.requireNonNull(resource, "resource");
     this.node.start();
     this.mapper = new ObjectMapper();
     this.closer = new Closer();
@@ -113,8 +112,8 @@ class EmbeddedElasticsearchPolicy {
    * @throws IOException if there is an error
    */
   void createIndex(String index, Map<String, String> mapping) throws IOException {
-    requireNonNull(index, "index");
-    requireNonNull(mapping, "mapping");
+    Objects.requireNonNull(index, "index");
+    Objects.requireNonNull(mapping, "mapping");
 
     ObjectNode mappings = mapper().createObjectNode();
 
@@ -149,8 +148,8 @@ class EmbeddedElasticsearchPolicy {
    * @throws IOException if there is an error
    */
   void createAlias(String index, String alias) throws IOException {
-    requireNonNull(index, "index");
-    requireNonNull(alias, "alias");
+    Objects.requireNonNull(index, "index");
+    Objects.requireNonNull(alias, "alias");
 
     ObjectNode actions = mapper().createObjectNode();
 
@@ -178,25 +177,16 @@ class EmbeddedElasticsearchPolicy {
     final int index = key.indexOf('.');
     if (index > -1) {
       String prefix  = key.substring(0, index);
-      String suffix = key.substring(index + 1);
-
-      if ("nested".equals(parent.get(prefix).get("type").asText())) {
-        // Nested field mapping
-        applyMapping(parent.withObject("/" + prefix).withObject("/properties"),
-            suffix, type);
-      } else {
-        // Multi-field mapping
-        applyMapping(parent.withObject("/" + prefix).withObject("/fields"),
-            suffix, type);
-      }
+      String suffix = key.substring(index + 1, key.length());
+      applyMapping(parent.withObject("/" + prefix).withObject("/properties"), suffix, type);
     } else {
       parent.withObject("/" + key).put("type", type);
     }
   }
 
   void insertDocument(String index, ObjectNode document) throws IOException {
-    requireNonNull(index, "index");
-    requireNonNull(document, "document");
+    Objects.requireNonNull(index, "index");
+    Objects.requireNonNull(document, "document");
     String uri = String.format(Locale.ROOT, "/%s/_doc?refresh", index);
     StringEntity entity =
         new StringEntity(mapper().writeValueAsString(document),
@@ -207,8 +197,8 @@ class EmbeddedElasticsearchPolicy {
   }
 
   void insertBulk(String index, List<ObjectNode> documents) throws IOException {
-    requireNonNull(index, "index");
-    requireNonNull(documents, "documents");
+    Objects.requireNonNull(index, "index");
+    Objects.requireNonNull(documents, "documents");
 
     if (documents.isEmpty()) {
       // nothing to process

@@ -59,7 +59,6 @@ import org.apache.calcite.rel.core.Union;
 import org.apache.calcite.rel.core.Values;
 import org.apache.calcite.rel.hint.Hintable;
 import org.apache.calcite.rel.hint.RelHint;
-import org.apache.calcite.rel.logical.LogicalAsofJoin;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.metadata.RelColumnMapping;
@@ -102,7 +101,6 @@ import org.apache.calcite.sql.fun.SqlInternalOperators;
 import org.apache.calcite.sql.fun.SqlLikeOperator;
 import org.apache.calcite.sql.fun.SqlQuantifyOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.TableFunctionReturnTypeInference;
@@ -151,7 +149,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -231,7 +228,7 @@ public class RelBuilder {
   private static RelOptTable.ViewExpander getViewExpander(RelOptCluster cluster,
       Context context) {
     return context.maybeUnwrap(RelOptTable.ViewExpander.class)
-        .orElseGet(() -> ViewExpanders.simpleContext(cluster));
+        .orElseGet(() -> ViewExpanders.simpleContext(cluster)); //ViewExpanders.simpleContext里面并没有实现视图的展开逻辑
   }
 
   /** Derives the Config to be used for this RelBuilder.
@@ -405,7 +402,7 @@ public class RelBuilder {
   private Frame peek_(int n) {
     if (n == 0) {
       // more efficient than starting an iterator
-      return requireNonNull(stack.peek(), "stack.peek");
+      return Objects.requireNonNull(stack.peek(), "stack.peek");
     }
     return Iterables.get(stack, n);
   }
@@ -480,7 +477,7 @@ public class RelBuilder {
       return rexBuilder.makeExactLiteral((BigDecimal) value);
     } else if (value instanceof Float || value instanceof Double) {
       return rexBuilder.makeApproxLiteral(
-          ((Number) value).doubleValue(), getTypeFactory().createSqlType(SqlTypeName.DOUBLE));
+          BigDecimal.valueOf(((Number) value).doubleValue()));
     } else if (value instanceof Number) {
       return rexBuilder.makeExactLiteral(
           BigDecimal.valueOf(((Number) value).longValue()));
@@ -569,7 +566,7 @@ public class RelBuilder {
   public RexInputRef field(int inputCount, int inputOrdinal, int fieldOrdinal) {
     return (RexInputRef) field(inputCount, inputOrdinal, fieldOrdinal, false);
   }
-
+   //创建引用父节点的RexNode节点
   /** As {@link #field(int, int, int)}, but if {@code alias} is true, the method
    * may apply an alias to make sure that the field has the same name as in the
    * input frame. If no alias is applied the expression is definitely a
@@ -583,7 +580,7 @@ public class RelBuilder {
       throw new IllegalArgumentException("field ordinal [" + fieldOrdinal
           + "] out of range; input fields are: " + rowType.getFieldNames());
     }
-    final RelDataTypeField field = rowType.getFieldList().get(fieldOrdinal);
+    final RelDataTypeField field = rowType.getFieldList().get(fieldOrdinal); //获取第fieldOrdinal个字段
     final int offset = inputOffset(inputCount, inputOrdinal);
     final RexInputRef ref = cluster.getRexBuilder()
         .makeInputRef(field.getType(), offset + fieldOrdinal);
@@ -635,16 +632,9 @@ public class RelBuilder {
     throw new IllegalArgumentException(b.toString());
   }
 
-  /** Returns a reference to a given field (by name, case-insensitive)
-   * of a record-valued expression. */
+  /** Returns a reference to a given field of a record-valued expression. */
   public RexNode field(RexNode e, String name) {
     return getRexBuilder().makeFieldAccess(e, name, false);
-  }
-
-  /** Returns a reference to a given field (by ordinal)
-   * of a record-valued expression. */
-  public RexNode field(RexNode e, int ordinal) {
-    return getRexBuilder().makeFieldAccess(e, ordinal);
   }
 
   /** Returns references to the fields of the top input. */
@@ -737,7 +727,7 @@ public class RelBuilder {
   }
 
   /** Creates a call to a scalar operator. */
-  private RexCall call(SqlParserPos pos, SqlOperator operator, List<RexNode> operandList) {
+  private RexCall call(SqlOperator operator, List<RexNode> operandList) {
     switch (operator.getKind()) {
     case LIKE:
     case SIMILAR:
@@ -756,13 +746,13 @@ public class RelBuilder {
     }
     final RexBuilder builder = cluster.getRexBuilder();
     final RelDataType type = builder.deriveReturnType(operator, operandList);
-    return (RexCall) builder.makeCall(pos, type, operator, operandList);
+    return (RexCall) builder.makeCall(type, operator, operandList);
   }
 
   /** Creates a call to a scalar operator. */
   public RexNode call(SqlOperator operator,
       Iterable<? extends RexNode> operands) {
-    return call(SqlParserPos.ZERO, operator, ImmutableList.copyOf(operands));
+    return call(operator, ImmutableList.copyOf(operands));
   }
 
   /** Creates an IN predicate with a list of values.
@@ -1165,43 +1155,25 @@ public class RelBuilder {
 
   /** Creates an expression that casts an expression to a given type. */
   public RexNode cast(RexNode expr, SqlTypeName typeName) {
-    return cast(SqlParserPos.ZERO, expr, typeName);
-  }
-
-  /** Creates an expression that casts an expression to a given type. */
-  public RexNode cast(SqlParserPos pos, RexNode expr, SqlTypeName typeName) {
     final RelDataType type = cluster.getTypeFactory().createSqlType(typeName);
-    return cluster.getRexBuilder().makeCast(pos, type, expr);
+    return cluster.getRexBuilder().makeCast(type, expr);
   }
 
   /** Creates an expression that casts an expression to a type with a given name
    * and precision or length. */
   public RexNode cast(RexNode expr, SqlTypeName typeName, int precision) {
-    return cast(SqlParserPos.ZERO, expr, typeName, precision);
-  }
-
-    /** Creates an expression that casts an expression to a type with a given name
-     * and precision or length. */
-  public RexNode cast(SqlParserPos pos, RexNode expr, SqlTypeName typeName, int precision) {
     final RelDataType type =
         cluster.getTypeFactory().createSqlType(typeName, precision);
-    return cluster.getRexBuilder().makeCast(pos, type, expr);
+    return cluster.getRexBuilder().makeCast(type, expr);
   }
 
   /** Creates an expression that casts an expression to a type with a given
    * name, precision and scale. */
   public RexNode cast(RexNode expr, SqlTypeName typeName, int precision,
       int scale) {
-    return cast(SqlParserPos.ZERO, expr, typeName, precision, scale);
-  }
-
-  /** Creates an expression that casts an expression to a type with a given
-   * name, precision and scale. */
-  public RexNode cast(SqlParserPos pos, RexNode expr, SqlTypeName typeName, int precision,
-      int scale) {
     final RelDataType type =
         cluster.getTypeFactory().createSqlType(typeName, precision, scale);
-    return cluster.getRexBuilder().makeCast(pos, type, expr);
+    return cluster.getRexBuilder().makeCast(type, expr);
   }
 
   /**
@@ -1456,36 +1428,6 @@ public class RelBuilder {
    * {@link AggCall#filter(RexNode...)},
    * {@link AggCall#sort},
    * {@link AggCall#as} to the result. */
-  public AggCall aggregateCall(SqlParserPos pos, SqlAggFunction aggFunction,
-      Iterable<? extends RexNode> operands) {
-    return aggregateCall(pos, aggFunction, false, false, false, null, null,
-        ImmutableList.of(), null, ImmutableList.of(),
-        ImmutableList.copyOf(operands));
-  }
-
-  /** Creates a call to an aggregate function.
-   *
-   * <p>To add other operands, apply
-   * {@link AggCall#distinct()},
-   * {@link AggCall#approximate(boolean)},
-   * {@link AggCall#filter(RexNode...)},
-   * {@link AggCall#sort},
-   * {@link AggCall#as} to the result. */
-  public AggCall aggregateCall(SqlParserPos pos, SqlAggFunction aggFunction,
-      RexNode... operands) {
-    return aggregateCall(pos, aggFunction, false, false, false, null, null,
-        ImmutableList.of(), null, ImmutableList.of(),
-        ImmutableList.copyOf(operands));
-  }
-
-  /** Creates a call to an aggregate function.
-   *
-   * <p>To add other operands, apply
-   * {@link AggCall#distinct()},
-   * {@link AggCall#approximate(boolean)},
-   * {@link AggCall#filter(RexNode...)},
-   * {@link AggCall#sort},
-   * {@link AggCall#as} to the result. */
   public AggCall aggregateCall(SqlAggFunction aggFunction,
       RexNode... operands) {
     return aggregateCall(aggFunction, false, false, false, null, null,
@@ -1496,8 +1438,7 @@ public class RelBuilder {
   /** Creates a call to an aggregate function as a copy of an
    * {@link AggregateCall}. */
   public AggCall aggregateCall(AggregateCall a) {
-    return aggregateCall(a.getParserPosition(),
-        a.getAggregation(), a.isDistinct(), a.isApproximate(),
+    return aggregateCall(a.getAggregation(), a.isDistinct(), a.isApproximate(),
         a.ignoreNulls(), a.filterArg < 0 ? null : field(a.filterArg),
         a.distinctKeys == null ? null : fields(a.distinctKeys),
         fields(a.collation), a.name, ImmutableList.copyOf(a.rexList),
@@ -1507,8 +1448,7 @@ public class RelBuilder {
   /** Creates a call to an aggregate function as a copy of an
    * {@link AggregateCall}, applying a mapping. */
   public AggCall aggregateCall(AggregateCall a, Mapping mapping) {
-    return aggregateCall(a.getParserPosition(),
-        a.getAggregation(), a.isDistinct(), a.isApproximate(),
+    return aggregateCall(a.getAggregation(), a.isDistinct(), a.isApproximate(),
         a.ignoreNulls(),
         a.filterArg < 0 ? null : field(Mappings.apply(mapping, a.filterArg)),
         a.distinctKeys == null ? null
@@ -1524,17 +1464,7 @@ public class RelBuilder {
       @Nullable ImmutableList<RexNode> distinctKeys,
       ImmutableList<RexNode> orderKeys, @Nullable String alias,
       ImmutableList<RexNode> preOperands, ImmutableList<RexNode> operands) {
-    return new AggCallImpl(SqlParserPos.ZERO, aggFunction, distinct, approximate, ignoreNulls,
-        filter, alias, preOperands, operands, distinctKeys, orderKeys);
-  }
-
-  /** Creates a call to an aggregate function with all applicable operands. */
-  protected AggCall aggregateCall(SqlParserPos pos, SqlAggFunction aggFunction, boolean distinct,
-      boolean approximate, boolean ignoreNulls, @Nullable RexNode filter,
-      @Nullable ImmutableList<RexNode> distinctKeys,
-      ImmutableList<RexNode> orderKeys, @Nullable String alias,
-      ImmutableList<RexNode> preOperands, ImmutableList<RexNode> operands) {
-    return new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+    return new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
         filter, alias, preOperands, operands, distinctKeys, orderKeys);
   }
 
@@ -1576,11 +1506,6 @@ public class RelBuilder {
     return sum(false, null, operand);
   }
 
-  /** Creates a call to the {@code SUM} aggregate function. */
-  public AggCall sum(SqlParserPos pos, RexNode operand) {
-    return sum(pos, false, null, operand);
-  }
-
   /** Creates a call to the {@code SUM} aggregate function,
    * optionally distinct and with an alias. */
   public AggCall sum(boolean distinct, @Nullable String alias,
@@ -1590,39 +1515,16 @@ public class RelBuilder {
         ImmutableList.of(operand));
   }
 
-  /** Creates a call to the {@code SUM} aggregate function,
-   * optionally distinct and with an alias. */
-  public AggCall sum(SqlParserPos pos, boolean distinct, @Nullable String alias,
-      RexNode operand) {
-    return aggregateCall(pos, SqlStdOperatorTable.SUM, distinct, false, false, null,
-        null, ImmutableList.of(), alias, ImmutableList.of(),
-        ImmutableList.of(operand));
-  }
-
   /** Creates a call to the {@code AVG} aggregate function. */
   public AggCall avg(RexNode operand) {
     return avg(false, null, operand);
-  }
-
-  /** Creates a call to the {@code AVG} aggregate function. */
-  public AggCall avg(SqlParserPos pos, RexNode operand) {
-    return avg(pos, false, null, operand);
   }
 
   /** Creates a call to the {@code AVG} aggregate function,
    * optionally distinct and with an alias. */
   public AggCall avg(boolean distinct, @Nullable String alias,
       RexNode operand) {
-    return aggregateCall(SqlParserPos.ZERO, SqlStdOperatorTable.AVG, distinct, false, false, null,
-        null, ImmutableList.of(), alias, ImmutableList.of(),
-        ImmutableList.of(operand));
-  }
-
-  /** Creates a call to the {@code AVG} aggregate function,
-   * optionally distinct and with an alias. */
-  public AggCall avg(SqlParserPos pos, boolean distinct, @Nullable String alias,
-      RexNode operand) {
-    return aggregateCall(pos, SqlStdOperatorTable.AVG, distinct, false, false, null,
+    return aggregateCall(SqlStdOperatorTable.AVG, distinct, false, false, null,
         null, ImmutableList.of(), alias, ImmutableList.of(),
         ImmutableList.of(operand));
   }
@@ -1761,7 +1663,7 @@ public class RelBuilder {
       throw RESOURCE.tableNotFound(String.join(".", names)).ex();
     }
     final RelNode scan =
-        struct.scanFactory.createScan(
+        struct.scanFactory.createScan(        //通过scan工厂创建关系节点
             ViewExpanders.toRelContext(viewExpander, cluster),
             relOptTable);
     push(scan);
@@ -1855,7 +1757,7 @@ public class RelBuilder {
       inputs.add(0, build());
     }
 
-    final RexCall call = call(SqlParserPos.ZERO, operator, ImmutableList.copyOf(operands));
+    final RexCall call = call(operator, ImmutableList.copyOf(operands));
     final RelNode functionScan =
         struct.tableFunctionScanFactory.createTableFunctionScan(cluster,
             inputs, call, null, getColumnMappings(operator));
@@ -2129,7 +2031,7 @@ public class RelBuilder {
         switch (pair.left.getKind()) {
         case INPUT_REF:
           final int i = ((RexInputRef) pair.left).getIndex();
-          fields.set(i, pair.right, fields.right(i));
+          fields.set(i, pair.right, fields.rightList().get(i));
           break;
         default:
           break;
@@ -2183,7 +2085,7 @@ public class RelBuilder {
       case INPUT_REF:
         // preserve rel aliases for INPUT_REF fields
         final int index = ((RexInputRef) node).getIndex();
-        fields.add(frame.fields.left(index), fieldType);
+        fields.add(frame.fields.leftList().get(index), fieldType);
         break;
       default:
         fields.add(ImmutableSet.of(), fieldType);
@@ -2363,7 +2265,7 @@ public class RelBuilder {
    * <p>Note that the names can be short-lived. Other {@code RelBuilder}
    * operations make no guarantees about the field names of the rows they
    * produce.
-   *
+   * 用于确保符合给定的字段名称
    * @param fieldNames List of desired field names; may contain null values or
    * have fewer fields than the current row type
    */
@@ -2709,37 +2611,6 @@ public class RelBuilder {
         && groupKey.isSimple();
   }
 
-  /** Creates an {@link Aggregate} with a set of hybrid expressions represented
-   * as {@link RexNode}. */
-  public RelBuilder aggregateRex(GroupKey groupKey,
-      RexNode... nodes) {
-    return aggregateRex(groupKey, false, ImmutableList.copyOf(nodes));
-  }
-
-  /** Creates an {@link Aggregate} with a set of hybrid expressions represented
-   * as {@link RexNode}, optionally projecting the {@code groupKey} columns. */
-  public RelBuilder aggregateRex(GroupKey groupKey, boolean projectKey,
-      Iterable<? extends RexNode> nodes) {
-    final GroupKeyImpl groupKeyImpl = (GroupKeyImpl) groupKey;
-    final AggBuilder aggBuilder = new AggBuilder(groupKeyImpl.nodes);
-
-    // First pass. Call convert on each expression to ensure that aggCalls
-    // gets populated.
-    aggBuilder.registerExpressions(nodes);
-
-    // Create the Aggregate on the stack.
-    aggregate(groupKey, aggBuilder.aggCalls);
-
-    // Second pass. Call convert on each expression so that it references the
-    // actual aggCalls in the Aggregate that was just pushed onto the stack.
-    final List<RexNode> projects = new ArrayList<>();
-    if (projectKey) {
-      projects.addAll(fields(Util.range(groupKey.groupKeyCount())));
-    }
-    aggBuilder.convertExpressions(projects::add, nodes);
-    return project(projects);
-  }
-
   /** Finishes the implementation of {@link #aggregate} by creating an
    * {@link Aggregate} and pushing it onto the stack. */
   private RelBuilder aggregate_(ImmutableBitSet groupSet,
@@ -2886,31 +2757,6 @@ public class RelBuilder {
     return ((AggCallPlus) c).op().kind == SqlKind.GROUP_ID;
   }
 
-  /** Given a list of literals and a target row type, make the literals
-   * respectively match the fields types of the row.
-   *
-   * @param rowType  Type expected for values
-   * @param values   A list of literals that should match the rowType */
-  private List<RexLiteral> convertLiteralTypes(
-      RelDataType rowType, List<RexLiteral> values) {
-    assert values.size() == rowType.getFieldCount()
-        : "List of literals of size " + values.size() + " does not match expected type " + rowType;
-
-    List<RelDataTypeField> fields = rowType.getFieldList();
-    List<RexLiteral> constants = new ArrayList<>();
-
-    for (int i = 0; i < values.size(); i++) {
-      RexLiteral vi = values.get(i);
-      RelDataType type = fields.get(i).getType();
-      RexNode e = cluster.getRexBuilder().makeAbstractCast(type, vi, false);
-      RexNode simplified = simplifier.simplify(e);
-      assert simplified instanceof RexLiteral
-          : "Could not simplify expression to literal" + simplified;
-      constants.add((RexLiteral) simplified);
-    }
-    return ImmutableList.copyOf(constants);
-  }
-
   private RelBuilder setOp(boolean all, SqlKind kind, int n) {
     List<RelNode> inputs = new ArrayList<>();
     for (int i = 0; i < n; i++) {
@@ -2942,11 +2788,7 @@ public class RelBuilder {
       requireNonNull(rowType, () -> "leastRestrictive(" + inputTypes + ")");
       final List<List<RexLiteral>> tuples = new ArrayList<>();
       for (RelNode input : inputs) {
-        ImmutableList<ImmutableList<RexLiteral>> literals = ((Values) input).tuples;
-        for (ImmutableList<RexLiteral> l : literals) {
-          List<RexLiteral> converted = convertLiteralTypes(rowType, l);
-          tuples.add(converted);
-        }
+        tuples.addAll(((Values) input).tuples);
       }
       final List<List<RexLiteral>> tuples2 =
           all ? tuples : Util.distinctList(tuples);
@@ -3118,38 +2960,6 @@ public class RelBuilder {
     return push(repeatUnion);
   }
 
-  /** Creates a {@link LogicalAsofJoin} with the specified conditions. */
-  public RelBuilder asofJoin(JoinRelType joinType, RexNode condition, RexNode matchCondition) {
-    // Implementation based on the 'join' method
-    assert joinType == JoinRelType.ASOF || joinType == JoinRelType.LEFT_ASOF;
-    final Frame right = stack.pop();
-    final Frame left = stack.pop();
-    if (config.simplify()) {
-      // Normalize expanded versions IS NOT DISTINCT FROM so that simplifier does not
-      // transform the expression to something unrecognizable
-      if (condition instanceof RexCall) {
-        condition =
-            RelOptUtil.collapseExpandedIsNotDistinctFromExpr((RexCall) condition,
-                getRexBuilder());
-      }
-      condition = simplifier.simplifyUnknownAsFalse(condition);
-    }
-    final RelNode join;
-    RelNode join0 =
-        struct.asofJoinFactory.createAsofJoin(left.rel, right.rel,
-            ImmutableList.of(), condition, matchCondition, joinType);
-    if (join0 instanceof Join && config.pushJoinCondition()) {
-      join = RelOptUtil.pushDownJoinConditions((Join) join0, this);
-    } else {
-      join = join0;
-    }
-    final PairList<ImmutableSet<String>, RelDataTypeField> fields =
-        PairList.of();
-    fields.addAll(left.fields);
-    fields.addAll(right.fields);
-    stack.push(new Frame(join, fields));
-    return this;
-  }
 
   /** Creates a {@link Join} with an array of conditions. */
   public RelBuilder join(JoinRelType joinType, RexNode condition0,
@@ -3434,10 +3244,8 @@ public class RelBuilder {
               return tupleList.size();
             }
           });
-      if (type == null) {
-        throw new AssertionError("can't infer type for field " + i + ", "
-            + fieldName);
-      }
+      assert type != null
+          : "can't infer type for field " + i + ", " + fieldName;
       builder.add(fieldName, type);
     });
     final RelDataType rowType = builder.build();
@@ -4149,14 +3957,8 @@ public class RelBuilder {
       return this;
     }
     final Frame frame = peek_();
-    if (frame == null) {
-      throw new IllegalArgumentException(
-          "There is no relational expression to attach the hints");
-    }
-    if (!(frame.rel instanceof Hintable)) {
-      throw new IllegalArgumentException(
-          "The top relational expression is not a Hintable");
-    }
+    assert frame != null : "There is no relational expression to attach the hints";
+    assert frame.rel instanceof Hintable : "The top relational expression is not a Hintable";
     Hintable hintable = (Hintable) frame.rel;
     replaceTop(hintable.attachHints(relHintList));
     return this;
@@ -4173,8 +3975,6 @@ public class RelBuilder {
    *
    * @see RelBuilder#aggregateCall */
   public interface AggCall {
-    SqlParserPos getPosition();
-
     /** Returns a copy of this AggCall that applies a filter before aggregating
      * values. */
     AggCall filter(@Nullable RexNode condition);
@@ -4328,8 +4128,6 @@ public class RelBuilder {
           + " must not be used by left input to correlation");
     }
     switch (joinType) {
-    case LEFT_ASOF:
-    case ASOF:
     case RIGHT:
     case FULL:
       throw new IllegalArgumentException("Correlated " + joinType + " join is not supported");
@@ -4343,30 +4141,28 @@ public class RelBuilder {
 
   /** Implementation of {@link AggCall}. */
   private class AggCallImpl implements AggCallPlus {
-    private final SqlParserPos pos;
-    private final SqlAggFunction aggFunction;
-    private final boolean distinct;
-    private final boolean approximate;
-    private final boolean ignoreNulls;
-    private final @Nullable RexNode filter;
+    private final SqlAggFunction aggFunction; //聚合函数
+    private final boolean distinct; //是否去重
+    private final boolean approximate; //是否近似计算
+    private final boolean ignoreNulls; //是否忽略空值
+    private final @Nullable RexNode filter; //过滤条件
     private final @Nullable String alias;
     private final ImmutableList<RexNode> preOperands; // may be empty
     private final ImmutableList<RexNode> operands; // may be empty
     private final @Nullable ImmutableList<RexNode> distinctKeys; // may be empty or null
     private final ImmutableList<RexNode> orderKeys; // may be empty
 
-    AggCallImpl(SqlParserPos pos, SqlAggFunction aggFunction, boolean distinct,
+    AggCallImpl(SqlAggFunction aggFunction, boolean distinct,
         boolean approximate, boolean ignoreNulls, @Nullable RexNode filter,
         @Nullable String alias, ImmutableList<RexNode> preOperands,
         ImmutableList<RexNode> operands,
         @Nullable ImmutableList<RexNode> distinctKeys,
         ImmutableList<RexNode> orderKeys) {
-      this.pos = pos;
       this.aggFunction = requireNonNull(aggFunction, "aggFunction");
       // If the aggregate function ignores DISTINCT,
       // make the DISTINCT flag FALSE.
       this.distinct = distinct
-          && aggFunction.getDistinctOptionality() != Optionality.IGNORED;
+          && aggFunction.getDistinctOptionality() != Optionality.IGNORED; //count聚合函数的distinct选择性不是忽略
       this.approximate = approximate;
       this.ignoreNulls = ignoreNulls;
       this.alias = alias;
@@ -4385,10 +4181,6 @@ public class RelBuilder {
       this.filter = filter;
     }
 
-    @Override public SqlParserPos getPosition() {
-      return pos;
-    }
-
     @Override public String toString() {
       final StringBuilder b = new StringBuilder();
       b.append(aggFunction.getName())
@@ -4396,15 +4188,15 @@ public class RelBuilder {
       if (distinct) {
         b.append("DISTINCT ");
       }
-      if (!preOperands.isEmpty()) {
+      if (preOperands.size() > 0) {
         b.append(preOperands.get(0));
         for (int i = 1; i < preOperands.size(); i++) {
           b.append(", ");
           b.append(preOperands.get(i));
         }
-        b.append(operands.isEmpty() ? ";" : "; ");
+        b.append(operands.size() > 0 ? "; " : ";");
       }
-      if (!operands.isEmpty()) {
+      if (operands.size() > 0) {
         b.append(operands.get(0));
         for (int i = 1; i < operands.size(); i++) {
           b.append(", ");
@@ -4436,7 +4228,7 @@ public class RelBuilder {
       final RelCollation collation = RelCollations.EMPTY;
       final RelDataType type =
           getTypeFactory().createSqlType(SqlTypeName.BOOLEAN);
-      return AggregateCall.create(pos, aggFunction, distinct, approximate,
+      return AggregateCall.create(aggFunction, distinct, approximate,
           ignoreNulls, preOperands, ImmutableList.of(), -1,
           null, collation, type, alias);
     }
@@ -4472,7 +4264,7 @@ public class RelBuilder {
             .collect(toImmutableList());
       }
 
-      return AggregateCall.create(pos, aggFunction, distinct, approximate,
+      return AggregateCall.create(aggFunction, distinct, approximate,
           ignoreNulls, preOperands, args, filterArg, distinctKeys,
           collation, groupSet.cardinality(), r, null, alias);
     }
@@ -4494,7 +4286,7 @@ public class RelBuilder {
           ImmutableList.copyOf(preOperands);
       return preOperandList.equals(this.preOperands)
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperandList, operands, distinctKeys, orderKeys);
     }
 
@@ -4508,7 +4300,7 @@ public class RelBuilder {
           ImmutableList.copyOf(orderKeys);
       return orderKeyList.equals(this.orderKeys)
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeys, orderKeyList);
     }
 
@@ -4521,42 +4313,42 @@ public class RelBuilder {
           distinctKeys == null ? null : ImmutableList.copyOf(distinctKeys);
       return Objects.equals(distinctKeyList, this.distinctKeys)
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeyList, orderKeys);
     }
 
     @Override public AggCall approximate(boolean approximate) {
       return approximate == this.approximate
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeys, orderKeys);
     }
 
     @Override public AggCall filter(@Nullable RexNode condition) {
       return Objects.equals(condition, this.filter)
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               condition, alias, preOperands, operands, distinctKeys, orderKeys);
     }
 
     @Override public AggCall as(@Nullable String alias) {
       return Objects.equals(alias, this.alias)
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeys, orderKeys);
     }
 
     @Override public AggCall distinct(boolean distinct) {
       return distinct == this.distinct
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeys, orderKeys);
     }
 
     @Override public AggCall ignoreNulls(boolean ignoreNulls) {
       return ignoreNulls == this.ignoreNulls
           ? this
-          : new AggCallImpl(pos, aggFunction, distinct, approximate, ignoreNulls,
+          : new AggCallImpl(aggFunction, distinct, approximate, ignoreNulls,
               filter, alias, preOperands, operands, distinctKeys, orderKeys);
     }
   }
@@ -4576,10 +4368,6 @@ public class RelBuilder {
       return new OverCallImpl(aggregateCall.getAggregation(),
           aggregateCall.isDistinct(), operands, aggregateCall.ignoreNulls(),
           aggregateCall.name);
-    }
-
-    @Override public SqlParserPos getPosition() {
-      return this.aggregateCall.getParserPosition();
     }
 
     @Override public String toString() {
@@ -4896,7 +4684,7 @@ public class RelBuilder {
   }
 
   /** Collects the extra expressions needed for {@link #aggregate}.
-   *
+   * 额外的表达式来自聚合key，并且可以当作聚合调用的参数
    * <p>The extra expressions come from the group key and as arguments to
    * aggregate calls, and later there will be a {@link #project} or a
    * {@link #rename(List)} if necessary. */
@@ -4927,8 +4715,8 @@ public class RelBuilder {
         if (i2 >= 0) {
           return i2;
         }
-        extraNodes.add(node);
-        names.add(null);
+        extraNodes.add(node); //如果是衍生表达式，则加入
+        names.add(null);   //衍生表达式，默认字段名字为空
         return extraNodes.size() - 1;
       }
     }
@@ -4968,7 +4756,7 @@ public class RelBuilder {
    * information about how table aliases map into its row type. */
   private static class Frame {
     final RelNode rel;
-    final ImmutablePairList<ImmutableSet<String>, RelDataTypeField> fields;
+    final ImmutablePairList<ImmutableSet<String>, RelDataTypeField> fields; //别名和原字段的映射
 
     private Frame(RelNode rel,
         PairList<ImmutableSet<String>, RelDataTypeField> fields) {
@@ -5087,7 +4875,7 @@ public class RelBuilder {
      * gather common sub-expressions and compute them only once.
      */
     @Value.Default default int bloat() {
-      return RelOptUtil.DEFAULT_BLOAT;
+      return 100;
     }
 
     /** Sets {@link #bloat}. */
@@ -5128,7 +4916,7 @@ public class RelBuilder {
 
     /** Sets {@link #pushJoinCondition()}. */
     Config withPushJoinCondition(boolean pushJoinCondition);
-
+    //是否要简化表达式
     /** Whether to simplify expressions; default true. */
     @Value.Default default boolean simplify() {
       return true;
@@ -5184,85 +4972,4 @@ public class RelBuilder {
     Config withRemoveRedundantDistinct(boolean removeRedundantDistinct);
   }
 
-  /** Working state for {@link #aggregateRex}. */
-  private class AggBuilder {
-    final ImmutableList<RexNode> groupKeys;
-    final List<AggCall> aggCalls = new ArrayList<>();
-
-    private AggBuilder(ImmutableList<RexNode> groupKeys) {
-      this.groupKeys = groupKeys;
-    }
-
-    /** Adds a node that we know to contain an aggregate function, and returns
-     * an expression whose input row type is the output row type of the
-     * aggregate layer ({@link #groupKeys} and {@link #aggCalls}). */
-    private RexNode convert(RegisterAgg registrar, RexNode node,
-        @Nullable String name) {
-      switch (node.getKind()) {
-      case AS:
-        final ImmutableList<RexNode> asOperands = ((RexCall) node).operands;
-        final String name2;
-        if (name != null) {
-          name2 = name;
-        } else {
-          final RexLiteral literal = (RexLiteral) asOperands.get(1);
-          name2 = requireNonNull(literal.getValueAs(String.class));
-        }
-        final RexNode node2 = convert(registrar, asOperands.get(0), name2);
-        return alias(node2, name2);
-
-      case INPUT_REF:
-        final int j = groupKeys.indexOf(node);
-        if (j < 0) {
-          throw new IllegalArgumentException("not a group key: " + node);
-        }
-        return field(j);
-
-      default:
-        if (node instanceof RexCall) {
-          final RexCall call = (RexCall) node;
-          if (call.getOperator().isAggregator()) {
-            // return a reference to the i'th agg call
-            return registrar.registerAgg((SqlAggFunction) call.op,
-                call.operands, call.type, name);
-          } else {
-            return call.clone(call.type,
-                Util.transform(call.operands, operand ->
-                    convert(registrar, operand, null)));
-          }
-        }
-        return node;
-      }
-    }
-
-    void registerExpressions(Iterable<? extends RexNode> nodes) {
-      for (RexNode node : nodes) {
-        convert(this::registerAgg, node, null);
-      }
-    }
-
-    RexInputRef registerAgg(SqlAggFunction op, List<RexNode> operands,
-        RelDataType type, @Nullable String name) {
-      final int i = groupKeys.size() + aggCalls.size();
-      aggCalls.add(aggregateCall(op, operands).as(name));
-      return getRexBuilder().makeInputRef(type, i);
-    }
-
-    void convertExpressions(Consumer<RexNode> projects,
-        Iterable<? extends RexNode> nodes) {
-      final AtomicInteger j = new AtomicInteger(groupKeys.size());
-      for (RexNode node : nodes) {
-        projects.accept(
-            convert((op, operands, type, name) -> field(j.getAndIncrement()),
-                node, null));
-      }
-    }
-  }
-
-  /** Callback to handle creation of an aggregate call in
-   * {@link AggBuilder#convert}. */
-  private interface RegisterAgg {
-    RexInputRef registerAgg(SqlAggFunction op, List<RexNode> operands,
-        RelDataType type, @Nullable String name);
-  }
 }

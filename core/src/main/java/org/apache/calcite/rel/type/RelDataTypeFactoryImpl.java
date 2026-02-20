@@ -73,6 +73,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /**
    * Global cache for RelDataType.
    */
+  @SuppressWarnings("BetaApi")
   private static final Interner<RelDataType> DATATYPE_CACHE =
       Interners.newWeakInterner();
 
@@ -86,7 +87,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
     }
     return new RelRecordType(key.kind, list.build(), key.nullable);
   }
-
+  //java的数据类型和sql的数据类型family对应关系
   private static final Map<Class, RelDataTypeFamily> CLASS_FAMILIES =
       ImmutableMap.<Class, RelDataTypeFamily>builder()
           .put(String.class, SqlTypeFamily.CHARACTER)
@@ -124,7 +125,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   @Override public RelDataTypeSystem getTypeSystem() {
     return typeSystem;
   }
-
+  //创建一个java数据类型
   // implement RelDataTypeFactory
   @Override public RelDataType createJavaType(Class clazz) {
     final JavaType javaType =
@@ -134,16 +135,17 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
             : new JavaType(clazz);
     return canonize(javaType);
   }
-
+  //把join两边的结构合并成一个
+  // implement RelDataTypeFactory
   @Override public RelDataType createJoinType(RelDataType... types) {
-    requireNonNull(types, "types");
-    checkArgument(types.length >= 1);
+    assert types != null;
+    assert types.length >= 1;
     final List<RelDataType> flattenedTypes = new ArrayList<>();
     getTypeList(ImmutableList.copyOf(types), flattenedTypes);
     return canonize(
         new RelCrossType(flattenedTypes, getFieldList(flattenedTypes)));
   }
-
+ //创建结构类型
   @Override public RelDataType createStructType(
       final List<RelDataType> typeList,
       final List<String> fieldNameList) {
@@ -206,7 +208,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
       List<RelDataType> types, SqlTypeMappingRule mappingRule) {
     requireNonNull(types, "types");
     requireNonNull(mappingRule, "mappingRule");
-    checkArgument(!types.isEmpty(), "!types.isEmpty");
+    checkArgument(types.size() >= 1, "types.size >= 1");
     RelDataType type0 = types.get(0);
     if (type0.isStruct()) {
       return leastRestrictiveStructuredType(types);
@@ -413,9 +415,10 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /**
    * Registers a type, or returns the existing type if it is already
    * registered.
-   *
+   * 如果已经创建过，就不会重复创建
    * @throws NullPointerException if type is null
    */
+  @SuppressWarnings("BetaApi")
   protected RelDataType canonize(final RelDataType type) {
     return DATATYPE_CACHE.intern(type);
   }
@@ -423,7 +426,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /**
    * Looks up a type using a temporary key, and if not present, creates
    * a permanent key and type.
-   *
+   * 有就直接取，没有就创建
    * <p>This approach allows us to use a cheap temporary key. A permanent
    * key is more expensive, because it must be immutable and not hold
    * references into other data structures.
@@ -459,7 +462,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
     return fieldList;
   }
 
-  /**
+  /** 递归把结构类型拉平
    * Returns a list of all atomic types in a list.
    */
   private static void getTypeList(
@@ -568,7 +571,8 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /** Create decimal type equivalent with the given {@code type} while sans nullability. */
   private RelDataType decimalOf2(RelDataType type) {
     assert SqlTypeUtil.isNumeric(type) || SqlTypeUtil.isNull(type);
-    final SqlTypeName typeName = requireNonNull(type.getSqlTypeName());
+    SqlTypeName typeName = type.getSqlTypeName();
+    assert typeName != null;
     switch (typeName) {
     case DECIMAL:
       // Fix the precision when the type is JavaType.
@@ -613,11 +617,11 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /**
    * Type which is based upon a Java class.
    */
-  public class JavaType extends RelDataTypeImpl {
-    private final Class clazz;
-    private final boolean nullable;
-    private final @Nullable SqlCollation collation;
-    private final @Nullable Charset charset;
+  public class JavaType extends RelDataTypeImpl { //使用java的关系数据类型
+    private final Class clazz; //java类
+    private final boolean nullable; //是否可以为空
+    private @Nullable SqlCollation collation; //排序规则
+    private @Nullable Charset charset;
 
     public JavaType(Class clazz) {
       this(clazz, !clazz.isPrimitive());
@@ -638,8 +642,8 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
       super(fieldsOf(clazz));
       this.clazz = clazz;
       this.nullable = nullable;
-      checkArgument((charset != null) == SqlTypeUtil.inCharFamily(this),
-          "Need to be a chartype");
+      assert (charset != null) == SqlTypeUtil.inCharFamily(this)
+          : "Need to be a chartype";
       this.charset = charset;
       this.collation = collation;
       computeDigest();
@@ -678,7 +682,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
      * we cannot get the key type. Use ANY as key type.
      */
     @Override public @Nullable RelDataType getKeyType() {
-      if (Map.class.isAssignableFrom(clazz)) {
+      if (Map.class.isAssignableFrom(clazz)) { //首先要是Map类型
         // Need to return a SQL type because the type inference needs SqlTypeName.
         return createSqlType(SqlTypeName.ANY);
       } else {
@@ -706,10 +710,10 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
     @Override public @Nullable SqlCollation getCollation() {
       return this.collation;
     }
-
+       //java 类型到 sql类型的转换
     @Override public SqlTypeName getSqlTypeName() {
       final SqlTypeName typeName =
-          JavaToSqlTypeConversionRules.instance().lookup(clazz);
+          JavaToSqlTypeConversionRules.instance().lookup(clazz); //就是一个映射表，然后根据类型查找
       if (typeName == null) {
         return SqlTypeName.OTHER;
       }
@@ -717,7 +721,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
     }
   }
 
-  /** Key to the data type cache. */
+  /** Key to the data type cache. 数据类型缓存使用的key */
   private static class Key {
     private final StructKind kind;
     private final List<String> names;

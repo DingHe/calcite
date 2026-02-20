@@ -42,8 +42,6 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.AbstractList;
 import java.util.List;
 
@@ -68,7 +66,7 @@ class ElasticsearchRules {
    * @param call current relational expression
    * @return literal value
    */
-  private static @Nullable String isItemCall(RexCall call) {
+  private static String isItemCall(RexCall call) {
     if (call.getOperator() != SqlStdOperatorTable.ITEM) {
       return null;
     }
@@ -264,7 +262,7 @@ class ElasticsearchRules {
       super(config);
     }
 
-    @Override public @Nullable RelNode convert(RelNode rel) {
+    @Override public RelNode convert(RelNode rel) {
       final LogicalAggregate agg = (LogicalAggregate) rel;
       final RelTraitSet traitSet = agg.getTraitSet().replace(out);
       try {

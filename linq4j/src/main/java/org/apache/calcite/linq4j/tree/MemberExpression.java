@@ -22,8 +22,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Represents accessing a field or property.
  */
@@ -37,12 +35,11 @@ public class MemberExpression extends Expression {
 
   public MemberExpression(@Nullable Expression expression, PseudoField field) {
     super(ExpressionType.MemberAccess, field.getType());
+    assert field != null : "field should not be null";
+    assert expression != null || Modifier.isStatic(field.getModifiers())
+        : "must specify expression if field is not static";
     this.expression = expression;
-    this.field = requireNonNull(field, "field");
-    if (!Modifier.isStatic(field.getModifiers())) {
-      requireNonNull(expression,
-          "must specify expression if field is not static");
-    }
+    this.field = field;
   }
 
   @Override public Expression accept(Shuttle shuttle) {

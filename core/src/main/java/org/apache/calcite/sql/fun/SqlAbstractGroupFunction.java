@@ -36,8 +36,6 @@ import org.apache.calcite.util.Static;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Base class for grouping functions {@code GROUP_ID}, {@code GROUPING_ID},
  * {@code GROUPING}.
@@ -67,7 +65,8 @@ public class SqlAbstractGroupFunction extends SqlAggFunction {
       SqlValidatorScope scope, SqlValidatorScope operandScope) {
     super.validateCall(call, validator, scope, operandScope);
     final SelectScope selectScope =
-        requireNonNull(SqlValidatorUtil.getEnclosingSelectScope(scope));
+        SqlValidatorUtil.getEnclosingSelectScope(scope);
+    assert selectScope != null;
     final SqlSelect select = selectScope.getNode();
     if (!validator.isAggregate(select)) {
       throw validator.newValidationError(call,

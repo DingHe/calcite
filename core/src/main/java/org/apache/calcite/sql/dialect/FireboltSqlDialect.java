@@ -46,8 +46,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-import static java.lang.Long.parseLong;
-
 /**
  * A SqlDialect implementation for the Firebolt database.
  */
@@ -216,7 +214,7 @@ public class FireboltSqlDialect extends SqlDialect {
     writer.keyword("INTERVAL");
     writer.print("'");
     try {
-      parseLong(interval.getIntervalLiteral());
+      Long.parseLong(interval.getIntervalLiteral());
     } catch (NumberFormatException e) {
       throw new RuntimeException("Only INT64 is supported as the interval value for Firebolt.");
     }

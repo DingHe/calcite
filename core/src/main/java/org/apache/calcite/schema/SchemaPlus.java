@@ -25,7 +25,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * Extension to the {@link Schema} interface.
- *
+ * 对schema接口的拓展
  * <p>Given a user-defined schema that implements the {@link Schema} interface,
  * Calcite creates a wrapper that implements the {@code SchemaPlus} interface.
  * This provides extra functionality, such as access to tables that have been
@@ -45,7 +45,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * {@link Schema}, or indeed might not.
  */
 public interface SchemaPlus extends Schema {
-  /**
+  /**  返回父schema
    * Returns the parent schema, or null if this schema has no parent.
    */
   @Nullable SchemaPlus getParentSchema();
@@ -56,25 +56,25 @@ public interface SchemaPlus extends Schema {
    * <p>The name must not be null, and must be unique within its parent.
    * The root schema is typically named "".
    */
-  String getName();
+  String getName(); //返回schema的名字，root为“”
 
   // override with stricter return
   @Override @Nullable SchemaPlus getSubSchema(String name);
-
+   //添加schema
   /** Adds a schema as a sub-schema of this schema, and returns the wrapped
    * object. */
   SchemaPlus add(String name, Schema schema);
-
+  //添加表
   /** Adds a table to this schema. */
   void add(String name, Table table);
-
+  //删除表
   /** Removes a table from this schema, used e.g. to clean-up temporary tables. */
   default boolean removeTable(String name) {
     // Default implementation provided for backwards compatibility, to be removed before 2.0
     return false;
   }
 
-
+  //添加函数
   /** Adds a function to this schema. */
   void add(String name, Function function);
 

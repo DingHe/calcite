@@ -23,7 +23,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Spool that writes into a table.
@@ -39,7 +39,7 @@ public abstract class TableSpool extends Spool {
   protected TableSpool(RelOptCluster cluster, RelTraitSet traitSet,
       RelNode input, Type readType, Type writeType, RelOptTable table) {
     super(cluster, traitSet, input, readType, writeType);
-    this.table = requireNonNull(table, "table");
+    this.table = Objects.requireNonNull(table, "table");
   }
 
   @Override public RelOptTable getTable() {

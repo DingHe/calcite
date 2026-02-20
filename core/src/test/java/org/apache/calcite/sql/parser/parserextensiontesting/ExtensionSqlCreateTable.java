@@ -30,8 +30,6 @@ import org.apache.calcite.util.Util;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Simple test example of a CREATE TABLE statement.
  */
@@ -73,7 +71,7 @@ public class ExtensionSqlCreateTable extends SqlCreateTable {
    * they alternate. */
   @SuppressWarnings({"unchecked", "rawtypes"})
   public void forEachNameType(BiConsumer<SqlIdentifier, SqlDataTypeSpec> consumer) {
-    final List list = requireNonNull(columnList, "columnList");
+    final List list = columnList;
     Pair.forEach((List<SqlIdentifier>) Util.quotientList(list, 2, 0),
         Util.quotientList((List<SqlDataTypeSpec>) list, 2, 1), consumer);
   }

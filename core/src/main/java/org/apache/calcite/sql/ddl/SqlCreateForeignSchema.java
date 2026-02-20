@@ -34,12 +34,11 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.AbstractList;
 import java.util.List;
+import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Parse tree for {@code CREATE FOREIGN SCHEMA} statement.
@@ -59,7 +58,7 @@ public class SqlCreateForeignSchema extends SqlCreate {
       SqlIdentifier name, @Nullable SqlNode type, @Nullable SqlNode library,
       @Nullable SqlNodeList optionList) {
     super(OPERATOR, pos, replace, ifNotExists);
-    this.name = requireNonNull(name, "name");
+    this.name = Objects.requireNonNull(name, "name");
     this.type = type;
     this.library = library;
     checkArgument((type == null) != (library == null),

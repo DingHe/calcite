@@ -42,7 +42,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class SqlTypeTransforms {
   //~ Static fields/initializers ---------------------------------------------
 
-  /**
+  /** 如果操作数类型存在一个允许为空，则把typeToTransform转为可以允许为空的类型
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type but nullable if any of a calls operands is
    * nullable.
@@ -53,7 +53,7 @@ public abstract class SqlTypeTransforms {
               opBinding.collectOperandTypes(),
               requireNonNull(typeToTransform, "typeToTransform"));
 
-  /**
+  /**如果所有的操作数参数都允许为空，则返回允许为空的type
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type, but nullable if and only if all of a call's
    * operands are nullable.
@@ -64,7 +64,7 @@ public abstract class SqlTypeTransforms {
         SqlTypeUtil.allNullable(opBinding.collectOperandTypes()));
   };
 
-  /**
+  /** 将目标类型转换为不可空类型，强制返回结果类型为不可空类型，忽略操作数的 nullability
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type but not nullable.
    */
@@ -73,7 +73,7 @@ public abstract class SqlTypeTransforms {
           opBinding.getTypeFactory().createTypeWithNullability(
               requireNonNull(typeToTransform, "typeToTransform"), false);
 
-  /**
+  /** 将目标类型强制转换为可空类型，不论操作数的 nullability 如何
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type with nulls allowed.
    */
@@ -82,7 +82,7 @@ public abstract class SqlTypeTransforms {
           opBinding.getTypeFactory().createTypeWithNullability(
               requireNonNull(typeToTransform, "typeToTransform"), true);
 
-  /**
+  /** 如果任何一个操作数不是可空类型，则返回一个不可空类型，否则返回原类型
    * Type-inference strategy whereby the result is NOT NULL if any of
    * the arguments is NOT NULL; otherwise the type is unchanged.
    */
@@ -97,7 +97,7 @@ public abstract class SqlTypeTransforms {
         return typeToTransform;
       };
 
-  /**
+  /** 根据第一个参数的类型推断结果类型的 nullability
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type, but nullable if and only if the type
    * of a call's operand #0 (0-based) is nullable.
@@ -112,7 +112,7 @@ public abstract class SqlTypeTransforms {
         return typeToTransform;
       };
 
-  /**
+  /** 如果集合类型中的任何一个元素类型是可空的，则将目标类型转换为可空类型
    * Parameter type-inference transform strategy where a derived type is
    * transformed into the same type but nullable if any of element of a calls operands is
    * nullable.
@@ -136,7 +136,7 @@ public abstract class SqlTypeTransforms {
         return typeToTransform;
       };
 
-  /**
+  /** 将目标类型转换为可变类型，通常用于字符串类型（如 VARCHAR 或 VARBINARY）
    * Type-inference strategy whereby the result type of a call is VARYING the
    * type given. The length returned is the same as length of the first
    * argument. Return type will have same nullability as input type
@@ -196,7 +196,7 @@ public abstract class SqlTypeTransforms {
   /**
    * Parameter type-inference transform strategy where a derived type must be
    * a multiset or array type and the returned type is element type.
-   *
+   * 将集合类型转换为其元素类型
    * @see MultisetSqlType#getComponentType
    * @see ArraySqlType#getComponentType
    */
@@ -208,7 +208,7 @@ public abstract class SqlTypeTransforms {
   /**
    * Parameter type-inference transform strategy that wraps a given type
    * in a multiset.
-   *
+   * 将某种类型包装为多重集合（Multiset）
    * @see org.apache.calcite.rel.type.RelDataTypeFactory#createMultisetType(RelDataType, long)
    */
   public static final SqlTypeTransform TO_MULTISET =
@@ -229,7 +229,7 @@ public abstract class SqlTypeTransforms {
   /**
    * Parameter type-inference transform strategy that wraps a given type
    * in an array.
-   *
+   * 将某种类型包装为数组
    * @see org.apache.calcite.rel.type.RelDataTypeFactory#createArrayType(RelDataType, long)
    */
   public static final SqlTypeTransform TO_ARRAY =
@@ -245,24 +245,16 @@ public abstract class SqlTypeTransforms {
           TO_NULLABLE.transformType(opBinding, TO_ARRAY.transformType(opBinding, typeToTransform));
 
   /** Parameter type-inference transform that transforms {@code T} to
-   * {@code MEASURE<T>} for some type T. */
+   * {@code MEASURE<T>} for some type T. 将类型转换为 MEASURE 类型，或将 MEASURE 类型转换回其原始类型*/
   public static final SqlTypeTransform TO_MEASURE =
       (opBinding, typeToTransform) ->
           opBinding.getTypeFactory().createMeasureType(typeToTransform);
 
   /** Parameter type-inference transform that transforms {@code MEASURE<T>} to
-   * {@code T} for some type T. Inverse of {@link #TO_MEASURE}. */
+   * {@code T} for some type T. Inverse of {@link #TO_MEASURE}.将类型转换为 MEASURE 类型，或将 MEASURE 类型转换回其原始类型 */
   public static final SqlTypeTransform FROM_MEASURE =
       (opBinding, typeToTransform) ->
-          SqlTypeUtil.fromMeasure(opBinding.getTypeFactory(), typeToTransform);
-
-  /** Parameter type-inference transform that transforms {@code MEASURE<T>} to
-   * {@code T} for some type T, and does nothing to other types. */
-  public static final SqlTypeTransform FROM_MEASURE_IF =
-      (opBinding, typeToTransform) ->
-          SqlTypeUtil.isMeasure(typeToTransform)
-              ? ((MeasureSqlType) typeToTransform).types.get(0)
-              : typeToTransform;
+          ((MeasureSqlType) typeToTransform).types.get(0);
 
   /**
    * Parameter type-inference transform strategy that wraps a given type in an array or
@@ -277,7 +269,7 @@ public abstract class SqlTypeTransforms {
   /**
    * Parameter type-inference transform strategy that converts a two-field
    * record type to a MAP type.
-   *
+   * 将记录类型转换为键值对类型（如 MAP）
    * @see org.apache.calcite.rel.type.RelDataTypeFactory#createMapType
    */
   public static final SqlTypeTransform TO_MAP =
@@ -310,7 +302,7 @@ public abstract class SqlTypeTransforms {
   /**
    * Parameter type-inference transform strategy that converts a MAP type
    * to a two-field record type.
-   *
+   * 将 MAP 类型转换为具有字段的结构类型
    * @see org.apache.calcite.rel.type.RelDataTypeFactory#createStructType
    */
   public static final SqlTypeTransform TO_ROW =

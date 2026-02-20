@@ -55,7 +55,7 @@ public enum SqlSyntax {
     }
   },
 
-  /**
+  /** 继承自 FUNCTION，表示需要支持 ORDER BY 的函数
    * Function syntax with optional ORDER BY, as in "STRING_AGG(x, y ORDER BY z)".
    */
   ORDERED_FUNCTION(FUNCTION) {
@@ -113,7 +113,7 @@ public enum SqlSyntax {
     }
   },
 
-  /**
+  /** 表示特殊语法，例如 SQL 中的 CASE 表达式
    * Special syntax, such as that of the SQL CASE operator, "CASE x WHEN 1
    * THEN 2 ELSE 3 END".
    */
@@ -130,7 +130,7 @@ public enum SqlSyntax {
     }
   },
 
-  /**
+  /** 表示不带括号的函数语法，如 CURRENTTIME，当函数没有参数时不需要括号
    * Function syntax which takes no parentheses if there are no arguments, for
    * example "CURRENTTIME".
    *

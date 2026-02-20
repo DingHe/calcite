@@ -27,7 +27,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.function.Predicate;
 
-/**
+/** SqlSpecialOperator 适用于那些 不直接表现为标准 SQL 操作符，但仍然需要在 SQL 解析和执行过程中得到处理的情况
  * Generic operator for nodes with special syntax.
  */
 public class SqlSpecialOperator extends SqlOperator {

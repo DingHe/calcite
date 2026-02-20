@@ -18,8 +18,6 @@ package org.apache.calcite.test.schemata.foodmart;
 
 import org.apache.calcite.test.CalciteAssert;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.Objects;
 
 /**
@@ -44,7 +42,7 @@ public class FoodmartSchema {
       + "   ]\n"
       + "}";
 
-  private static String q(@Nullable String s) {
+  private static String q(String s) {
     return s == null ? "null" : "'" + s + "'";
   }
 

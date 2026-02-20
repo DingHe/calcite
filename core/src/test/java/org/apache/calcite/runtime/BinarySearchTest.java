@@ -23,8 +23,7 @@ import java.util.Arrays;
 import static org.apache.calcite.runtime.BinarySearch.lowerBound;
 import static org.apache.calcite.runtime.BinarySearch.upperBound;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import static java.util.Comparator.naturalOrder;
 
@@ -33,10 +32,10 @@ import static java.util.Comparator.naturalOrder;
  */
 class BinarySearchTest {
   private void search(int key, int lower, int upper, Integer... array) {
-    assertThat("lower bound of " + key + " in " + Arrays.toString(array),
-        lowerBound(array, key, naturalOrder()), is(lower));
-    assertThat("upper bound of " + key + " in " + Arrays.toString(array),
-        upperBound(array, key, naturalOrder()), is(upper));
+    assertEquals(lower, lowerBound(array, key, naturalOrder()),
+        () -> "lower bound of " + key + " in " + Arrays.toString(array));
+    assertEquals(upper, upperBound(array, key, naturalOrder()),
+        () -> "upper bound of " + key + " in " + Arrays.toString(array));
   }
 
   @Test void testSimple() {

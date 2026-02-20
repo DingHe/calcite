@@ -43,6 +43,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
@@ -76,7 +77,7 @@ public class SqlJsonQueryFunction extends SqlFunction {
 
   private static RelDataType deriveExplicitType(SqlOperatorBinding opBinding, RelDataType type) {
     if (SqlTypeName.ARRAY == type.getSqlTypeName()) {
-      RelDataType elementType = requireNonNull(type.getComponentType());
+      RelDataType elementType = Objects.requireNonNull(type.getComponentType());
       RelDataType nullableElementType = deriveExplicitType(opBinding, elementType);
       return SqlTypeUtil.createArrayType(
           opBinding.getTypeFactory(),
@@ -130,8 +131,8 @@ public class SqlJsonQueryFunction extends SqlFunction {
   @Override public SqlCall createCall(@Nullable SqlLiteral functionQualifier,
       SqlParserPos pos, @Nullable SqlNode... operands) {
     final List<SqlNode> args = new ArrayList<>();
-    args.add(requireNonNull(operands[0]));
-    args.add(requireNonNull(operands[1]));
+    args.add(Objects.requireNonNull(operands[0]));
+    args.add(Objects.requireNonNull(operands[1]));
 
     if (operands[2] == null) {
       args.add(SqlLiteral.createSymbol(SqlJsonQueryWrapperBehavior.WITHOUT_ARRAY, pos));

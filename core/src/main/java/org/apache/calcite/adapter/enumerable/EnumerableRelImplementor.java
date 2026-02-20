@@ -78,9 +78,9 @@ import static java.util.Objects.requireNonNull;
  * operators of {@link EnumerableConvention} calling convention.
  */
 public class EnumerableRelImplementor extends JavaRelImplementor {
-  public final Map<String, Object> map;
+  public final Map<String, Object> map; //存储传入进来的内部参数，例如默认的Conformance参数为default
   private final Map<String, RexToLixTranslator.InputGetter> corrVars =
-      new HashMap<>();
+      new HashMap<>();  //RexToLixTranslator主要是把RexNode翻译成LINQ4j
   private static final Equivalence<Object> IDENTITY = Equivalence.identity();
   // A combination of IdentityHashMap + LinkedHashMap to ensure deterministic order
   private final Map<Equivalence.Wrapper<Object>, ParameterExpression> stashedParameters =
@@ -106,7 +106,7 @@ public class EnumerableRelImplementor extends JavaRelImplementor {
     }
     return child.implement(this, prefer);
   }
-
+   //rootRel物理执行计划的根节点，prefer记录的行格式
   public ClassDeclaration implementRoot(EnumerableRel rootRel,
       EnumerableRel.Prefer prefer) {
     EnumerableRel.Result result;
@@ -496,12 +496,12 @@ public class EnumerableRelImplementor extends JavaRelImplementor {
     TypeFinder(Collection<Type> types) {
       this.types = types;
     }
-
+     //访问new一个对象的表达式，把对象的类型放入types
     @Override public Void visit(NewExpression newExpression) {
       types.add(newExpression.type);
       return super.visit(newExpression);
     }
-
+    //访问数组，并且把type放入types
     @Override public Void visit(NewArrayExpression newArrayExpression) {
       Type type = newArrayExpression.type;
       for (;;) {
@@ -514,7 +514,7 @@ public class EnumerableRelImplementor extends JavaRelImplementor {
       types.add(type);
       return super.visit(newArrayExpression);
     }
-
+    //访问常量，并放入types
     @Override public Void visit(ConstantExpression constantExpression) {
       final Object value = constantExpression.value;
       if (value instanceof Type) {

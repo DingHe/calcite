@@ -27,7 +27,7 @@ import org.apache.calcite.util.Litmus;
  *
  * <p>To customize sql node unparsing, override the method
  * {@link #unparse(SqlWriter, int, int)}.
- *
+ * sql的数据类型
  * <p>To customize data type deriving, override the method
  * {@link #deriveType(SqlValidator)}.
  */

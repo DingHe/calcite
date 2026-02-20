@@ -20,8 +20,6 @@ import org.locationtech.jts.operation.buffer.BufferParameters;
 
 import java.util.Locale;
 
-import static java.lang.Integer.parseInt;
-
 /**
  * A parser for buffer styles as defined by PostGIS.
  */
@@ -50,7 +48,7 @@ public class BufferStyle {
       switch (key) {
       case "quad_segs":
         try {
-          quadrantSegments = parseInt(value);
+          quadrantSegments = Integer.parseInt(value);
           break;
         } catch (NumberFormatException e) {
           throw new IllegalArgumentException("Invalid buffer style: " + style);

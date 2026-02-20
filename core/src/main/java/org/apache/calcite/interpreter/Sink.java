@@ -24,11 +24,11 @@ import org.apache.calcite.linq4j.Enumerable;
  * <p>Corresponds to an output of a relational expression.
  */
 public interface Sink {
-  void send(Row row) throws InterruptedException;
+  void send(Row row) throws InterruptedException; //发送数据
 
-  void end() throws InterruptedException;
+  void end() throws InterruptedException; //结束
 
   /** This method is temporary. It will be removed without notice. */
-  @Deprecated
+  @Deprecated //数据源
   void setSourceEnumerable(Enumerable<Row> enumerable) throws InterruptedException;
 }

@@ -20,9 +20,9 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.TimeString;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * A SQL literal representing a TIME value, for example <code>TIME
@@ -43,7 +43,7 @@ public class SqlTimeLiteral extends SqlAbstractDateTimeLiteral {
 
   /** Converts this literal to a {@link TimeString}. */
   protected TimeString getTime() {
-    return (TimeString) requireNonNull(value, "value");
+    return (TimeString) Objects.requireNonNull(value, "value");
   }
 
   @Override public SqlTimeLiteral clone(SqlParserPos pos) {

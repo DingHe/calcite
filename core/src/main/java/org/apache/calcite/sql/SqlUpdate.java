@@ -28,8 +28,6 @@ import org.checkerframework.dataflow.qual.Pure;
 
 import java.util.List;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * A <code>SqlUpdate</code> is a node of a parse tree which represents an UPDATE
  * statement.
@@ -55,11 +53,9 @@ public class SqlUpdate extends SqlCall {
       @Nullable SqlSelect sourceSelect,
       @Nullable SqlIdentifier alias) {
     super(pos);
-    this.targetTable = requireNonNull(targetTable, "targetTable");
-    this.targetColumnList =
-        requireNonNull(targetColumnList, "targetColumnList");
-    this.sourceExpressionList =
-        requireNonNull(sourceExpressionList, "sourceExpressionList");
+    this.targetTable = targetTable;
+    this.targetColumnList = targetColumnList;
+    this.sourceExpressionList = sourceExpressionList;
     this.condition = condition;
     this.sourceSelect = sourceSelect;
     assert sourceExpressionList.size() == targetColumnList.size();
@@ -90,16 +86,16 @@ public class SqlUpdate extends SqlCall {
       targetTable = operand;
       break;
     case 1:
-      targetColumnList = requireNonNull((SqlNodeList) operand);
+      targetColumnList = (SqlNodeList) operand;
       break;
     case 2:
-      sourceExpressionList = requireNonNull((SqlNodeList) operand);
+      sourceExpressionList = (SqlNodeList) operand;
       break;
     case 3:
       condition = operand;
       break;
     case 4:
-      sourceExpressionList = requireNonNull((SqlNodeList) operand);
+      sourceExpressionList = (SqlNodeList) operand;
       break;
     case 5:
       alias = (SqlIdentifier) operand;

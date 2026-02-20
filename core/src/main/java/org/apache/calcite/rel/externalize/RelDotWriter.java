@@ -50,9 +50,9 @@ public class RelDotWriter extends RelWriterImpl {
    */
   private final Map<RelNode, List<RelNode>> outArcTable = new LinkedHashMap<>();
 
-  private final Map<RelNode, String> nodeLabels = new HashMap<>();
+  private Map<RelNode, String> nodeLabels = new HashMap<>();
 
-  private final Multimap<RelNode, String> nodeStyles = HashMultimap.create();
+  private Multimap<RelNode, String> nodeStyles = HashMultimap.create();
 
   private final WriteOption option;
 

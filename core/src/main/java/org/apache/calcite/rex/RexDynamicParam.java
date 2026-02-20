@@ -23,7 +23,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Objects;
 
-/**
+/** 动态参数
  * Dynamic parameter reference in a row-expression.
  */
 public class RexDynamicParam extends RexVariable {

@@ -49,7 +49,7 @@ import java.util.Set;
 @Value.Enclosing
 @SuppressWarnings("deprecation")
 public class SqlParser {
-  public static final int DEFAULT_IDENTIFIER_MAX_LENGTH = 128;
+  public static final int DEFAULT_IDENTIFIER_MAX_LENGTH = 128;//最大的标识符长度
 
   /** Default value of {@link Config#timeUnitCodes()}.
    * The map is empty, which means that there are no abbreviations other than

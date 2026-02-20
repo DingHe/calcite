@@ -22,7 +22,7 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
-/**
+/** 创建数组
  * Represents creating a new array and possibly initializing the elements of the
  * new array.
  */

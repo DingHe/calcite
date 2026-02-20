@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * Default implementation of {@link RexVisitor}, which visits each node but does
  * nothing while it's there.
- *
+ *RexVisitorImpl 是一个具体的实现类，继承自 RexVisitor。它提供了访问 RexNode 的实现，通常用于计算或查询表达式的值，而不是修改它们
  * @param <R> Return type from each {@code visitXxx} method.
  */
 public class RexVisitorImpl<@Nullable R> implements RexVisitor<R> {

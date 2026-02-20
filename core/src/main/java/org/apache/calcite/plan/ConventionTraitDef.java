@@ -86,7 +86,7 @@ public class ConventionTraitDef extends RelTraitDef<Convention> {
   @Override public Convention getDefault() {
     return Convention.NONE;
   }
-
+  //把input convention和output convention的转换rule存到ConventionTraitDef里面
   @Override public void registerConverterRule(
       RelOptPlanner planner,
       ConverterRule converterRule) {
@@ -219,7 +219,7 @@ public class ConventionTraitDef extends RelTraitDef<Convention> {
     final DirectedGraph<Convention, DefaultEdge> conversionGraph =
         DefaultDirectedGraph.create();
 
-    /**
+    /** 一对convention，可能有多条转换规则
      * For a given source/target convention, there may be several possible
      * conversion rules. Maps {@link DefaultEdge} to a
      * collection of {@link ConverterRule} objects.

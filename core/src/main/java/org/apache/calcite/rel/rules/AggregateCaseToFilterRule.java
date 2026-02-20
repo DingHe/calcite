@@ -32,7 +32,6 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlPostfixOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -187,8 +186,7 @@ public class AggregateCaseToFilterRule
           && RexLiteral.isNullLiteral(arg2)) {
         newProjects.add(arg1);
         newProjects.add(filter);
-        return AggregateCall.create(
-            call.getParserPosition(), SqlStdOperatorTable.COUNT, true, false,
+        return AggregateCall.create(SqlStdOperatorTable.COUNT, true, false,
             false, call.rexList, ImmutableList.of(newProjects.size() - 2),
             newProjects.size() - 1, null, RelCollations.EMPTY,
             call.getType(), call.getName());
@@ -207,13 +205,12 @@ public class AggregateCaseToFilterRule
     // C: COUNT(CASE WHEN x = 'foo' THEN 'dummy' END)
     //   => COUNT() FILTER (x = 'foo')
 
-    final SqlParserPos pos = call.getParserPosition();
     if (kind == SqlKind.COUNT // Case C
         && arg1.isA(SqlKind.LITERAL)
         && !RexLiteral.isNullLiteral(arg1)
         && RexLiteral.isNullLiteral(arg2)) {
       newProjects.add(filter);
-      return AggregateCall.create(pos, SqlStdOperatorTable.COUNT, false, false,
+      return AggregateCall.create(SqlStdOperatorTable.COUNT, false, false,
           false, call.rexList, ImmutableList.of(), newProjects.size() - 1, null,
           RelCollations.EMPTY, call.getType(),
           call.getName());
@@ -226,7 +223,7 @@ public class AggregateCaseToFilterRule
       final RelDataType dataType =
           typeFactory.createTypeWithNullability(
               typeFactory.createSqlType(SqlTypeName.BIGINT), false);
-      return AggregateCall.create(pos, SqlStdOperatorTable.COUNT, false, false,
+      return AggregateCall.create(SqlStdOperatorTable.COUNT, false, false,
           false, call.rexList, ImmutableList.of(), newProjects.size() - 1, null,
           RelCollations.EMPTY, dataType, call.getName());
     } else if ((RexLiteral.isNullLiteral(arg2) // Case A1
@@ -235,7 +232,7 @@ public class AggregateCaseToFilterRule
             && isIntLiteral(arg2, BigDecimal.ZERO))) {
       newProjects.add(arg1);
       newProjects.add(filter);
-      return AggregateCall.create(pos, call.getAggregation(), false,
+      return AggregateCall.create(call.getAggregation(), false,
           false, false, call.rexList, ImmutableList.of(newProjects.size() - 2),
           newProjects.size() - 1, null, RelCollations.EMPTY,
           call.getType(), call.getName());

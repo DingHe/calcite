@@ -41,7 +41,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * <p>A particular table instance may also implement {@link Wrapper},
  * to give access to sub-objects.
- *
+ *Table 接口提供了一个更抽象的表视图。它定义了表的基本属性，如表名、列名、数据类型等，不局限于特定的数据源，它可以代表关系型数据库中的表、NoSQL 数据库中的集合、或者自定义的数据源
  * @see TableMacro
  */
 public interface Table {
@@ -53,7 +53,7 @@ public interface Table {
    * <p>The implementer must use the type factory provided. This ensures that
    * the type is converted into a canonical form; other equal types in the same
    * query will use the same object.
-   *
+   * 返回表的关系数据类型
    * @param typeFactory Type factory with which to create the type
    * @return Row type
    */
@@ -62,10 +62,10 @@ public interface Table {
   /** Returns a provider of statistics about this table. */
   Statistic getStatistic();
 
-  /** Type of table. */
+  /** Type of table. 表的类型，实体表、视图、物理表等*/
   Schema.TableType getJdbcTableType();
 
-  /**
+  /**此表中给定的列是否已经上卷
    * Determines whether the given {@code column} has been rolled up.
    * */
   boolean isRolledUp(String column);
@@ -73,7 +73,7 @@ public interface Table {
   /**
    * Determines whether the given rolled up column can be used inside the given aggregate function.
    * You can assume that {@code isRolledUp(column)} is {@code true}.
-   *
+   * 上卷的列是否可以应用到给定的聚合函数
    * @param column The column name for which {@code isRolledUp} is true
    * @param call The aggregate call
    * @param parent Parent node of {@code call} in the {@link SqlNode} tree

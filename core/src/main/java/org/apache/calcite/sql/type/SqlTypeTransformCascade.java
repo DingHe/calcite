@@ -23,9 +23,9 @@ import com.google.common.collect.ImmutableList;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Strategy to infer the type of an operator call from the type of the operands
@@ -48,7 +48,7 @@ public class SqlTypeTransformCascade implements SqlReturnTypeInference {
       SqlReturnTypeInference rule,
       SqlTypeTransform... transforms) {
     checkArgument(transforms.length > 0);
-    this.rule = requireNonNull(rule, "rule");
+    this.rule = Objects.requireNonNull(rule, "rule");
     this.transforms = ImmutableList.copyOf(transforms);
   }
 
@@ -56,13 +56,13 @@ public class SqlTypeTransformCascade implements SqlReturnTypeInference {
 
   @Override public @Nullable RelDataType inferReturnType(
       SqlOperatorBinding opBinding) {
-    RelDataType ret = rule.inferReturnType(opBinding);
+    RelDataType ret = rule.inferReturnType(opBinding);  //根据rule推断返回值
     if (ret == null) {
       // inferReturnType may return null; transformType does not accept or
       // return null types
       return null;
     }
-    for (SqlTypeTransform transform : transforms) {
+    for (SqlTypeTransform transform : transforms) {   //再根据SqlTypeTransform转换
       ret = transform.transformType(opBinding, ret);
     }
     return ret;

@@ -32,12 +32,11 @@ import org.checkerframework.dataflow.qual.Pure;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
-import static java.util.Objects.requireNonNull;
-
-/**
+/** 非叶子节点的Operator都是一个SqlCall
  * A <code>SqlCall</code> is a call to an {@link SqlOperator operator}.
  * (Operators can be used to describe any syntactic construct, so in practice,
  * every non-leaf node in a SQL parse tree is a <code>SqlCall</code> of some
@@ -63,7 +62,7 @@ public abstract class SqlCall extends SqlNode {
   /**
    * Changes the value of an operand. Allows some rewrite by
    * {@link SqlValidator}; use sparingly.
-   *
+   * 根据索引i设置某个操作数
    * @param i Operand index
    * @param operand Operand value
    */
@@ -84,7 +83,7 @@ public abstract class SqlCall extends SqlNode {
    *
    * <p>Note: the proper type would be {@code List<@Nullable SqlNode>}, however,
    * it would trigger too many changes to the current codebase.
-   *
+   * 获取操作数列表
    * @return the list of call operands, never null, the operands can be null
    */
   public abstract List</*Nullable*/ SqlNode> getOperandList();
@@ -106,7 +105,7 @@ public abstract class SqlCall extends SqlNode {
     // assumes operand(..) is non-nullable, so we add a cast here
     return (S) castNonNull(getOperandList().get(i));
   }
-
+  //返回操作数的个数
   public int operandCount() {
     return getOperandList().size();
   }
@@ -136,7 +135,7 @@ public abstract class SqlCall extends SqlNode {
 
   /**
    * Validates this call.
-   *
+   * 校验这个节点
    * <p>The default implementation delegates the validation to the operator's
    * {@link SqlOperator#validateCall}. Derived classes may override (as do,
    * for example {@link SqlSelect} and {@link SqlUpdate}).
@@ -199,7 +198,8 @@ public abstract class SqlCall extends SqlNode {
     List<String> signatureList = new ArrayList<>();
     for (final SqlNode operand : getOperandList()) {
       final RelDataType argType =
-          validator.deriveType(requireNonNull(scope, "scope"), operand);
+          validator.deriveType(Objects.requireNonNull(scope, "scope"),
+              operand);
       if (null == argType) {
         continue;
       }
@@ -217,7 +217,7 @@ public abstract class SqlCall extends SqlNode {
 
   /**
    * Returns whether it is the function {@code COUNT(*)}.
-   *
+   * 判断是否是count(*)函数
    * @return true if function call to COUNT(*)
    */
   public boolean isCountStar() {

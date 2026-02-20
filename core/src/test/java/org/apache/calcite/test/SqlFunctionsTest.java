@@ -23,7 +23,6 @@ import org.apache.calcite.runtime.Utilities;
 
 import com.google.common.collect.ImmutableList;
 
-import org.hamcrest.Matcher;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -45,7 +44,6 @@ import static org.apache.calcite.runtime.SqlFunctions.arraysOverlap;
 import static org.apache.calcite.runtime.SqlFunctions.charLength;
 import static org.apache.calcite.runtime.SqlFunctions.concat;
 import static org.apache.calcite.runtime.SqlFunctions.concatMulti;
-import static org.apache.calcite.runtime.SqlFunctions.concatMultiObjectWithSeparator;
 import static org.apache.calcite.runtime.SqlFunctions.concatMultiTypeWithSeparator;
 import static org.apache.calcite.runtime.SqlFunctions.concatMultiWithNull;
 import static org.apache.calcite.runtime.SqlFunctions.concatMultiWithSeparator;
@@ -60,13 +58,11 @@ import static org.apache.calcite.runtime.SqlFunctions.lesser;
 import static org.apache.calcite.runtime.SqlFunctions.lower;
 import static org.apache.calcite.runtime.SqlFunctions.ltrim;
 import static org.apache.calcite.runtime.SqlFunctions.md5;
-import static org.apache.calcite.runtime.SqlFunctions.overlay;
 import static org.apache.calcite.runtime.SqlFunctions.position;
 import static org.apache.calcite.runtime.SqlFunctions.rtrim;
 import static org.apache.calcite.runtime.SqlFunctions.sha1;
 import static org.apache.calcite.runtime.SqlFunctions.sha256;
 import static org.apache.calcite.runtime.SqlFunctions.sha512;
-import static org.apache.calcite.runtime.SqlFunctions.substring;
 import static org.apache.calcite.runtime.SqlFunctions.toBase64;
 import static org.apache.calcite.runtime.SqlFunctions.toInt;
 import static org.apache.calcite.runtime.SqlFunctions.toIntOptional;
@@ -74,13 +70,12 @@ import static org.apache.calcite.runtime.SqlFunctions.toLong;
 import static org.apache.calcite.runtime.SqlFunctions.toLongOptional;
 import static org.apache.calcite.runtime.SqlFunctions.trim;
 import static org.apache.calcite.runtime.SqlFunctions.upper;
-import static org.apache.calcite.test.Matchers.isListOf;
+import static org.apache.calcite.test.Matchers.within;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.hasToString;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -175,61 +170,6 @@ class SqlFunctionsTest {
     assertThat(concat(null, "b"), is("nullb"));
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6433">[CALCITE-6433]
-   * SUBSTRING can return incorrect empty result for some parameters</a>. */
-  @Test void testSubString() {
-    // str vs single param
-    assertThat(substring("string", -1), is("string"));
-    assertThat(substring("string", -1L), is("string"));
-    assertThat(substring("string", 2), is("tring"));
-    assertThat(substring("string", 2L), is("tring"));
-    assertThat(substring("string", Integer.MIN_VALUE), is("string"));
-    assertThat(substring("string", Long.MIN_VALUE), is("string"));
-    assertThat(substring("string", Integer.MIN_VALUE + 10), is("string"));
-    assertThat(substring("string", Integer.MAX_VALUE), is(""));
-    assertThat(substring("string", Long.MAX_VALUE), is(""));
-    assertThat(substring("string", Integer.MAX_VALUE - 10), is(""));
-    assertThat(substring("string", Integer.MIN_VALUE - 10L), is("string"));
-    assertThat(substring("string", Integer.MAX_VALUE + 10L), is(""));
-
-    // str vs multi params
-    assertThat(substring("string", -1, 1), is(""));
-    assertThat(substring("string", -1, 1L), is(""));
-    assertThat(substring("string", -1L, 1), is(""));
-    assertThat(substring("string", -1L, 1L), is(""));
-
-    assertThat(substring("string", 1, 2), is("st"));
-    assertThat(substring("string", 1, 2L), is("st"));
-    assertThat(substring("string", 1L, 2), is("st"));
-    assertThat(substring("string", 1L, 2L), is("st"));
-
-    assertThat(substring("string", -1, 2), is(""));
-    assertThat(substring("string", -1L, 2), is(""));
-    assertThat(substring("string", -1, 2L), is(""));
-    assertThat(substring("string", -1L, 2L), is(""));
-
-    assertThat(substring("string", -1, 3), is("s"));
-    assertThat(substring("string", -1L, 3), is("s"));
-    assertThat(substring("string", -1, 3L), is("s"));
-    assertThat(substring("string", -1L, 3L), is("s"));
-
-    assertThat(substring("string", -10, 12), is("s"));
-    assertThat(substring("string", -10L, 12), is("s"));
-    assertThat(substring("string", -10, 12L), is("s"));
-    assertThat(substring("string", -10L, 12L), is("s"));
-
-    assertThat(substring("string", -1, Integer.MAX_VALUE), is("string"));
-    assertThat(substring("string", -1L, Integer.MAX_VALUE), is("string"));
-    assertThat(substring("string", -1, Long.MAX_VALUE), is("string"));
-
-    assertThat(substring("string", Integer.MIN_VALUE, Integer.MAX_VALUE), is(""));
-    assertThat(substring("string", Integer.MIN_VALUE, Integer.MAX_VALUE + 10L), is("string"));
-    assertThat(substring("string", Long.MIN_VALUE, Integer.MAX_VALUE), is(""));
-    assertThat(substring("string", Integer.MIN_VALUE, Long.MAX_VALUE), is("string"));
-    assertThat(substring("string", Integer.MIN_VALUE - 10L, Long.MAX_VALUE), is("string"));
-  }
-
   @Test void testConcatWithNull() {
     assertThat(concatWithNull("a b", "cd"), is("a bcd"));
     // Null value could be passed in. If we pass one null value,
@@ -304,19 +244,6 @@ class SqlFunctionsTest {
         concatMultiTypeWithSeparator(",", "11", "11", Arrays.asList("12", "12"),
             Arrays.asList("13", null, "13")),
         is("11,11,12,12,13,13"));
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6450">[CALCITE-6450]
-   * Postgres CONCAT_WS function </a>. */
-  @Test void testConcatMultiObjectWithSeparator() {
-    assertThat(concatMultiObjectWithSeparator("a"), is(""));
-    assertThat(concatMultiObjectWithSeparator(",", "a b", "cd"), is("a b,cd"));
-    assertThat(concatMultiObjectWithSeparator(",", "a", 1, Arrays.asList("b", "c")),
-        is("a,1,[b, c]"));
-    assertThat(concatMultiObjectWithSeparator(",", "a", 1, Arrays.asList("b", "c"), null),
-        is("a,1,[b, c]"));
-    assertThat(concatMultiObjectWithSeparator("abc", null, null), is(""));
   }
 
   @Test void testPosixRegex() {
@@ -554,7 +481,6 @@ class SqlFunctionsTest {
 
   @Test void testRegexpReplace() {
     final SqlFunctions.RegexFunction f = new SqlFunctions.RegexFunction();
-    assertThat(f.regexpReplace("abc", "b"), is("ac"));
     assertThat(f.regexpReplace("a b c", "b", "X"), is("a X c"));
     assertThat(f.regexpReplace("abc def ghi", "[g-z]+", "X"), is("abc def X"));
     assertThat(f.regexpReplace("abc def ghi", "[a-z]+", "X"), is("X X X"));
@@ -573,11 +499,6 @@ class SqlFunctionsTest {
         is("abc def GHI"));
     assertThat(f.regexpReplace("abc def GHI", "[a-z]+", "X", 1, 3, "i"),
         is("abc def X"));
-    assertThat(f.regexpReplacePg("abc def GHI", "[a-z]+", "X"), is("X def GHI"));
-    assertThat(f.regexpReplacePg("abc def GHI", "[a-z]+", "X", "g"),
-        is("X X GHI"));
-    assertThat(f.regexpReplacePg("ABC def GHI", "[a-z]+", "X", "i"),
-        is("X def GHI"));
 
     try {
       f.regexpReplace("abc def ghi", "[a-z]+", "X", 0);
@@ -775,15 +696,6 @@ class SqlFunctionsTest {
     assertThat(trimSpacesBoth("x"), is("x"));
   }
 
-  /** Test for {@link SqlFunctions#overlay}. */
-  @Test void testOverlay() {
-    assertThat(overlay("HelloWorld", "Java", 6), is("HelloJavad"));
-    assertThat(overlay("Hello World", "World", 1), is("World World"));
-    assertThat(overlay("HelloWorld", "Java", 6, 5), is("HelloJava"));
-    assertThat(overlay("HelloWorld", "Java", 6, 0), is("HelloJavaWorld"));
-  }
-
-
   static String trimSpacesBoth(String s) {
     return trim(true, true, " ", s);
   }
@@ -872,129 +784,129 @@ class SqlFunctionsTest {
   }
 
   @Test void testSTruncateDouble() {
-    assertThat(SqlFunctions.struncate(12.345d, 3), closeTo(12.345d, 0.001));
-    assertThat(SqlFunctions.struncate(12.345d, 2), closeTo(12.340d, 0.001));
-    assertThat(SqlFunctions.struncate(12.345d, 1), closeTo(12.300d, 0.001));
-    assertThat(SqlFunctions.struncate(12.999d, 0), closeTo(12.000d, 0.001));
+    assertThat(SqlFunctions.struncate(12.345d, 3), within(12.345d, 0.001));
+    assertThat(SqlFunctions.struncate(12.345d, 2), within(12.340d, 0.001));
+    assertThat(SqlFunctions.struncate(12.345d, 1), within(12.300d, 0.001));
+    assertThat(SqlFunctions.struncate(12.999d, 0), within(12.000d, 0.001));
 
-    assertThat(SqlFunctions.struncate(-12.345d, 3), closeTo(-12.345d, 0.001));
-    assertThat(SqlFunctions.struncate(-12.345d, 2), closeTo(-12.340d, 0.001));
-    assertThat(SqlFunctions.struncate(-12.345d, 1), closeTo(-12.300d, 0.001));
-    assertThat(SqlFunctions.struncate(-12.999d, 0), closeTo(-12.000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12.345d, 3), within(-12.345d, 0.001));
+    assertThat(SqlFunctions.struncate(-12.345d, 2), within(-12.340d, 0.001));
+    assertThat(SqlFunctions.struncate(-12.345d, 1), within(-12.300d, 0.001));
+    assertThat(SqlFunctions.struncate(-12.999d, 0), within(-12.000d, 0.001));
 
-    assertThat(SqlFunctions.struncate(12345d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.struncate(12000d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.struncate(12001d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.struncate(12000d, -4), closeTo(10000d, 0.001));
-    assertThat(SqlFunctions.struncate(12000d, -5), closeTo(0d, 0.001));
-    assertThat(SqlFunctions.struncate(11999d, -3), closeTo(11000d, 0.001));
+    assertThat(SqlFunctions.struncate(12345d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12001d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000d, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000d, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.struncate(11999d, -3), within(11000d, 0.001));
 
-    assertThat(SqlFunctions.struncate(-12345d, -3), closeTo(-12000d, 0.001));
-    assertThat(SqlFunctions.struncate(-12000d, -3), closeTo(-12000d, 0.001));
-    assertThat(SqlFunctions.struncate(-11999d, -3), closeTo(-11000d, 0.001));
-    assertThat(SqlFunctions.struncate(-12000d, -4), closeTo(-10000d, 0.001));
-    assertThat(SqlFunctions.struncate(-12000d, -5), closeTo(0d, 0.001));
+    assertThat(SqlFunctions.struncate(-12345d, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000d, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-11999d, -3), within(-11000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000d, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000d, -5), within(0d, 0.001));
   }
 
   @Test void testSTruncateLong() {
-    assertThat(SqlFunctions.struncate(12345L, -3), is(12000L));
-    assertThat(SqlFunctions.struncate(12000L, -3), is(12000L));
-    assertThat(SqlFunctions.struncate(12001L, -3), is(12000L));
-    assertThat(SqlFunctions.struncate(12000L, -4), is(10000L));
-    assertThat(SqlFunctions.struncate(12000L, -5), is(0L));
-    assertThat(SqlFunctions.struncate(11999L, -3), is(11000L));
+    assertThat(SqlFunctions.struncate(12345L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12001L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000L, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000L, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.struncate(11999L, -3), within(11000d, 0.001));
 
-    assertThat(SqlFunctions.struncate(-12345L, -3), is(-12000L));
-    assertThat(SqlFunctions.struncate(-12000L, -3), is(-12000L));
-    assertThat(SqlFunctions.struncate(-11999L, -3), is(-11000L));
-    assertThat(SqlFunctions.struncate(-12000L, -4), is(-10000L));
-    assertThat(SqlFunctions.struncate(-12000L, -5), is(0L));
+    assertThat(SqlFunctions.struncate(-12345L, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000L, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-11999L, -3), within(-11000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000L, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000L, -5), within(0d, 0.001));
   }
 
   @Test void testSTruncateInt() {
-    assertThat(SqlFunctions.struncate(12345, -3), is(12000));
-    assertThat(SqlFunctions.struncate(12000, -3), is(12000));
-    assertThat(SqlFunctions.struncate(12001, -3), is(12000));
-    assertThat(SqlFunctions.struncate(12000, -4), is(10000));
-    assertThat(SqlFunctions.struncate(12000, -5), is(0));
-    assertThat(SqlFunctions.struncate(11999, -3), is(11000));
+    assertThat(SqlFunctions.struncate(12345, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12001, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.struncate(12000, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.struncate(11999, -3), within(11000d, 0.001));
 
-    assertThat(SqlFunctions.struncate(-12345, -3), is(-12000));
-    assertThat(SqlFunctions.struncate(-12000, -3), is(-12000));
-    assertThat(SqlFunctions.struncate(-11999, -3), is(-11000));
-    assertThat(SqlFunctions.struncate(-12000, -4), is(-10000));
-    assertThat(SqlFunctions.struncate(-12000, -5), is(0));
+    assertThat(SqlFunctions.struncate(-12345, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.struncate(-11999, -3), within(-11000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.struncate(-12000, -5), within(0d, 0.001));
   }
 
   @Test void testSRoundDouble() {
-    assertThat(SqlFunctions.sround(12.345d, 3), closeTo(12.345d, 0.001));
-    assertThat(SqlFunctions.sround(12.345d, 2), closeTo(12.350d, 0.001));
-    assertThat(SqlFunctions.sround(12.345d, 1), closeTo(12.300d, 0.001));
-    assertThat(SqlFunctions.sround(12.999d, 2), closeTo(13.000d, 0.001));
-    assertThat(SqlFunctions.sround(12.999d, 1), closeTo(13.000d, 0.001));
-    assertThat(SqlFunctions.sround(12.999d, 0), closeTo(13.000d, 0.001));
+    assertThat(SqlFunctions.sround(12.345d, 3), within(12.345d, 0.001));
+    assertThat(SqlFunctions.sround(12.345d, 2), within(12.350d, 0.001));
+    assertThat(SqlFunctions.sround(12.345d, 1), within(12.300d, 0.001));
+    assertThat(SqlFunctions.sround(12.999d, 2), within(13.000d, 0.001));
+    assertThat(SqlFunctions.sround(12.999d, 1), within(13.000d, 0.001));
+    assertThat(SqlFunctions.sround(12.999d, 0), within(13.000d, 0.001));
 
-    assertThat(SqlFunctions.sround(-12.345d, 3), closeTo(-12.345d, 0.001));
-    assertThat(SqlFunctions.sround(-12.345d, 2), closeTo(-12.350d, 0.001));
-    assertThat(SqlFunctions.sround(-12.345d, 1), closeTo(-12.300d, 0.001));
-    assertThat(SqlFunctions.sround(-12.999d, 2), closeTo(-13.000d, 0.001));
-    assertThat(SqlFunctions.sround(-12.999d, 1), closeTo(-13.000d, 0.001));
-    assertThat(SqlFunctions.sround(-12.999d, 0), closeTo(-13.000d, 0.001));
+    assertThat(SqlFunctions.sround(-12.345d, 3), within(-12.345d, 0.001));
+    assertThat(SqlFunctions.sround(-12.345d, 2), within(-12.350d, 0.001));
+    assertThat(SqlFunctions.sround(-12.345d, 1), within(-12.300d, 0.001));
+    assertThat(SqlFunctions.sround(-12.999d, 2), within(-13.000d, 0.001));
+    assertThat(SqlFunctions.sround(-12.999d, 1), within(-13.000d, 0.001));
+    assertThat(SqlFunctions.sround(-12.999d, 0), within(-13.000d, 0.001));
 
-    assertThat(SqlFunctions.sround(12345d, -1), closeTo(12350d, 0.001));
-    assertThat(SqlFunctions.sround(12345d, -2), closeTo(12300d, 0.001));
-    assertThat(SqlFunctions.sround(12345d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.sround(12000d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.sround(12001d, -3), closeTo(12000d, 0.001));
-    assertThat(SqlFunctions.sround(12000d, -4), closeTo(10000d, 0.001));
-    assertThat(SqlFunctions.sround(12000d, -5), closeTo(0d, 0.001));
-    assertThat(SqlFunctions.sround(11999d, -3), closeTo(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12345d, -1), within(12350d, 0.001));
+    assertThat(SqlFunctions.sround(12345d, -2), within(12300d, 0.001));
+    assertThat(SqlFunctions.sround(12345d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12001d, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000d, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.sround(12000d, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.sround(11999d, -3), within(12000d, 0.001));
 
-    assertThat(SqlFunctions.sround(-12345d, -1), closeTo(-12350d, 0.001));
-    assertThat(SqlFunctions.sround(-12345d, -2), closeTo(-12300d, 0.001));
-    assertThat(SqlFunctions.sround(-12345d, -3), closeTo(-12000d, 0.001));
-    assertThat(SqlFunctions.sround(-12000d, -3), closeTo(-12000d, 0.001));
-    assertThat(SqlFunctions.sround(-11999d, -3), closeTo(-12000d, 0.001));
-    assertThat(SqlFunctions.sround(-12000d, -4), closeTo(-10000d, 0.001));
-    assertThat(SqlFunctions.sround(-12000d, -5), closeTo(0d, 0.001));
+    assertThat(SqlFunctions.sround(-12345d, -1), within(-12350d, 0.001));
+    assertThat(SqlFunctions.sround(-12345d, -2), within(-12300d, 0.001));
+    assertThat(SqlFunctions.sround(-12345d, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000d, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-11999d, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000d, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000d, -5), within(0d, 0.001));
   }
 
   @Test void testSRoundLong() {
-    assertThat(SqlFunctions.sround(12345L, -1), is(12350L));
-    assertThat(SqlFunctions.sround(12345L, -2), is(12300L));
-    assertThat(SqlFunctions.sround(12345L, -3), is(12000L));
-    assertThat(SqlFunctions.sround(12000L, -3), is(12000L));
-    assertThat(SqlFunctions.sround(12001L, -3), is(12000L));
-    assertThat(SqlFunctions.sround(12000L, -4), is(10000L));
-    assertThat(SqlFunctions.sround(12000L, -5), is(0L));
-    assertThat(SqlFunctions.sround(11999L, -3), is(12000L));
+    assertThat(SqlFunctions.sround(12345L, -1), within(12350d, 0.001));
+    assertThat(SqlFunctions.sround(12345L, -2), within(12300d, 0.001));
+    assertThat(SqlFunctions.sround(12345L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12001L, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000L, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.sround(12000L, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.sround(11999L, -3), within(12000d, 0.001));
 
-    assertThat(SqlFunctions.sround(-12345L, -1), is(-12350L));
-    assertThat(SqlFunctions.sround(-12345L, -2), is(-12300L));
-    assertThat(SqlFunctions.sround(-12345L, -3), is(-12000L));
-    assertThat(SqlFunctions.sround(-12000L, -3), is(-12000L));
-    assertThat(SqlFunctions.sround(-11999L, -3), is(-12000L));
-    assertThat(SqlFunctions.sround(-12000L, -4), is(-10000L));
-    assertThat(SqlFunctions.sround(-12000L, -5), is(0L));
+    assertThat(SqlFunctions.sround(-12345L, -1), within(-12350d, 0.001));
+    assertThat(SqlFunctions.sround(-12345L, -2), within(-12300d, 0.001));
+    assertThat(SqlFunctions.sround(-12345L, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000L, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-11999L, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000L, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000L, -5), within(0d, 0.001));
   }
 
   @Test void testSRoundInt() {
-    assertThat(SqlFunctions.sround(12345, -1), is(12350));
-    assertThat(SqlFunctions.sround(12345, -2), is(12300));
-    assertThat(SqlFunctions.sround(12345, -3), is(12000));
-    assertThat(SqlFunctions.sround(12000, -3), is(12000));
-    assertThat(SqlFunctions.sround(12001, -3), is(12000));
-    assertThat(SqlFunctions.sround(12000, -4), is(10000));
-    assertThat(SqlFunctions.sround(12000, -5), is(0));
-    assertThat(SqlFunctions.sround(11999, -3), is(12000));
+    assertThat(SqlFunctions.sround(12345, -1), within(12350d, 0.001));
+    assertThat(SqlFunctions.sround(12345, -2), within(12300d, 0.001));
+    assertThat(SqlFunctions.sround(12345, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12001, -3), within(12000d, 0.001));
+    assertThat(SqlFunctions.sround(12000, -4), within(10000d, 0.001));
+    assertThat(SqlFunctions.sround(12000, -5), within(0d, 0.001));
+    assertThat(SqlFunctions.sround(11999, -3), within(12000d, 0.001));
 
-    assertThat(SqlFunctions.sround(-12345, -1), is(-12350));
-    assertThat(SqlFunctions.sround(-12345, -2), is(-12300));
-    assertThat(SqlFunctions.sround(-12345, -3), is(-12000));
-    assertThat(SqlFunctions.sround(-12000, -3), is(-12000));
-    assertThat(SqlFunctions.sround(-11999, -3), is(-12000));
-    assertThat(SqlFunctions.sround(-12000, -4), is(-10000));
-    assertThat(SqlFunctions.sround(-12000, -5), is(0));
+    assertThat(SqlFunctions.sround(-12345, -1), within(-12350d, 0.001));
+    assertThat(SqlFunctions.sround(-12345, -2), within(-12300d, 0.001));
+    assertThat(SqlFunctions.sround(-12345, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-11999, -3), within(-12000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000, -4), within(-10000d, 0.001));
+    assertThat(SqlFunctions.sround(-12000, -5), within(0d, 0.001));
   }
 
   @Test void testSplit() {
@@ -1419,53 +1331,51 @@ class SqlFunctionsTest {
     final List<String> addc = Arrays.asList("a", "d", "c", "d", "c");
     final List<String> z = Collections.emptyList();
     assertThat(SqlFunctions.multisetExceptAll(abacee, addc),
-        isListOf("b", "a", "e", "e"));
+        is(Arrays.asList("b", "a", "e", "e")));
     assertThat(SqlFunctions.multisetExceptAll(abacee, z), is(abacee));
     assertThat(SqlFunctions.multisetExceptAll(z, z), is(z));
     assertThat(SqlFunctions.multisetExceptAll(z, addc), is(z));
 
     assertThat(SqlFunctions.multisetExceptDistinct(abacee, addc),
-        isListOf("b", "e"));
+        is(Arrays.asList("b", "e")));
     assertThat(SqlFunctions.multisetExceptDistinct(abacee, z),
-        isListOf("a", "b", "c", "e"));
+        is(Arrays.asList("a", "b", "c", "e")));
     assertThat(SqlFunctions.multisetExceptDistinct(z, z), is(z));
     assertThat(SqlFunctions.multisetExceptDistinct(z, addc), is(z));
 
-    Matcher<Object> result;
-    result = isListOf("a", "c");
     assertThat(SqlFunctions.multisetIntersectAll(abacee, addc),
-        result);
+        is(Arrays.asList("a", "c")));
     assertThat(SqlFunctions.multisetIntersectAll(abacee, adaa),
-        isListOf("a", "a"));
+        is(Arrays.asList("a", "a")));
     assertThat(SqlFunctions.multisetIntersectAll(adaa, abacee),
-        isListOf("a", "a"));
+        is(Arrays.asList("a", "a")));
     assertThat(SqlFunctions.multisetIntersectAll(abacee, z), is(z));
     assertThat(SqlFunctions.multisetIntersectAll(z, z), is(z));
     assertThat(SqlFunctions.multisetIntersectAll(z, addc), is(z));
 
     assertThat(SqlFunctions.multisetIntersectDistinct(abacee, addc),
-        isListOf("a", "c"));
+        is(Arrays.asList("a", "c")));
     assertThat(SqlFunctions.multisetIntersectDistinct(abacee, adaa),
-        isListOf("a"));
+        is(Collections.singletonList("a")));
     assertThat(SqlFunctions.multisetIntersectDistinct(adaa, abacee),
-        isListOf("a"));
+        is(Collections.singletonList("a")));
     assertThat(SqlFunctions.multisetIntersectDistinct(abacee, z), is(z));
     assertThat(SqlFunctions.multisetIntersectDistinct(z, z), is(z));
     assertThat(SqlFunctions.multisetIntersectDistinct(z, addc), is(z));
 
     assertThat(SqlFunctions.multisetUnionAll(abacee, addc),
-        isListOf("a", "b", "a", "c", "e", "e", "a", "d", "c", "d", "c"));
+        is(Arrays.asList("a", "b", "a", "c", "e", "e", "a", "d", "c", "d", "c")));
     assertThat(SqlFunctions.multisetUnionAll(abacee, z), is(abacee));
     assertThat(SqlFunctions.multisetUnionAll(z, z), is(z));
     assertThat(SqlFunctions.multisetUnionAll(z, addc), is(addc));
 
     assertThat(SqlFunctions.multisetUnionDistinct(abacee, addc),
-        isListOf("a", "b", "c", "d", "e"));
+        is(Arrays.asList("a", "b", "c", "d", "e")));
     assertThat(SqlFunctions.multisetUnionDistinct(abacee, z),
-        isListOf("a", "b", "c", "e"));
+        is(Arrays.asList("a", "b", "c", "e")));
     assertThat(SqlFunctions.multisetUnionDistinct(z, z), is(z));
     assertThat(SqlFunctions.multisetUnionDistinct(z, addc),
-        isListOf("a", "c", "d"));
+        is(Arrays.asList("a", "c", "d")));
   }
 
   @Test void testMd5() {

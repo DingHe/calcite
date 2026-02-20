@@ -22,7 +22,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-/**
+/** schema是一个表的集合
  * A <code>RelOptSchema</code> is a set of {@link RelOptTable} objects.
  */
 public interface RelOptSchema {
@@ -49,8 +49,8 @@ public interface RelOptSchema {
   RelDataTypeFactory getTypeFactory();
 
   /**
-   * Registers all the rules supported by this schema. Only called by
+   * Registers all of the rules supported by this schema. Only called by
    * {@link RelOptPlanner#registerSchema}.
    */
-  void registerRules(RelOptPlanner planner);
+  void registerRules(RelOptPlanner planner) throws Exception;
 }

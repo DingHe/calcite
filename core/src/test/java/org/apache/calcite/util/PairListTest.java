@@ -34,8 +34,6 @@ import java.util.Map;
 import java.util.RandomAccess;
 import java.util.function.BiPredicate;
 
-import static org.apache.calcite.test.Matchers.isListOf;
-
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -278,7 +276,7 @@ class PairListTest {
     final ImmutableMap<String, Integer> map = ImmutableMap.of("a", 1, "b", 2);
     final PairList<String, Integer> pairList = PairList.of(map);
     assertThat(pairList, hasSize(2));
-    assertThat(pairList, hasToString("[<a, 1>, <b, 2>]"));
+    assertThat(pairList.toString(), is("[<a, 1>, <b, 2>]"));
 
     final List<Map.Entry<String, Integer>> list = new ArrayList<>(map.entrySet());
     validate(pairList, list);
@@ -291,9 +289,9 @@ class PairListTest {
     pairList.add("c", 3);
     list.add(Pair.of("c", 3));
     validate(pairList, list);
-    assertThat(pairList, hasToString("[<a, 1>, <b, 2>, <c, 3>]"));
+    assertThat(pairList.toString(), is("[<a, 1>, <b, 2>, <c, 3>]"));
     final ImmutableMap<String, Integer> map3 = pairList.toImmutableMap();
-    assertThat(map3, hasToString("{a=1, b=2, c=3}"));
+    assertThat(map3.toString(), is("{a=1, b=2, c=3}"));
 
     final Map<String, Integer> emptyMap = ImmutableMap.of();
     final PairList<String, Integer> emptyPairList = PairList.of(emptyMap);
@@ -343,9 +341,9 @@ class PairListTest {
     final PairList<String, Integer> list3 =
         PairList.copyOf("a", 1, null, 5, "c", 3);
     assertThat(list3.transform((s, i) -> s + i),
-        isListOf("a1", "null5", "c3"));
+        is(Arrays.asList("a1", "null5", "c3")));
     assertThat(list3.transform2((s, i) -> s + i),
-        isListOf("a1", "null5", "c3"));
+        is(Arrays.asList("a1", "null5", "c3")));
 
     final PairList<String, Integer> list0 = PairList.of();
     assertThat(list0.transform((s, i) -> s + i), empty());

@@ -20,8 +20,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /** Similar to {@link org.apache.calcite.util.Pair} but identity is based
  * on identity of values.
@@ -42,8 +41,8 @@ public class IdPair<L, R> {
   }
 
   protected IdPair(L left, R right) {
-    this.left = requireNonNull(left, "left");
-    this.right = requireNonNull(right, "right");
+    this.left = Objects.requireNonNull(left, "left");
+    this.right = Objects.requireNonNull(right, "right");
   }
 
   @Override public String toString() {

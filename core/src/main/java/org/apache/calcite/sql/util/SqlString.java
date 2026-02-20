@@ -23,8 +23,6 @@ import com.google.common.collect.ImmutableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.dataflow.qual.Pure;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * String that represents a kocher SQL statement, expression, or fragment.
  *
@@ -36,8 +34,8 @@ import static java.util.Objects.requireNonNull;
  */
 public class SqlString {
   private final String sql;
-  private final SqlDialect dialect;
-  private final @Nullable ImmutableList<Integer> dynamicParameters;
+  private SqlDialect dialect;
+  private @Nullable ImmutableList<Integer> dynamicParameters;
 
   /**
    * Creates a SqlString.
@@ -55,9 +53,11 @@ public class SqlString {
    */
   public SqlString(SqlDialect dialect, String sql,
       @Nullable ImmutableList<Integer> dynamicParameters) {
-    this.dialect = requireNonNull(dialect, "dialect");
-    this.sql = requireNonNull(sql, "sql");
+    this.dialect = dialect;
+    this.sql = sql;
     this.dynamicParameters = dynamicParameters;
+    assert sql != null : "sql must be NOT null";
+    assert dialect != null : "dialect must be NOT null";
   }
 
   @Override public int hashCode() {

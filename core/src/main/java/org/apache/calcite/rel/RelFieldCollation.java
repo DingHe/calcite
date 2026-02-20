@@ -22,8 +22,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Definition of the ordering of one field of a {@link RelNode} whose
  * output is to be sorted.
@@ -243,8 +241,8 @@ public class RelFieldCollation {
       Direction direction,
       NullDirection nullDirection) {
     this.fieldIndex = fieldIndex;
-    this.direction = requireNonNull(direction, "direction");
-    this.nullDirection = requireNonNull(nullDirection, "nullDirection");
+    this.direction = Objects.requireNonNull(direction, "direction");
+    this.nullDirection = Objects.requireNonNull(nullDirection, "nullDirection");
   }
 
   //~ Methods ----------------------------------------------------------------

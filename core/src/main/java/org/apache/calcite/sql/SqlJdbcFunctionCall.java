@@ -369,7 +369,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class SqlJdbcFunctionCall extends SqlFunction {
   //~ Static fields/initializers ---------------------------------------------
-
+  //jdbc支持的所有数值函数
   /** List of all numeric function names defined by JDBC. */
   private static final String NUMERIC_FUNCTIONS =
       constructFuncList("ABS", "ACOS", "ASIN", "ATAN", "ATAN2",
@@ -377,7 +377,7 @@ public class SqlJdbcFunctionCall extends SqlFunction {
           "DEGREES", "EXP", "FLOOR", "LOG", "LOG10", "MOD", "PI",
           "POWER", "RADIANS", "RAND", "ROUND", "SIGN", "SIN", "SQRT",
           "TAN", "TRUNCATE");
-
+  //jdbc只是的所有字符函数
   /** List of all string function names defined by JDBC. */
   private static final String STRING_FUNCTIONS =
       constructFuncList("ASCII", "CHAR", "CONCAT",

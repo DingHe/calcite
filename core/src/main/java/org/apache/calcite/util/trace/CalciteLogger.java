@@ -19,8 +19,6 @@ package org.apache.calcite.util.trace;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Small extension to {@link Logger} with some performance improvements.
  *
@@ -54,7 +52,8 @@ public class CalciteLogger {
   //~ Constructors -----------------------------------------------------------
 
   public CalciteLogger(Logger logger) {
-    this.logger = requireNonNull(logger, "logger");
+    assert logger != null;
+    this.logger = logger;
   }
 
   //~ Methods ----------------------------------------------------------------

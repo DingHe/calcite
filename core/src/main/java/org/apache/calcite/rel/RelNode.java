@@ -70,7 +70,7 @@ import java.util.Set;
  * {@code org.apache.calcite.adapter.enumerable.EnumerableConvention}
  * calling-convention, and it interacts with a
  * {@code EnumerableRelImplementor}.
- *
+ * 真正要运行的关系节点才需要实现，converters类的接口不需要，关键的字段就是输入和特征集
  * <p>A relational expression is only required to implement its
  * calling-convention's interface when it is actually implemented, that is,
  * converted into a plan/program. This means that relational expressions which
@@ -91,7 +91,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * @return this RelNode's CallingConvention
    */
   @Pure
-  @Nullable Convention getConvention();
+  @Nullable Convention getConvention(); //返回调用约定
 
   /**
    * Returns the name of the variable which is to be implicitly set at runtime
@@ -100,17 +100,17 @@ public interface RelNode extends RelOptNode, Cloneable {
    *
    * @return Name of correlating variable, or null
    */
-  @Nullable String getCorrelVariable();
+  @Nullable String getCorrelVariable(); //这里还不是很明白
 
   /**
    * Returns the <code>i</code><sup>th</sup> input relational expression.
-   *
+   * 获取该节点的第i个输入节点
    * @param i Ordinal of input
    * @return <code>i</code><sup>th</sup> input
    */
   RelNode getInput(int i);
 
-  /**
+  /** 返回该节点的数据类型
    * Returns the type of the rows returned by this relational expression.
    */
   @Override RelDataType getRowType();
@@ -118,7 +118,7 @@ public interface RelNode extends RelOptNode, Cloneable {
   /**
    * Returns the type of the rows expected for an input. Defaults to
    * {@link #getRowType}.
-   *
+   * 该节点希望获得输入的数据类型
    * @param ordinalInParent input's 0-based ordinal with respect to this
    *                        parent rel
    * @return expected row type
@@ -128,7 +128,7 @@ public interface RelNode extends RelOptNode, Cloneable {
   /**
    * Returns an array of this relational expression's inputs. If there are no
    * inputs, returns an empty list, not {@code null}.
-   *
+   * 获取所有的输入节点
    * @return Array of this relational expression's inputs
    */
   @Override List<RelNode> getInputs();
@@ -140,7 +140,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * <p>NOTE jvs 29-Mar-2006: Don't call this method directly. Instead, use
    * {@link RelMetadataQuery#getRowCount}, which gives plugins a chance to
    * override the rel's default ideas about row count.
-   *
+   * 该节点估计输出的行数
    * @param mq Metadata query
    * @return Estimate of the number of rows this relational expression will
    *   return
@@ -155,7 +155,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * @return Names of variables which are set in this relational
    *   expression
    */
-  Set<CorrelationId> getVariablesSet();
+  Set<CorrelationId> getVariablesSet(); //这里还不是很明白
 
   /**
    * Collects variables known to be used by this expression or its
@@ -183,7 +183,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * @param visitor Visitor that will traverse the tree of relational
    *                expressions
    */
-  void childrenAccept(RelVisitor visitor);
+  void childrenAccept(RelVisitor visitor); //子节点接收访问
 
   /**
    * Returns the cost of this plan (not including children). The base
@@ -192,7 +192,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * <p>NOTE jvs 29-Mar-2006: Don't call this method directly. Instead, use
    * {@link RelMetadataQuery#getNonCumulativeCost}, which gives plugins a
    * chance to override the rel's default ideas about cost.
-   *
+   * 不包含children的成本
    * @param planner Planner for cost calculation
    * @param mq Metadata query
    * @return Cost of this plan (not including children)
@@ -247,7 +247,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * Receives notification that this expression is about to be registered. The
    * implementation of this method must at least register all child
    * expressions.
-   *
+   * 接收注册的通知，实现要保证子节点已经注册
    * @param planner Planner that plans this relational node
    * @return Relational expression that should be used by the planner
    */
@@ -310,7 +310,7 @@ public interface RelNode extends RelOptNode, Cloneable {
   /**
    * Replaces the <code>ordinalInParent</code><sup>th</sup> input. You must
    * override this method if you override {@link #getInputs}.
-   *
+   * 替换第ordinalInParent个输入
    * @param ordinalInParent Position of the child input, 0 is the first
    * @param p New node that should be put at position {@code ordinalInParent}
    */
@@ -321,7 +321,7 @@ public interface RelNode extends RelOptNode, Cloneable {
   /**
    * If this relational expression represents an access to a table, returns
    * that table, otherwise returns null.
-   *
+   * 如果该节点代表访问表，返回给表
    * @return If this relational expression represents an access to a table,
    *   returns that table, otherwise returns null
    */
@@ -332,7 +332,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * name, for use in explain. For example, for a <code>
    * org.apache.calcite.rel.ArrayRel.ArrayReader</code>, this method returns
    * "ArrayReader".
-   *
+   * 返回数据类型的名称
    * @return Name of this relational expression's class, sans package name,
    *   for use in explain
    */
@@ -378,7 +378,7 @@ public interface RelNode extends RelOptNode, Cloneable {
   /**
    * Registers any special rules specific to this kind of relational
    * expression.
-   *
+   * 注册该类相关的规则
    * <p>The planner calls this method this first time that it sees a
    * relational expression of this class. The derived class should call
    * {@link org.apache.calcite.plan.RelOptPlanner#addRule} for each rule, and
@@ -393,7 +393,7 @@ public interface RelNode extends RelOptNode, Cloneable {
    * Indicates whether it is an enforcer operator, e.g. PhysicalSort,
    * PhysicalHashDistribute, etc. As an enforcer, the operator must be
    * created only when required traitSet is not satisfied by its input.
-   *
+   * “强制器操作符”是指那些用于强制某些特性或属性的操作符,PhysicalSort：它可能是一个强制器操作符，用于强制关系表达式的结果进行排序。如果输入数据已经排序，它就不需要这个操作符，但如果输入数据没有排序，PhysicalSort 会被创建
    * @return Whether it is an enforcer operator
    */
   default boolean isEnforcer() {
@@ -402,7 +402,7 @@ public interface RelNode extends RelOptNode, Cloneable {
 
   /**
    * Accepts a visit from a shuttle.
-   *
+   * 接受访问
    * @param shuttle Shuttle
    * @return A copy of this node incorporating changes made by the shuttle to
    * this node's children

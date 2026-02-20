@@ -26,7 +26,7 @@ import java.util.Set;
 
 /**
  * A namespace for tables and functions.
- *
+ * schema是表和函数的名称空间，可以包含子schema
  * <p>A schema can also contain sub-schemas, to any level of nesting. Most
  * providers have a limited number of levels; for example, most JDBC databases
  * have either one level ("schemas") or two levels ("database" and
@@ -58,7 +58,7 @@ import java.util.Set;
 public interface Schema {
   /**
    * Returns a table with a given name, or null if not found.
-   *
+   * 根据表名返回Table对象
    * @param name Table name
    * @return Table, or null
    */
@@ -66,14 +66,14 @@ public interface Schema {
 
   /**
    * Returns the names of the tables in this schema.
-   *
+   * 返回该schema的所有表
    * @return Names of the tables in this schema
    */
   Set<String> getTableNames();
 
   /**
    * Returns a type with a given name, or null if not found.
-   *
+   * 根据表名，返回对应的行数据类型
    * @param name Table name
    * @return Table, or null
    */
@@ -89,7 +89,7 @@ public interface Schema {
   /**
    * Returns a list of functions in this schema with the given name, or
    * an empty list if there is no such function.
-   *
+   * 根据名字获取函数，因为参数不同，可能返回多个
    * @param name Name of function
    * @return List of functions with given name, or empty list
    */
@@ -97,14 +97,14 @@ public interface Schema {
 
   /**
    * Returns the names of the functions in this schema.
-   *
+   * 返回该schema的所有函数
    * @return Names of the functions in this schema
    */
   Set<String> getFunctionNames();
 
   /**
    * Returns a sub-schema with a given name, or null.
-   *
+   * 返回子schema
    * @param name Sub-schema name
    * @return Sub-schema with a given name, or null
    */
@@ -112,7 +112,7 @@ public interface Schema {
 
   /**
    * Returns the names of this schema's child schemas.
-   *
+   * 返回所有子shema的名字
    * @return Names of this schema's child schemas
    */
   Set<String> getSubSchemaNames();
@@ -120,7 +120,7 @@ public interface Schema {
   /**
    * Returns the expression by which this schema can be referenced in generated
    * code.
-   *
+   * 生成引用此schema的表达式
    * @param parentSchema Parent schema
    * @param name Name of this schema
    * @return Expression by which this schema can be referenced in generated code
@@ -133,7 +133,7 @@ public interface Schema {
    *
    * <p>Even if this method returns true, the maps are not modified. Calcite
    * stores the defined objects in a wrapper object.
-   *
+   * 是否可以在此schema建新的表、函数或者子schema
    * @return Whether the user is allowed to create new tables, functions
    *   and sub-schemas in this schema
    */

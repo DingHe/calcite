@@ -40,8 +40,6 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import javax.xml.parsers.ParserConfigurationException;
 
-import static java.lang.Integer.parseInt;
-
 /**
  * Utilities for spatial types.
  */
@@ -179,7 +177,7 @@ public class SpatialTypeUtils {
     Geometry geometry = fromWkt(wkt);
     String srid = matcher.group(1);
     if (srid != null) {
-      geometry.setSRID(parseInt(srid));
+      geometry.setSRID(Integer.parseInt(srid));
     }
 
     return geometry;

@@ -30,8 +30,8 @@ import java.util.List;
  * easier.
  */
 public abstract class BiRel extends AbstractRelNode {
-  protected RelNode left;
-  protected RelNode right;
+  protected RelNode left;  //左节点
+  protected RelNode right; //右节点
 
   protected BiRel(
       RelOptCluster cluster, RelTraitSet traitSet, RelNode left,

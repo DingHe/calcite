@@ -42,8 +42,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Sub-class of {@link org.apache.calcite.rel.core.Filter}
  * not targeted at any particular engine or calling convention.
@@ -73,7 +71,7 @@ public final class LogicalFilter extends Filter {
       RexNode condition,
       ImmutableSet<CorrelationId> variablesSet) {
     super(cluster, traitSet, hints, child, condition);
-    this.variablesSet = requireNonNull(variablesSet, "variablesSet");
+    this.variablesSet = Objects.requireNonNull(variablesSet, "variablesSet");
   }
 
   /**

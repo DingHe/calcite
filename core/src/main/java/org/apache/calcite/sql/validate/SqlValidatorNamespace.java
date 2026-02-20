@@ -52,6 +52,8 @@ import java.util.List;
  *
  * @see SqlValidator
  * @see SqlValidatorScope
+ *
+ *SqlValidatorNamespace 提供关于特定表或视图的信息
  */
 public interface SqlValidatorNamespace {
   //~ Methods ----------------------------------------------------------------

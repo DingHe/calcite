@@ -96,7 +96,7 @@ public class SqlMultisetValueConstructor extends SqlSpecialOperator {
       boolean throwOnFailure) {
     final List<RelDataType> argTypes =
         SqlTypeUtil.deriveType(callBinding, callBinding.operands());
-    if (argTypes.isEmpty()) {
+    if (argTypes.size() == 0) {
       throw callBinding.newValidationError(RESOURCE.requireAtLeastOneArg());
     }
     final RelDataType componentType =

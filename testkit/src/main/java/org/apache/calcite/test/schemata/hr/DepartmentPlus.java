@@ -16,8 +16,6 @@
  */
 package org.apache.calcite.test.schemata.hr;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.sql.Timestamp;
 import java.util.List;
 
@@ -28,7 +26,7 @@ public class DepartmentPlus extends Department {
   public final Timestamp inceptionDate;
 
   public DepartmentPlus(int deptno, String name, List<Employee> employees,
-      @Nullable Location location, Timestamp inceptionDate) {
+                        Location location, Timestamp inceptionDate) {
     super(deptno, name, employees, location);
     this.inceptionDate = inceptionDate;
   }

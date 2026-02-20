@@ -96,7 +96,9 @@ public class SortJoinCopyRule
     if (leftFieldCollation.isEmpty()) {
       newLeftInput = join.getLeft();
     } else {
-      final RelCollation leftCollation = RelCollations.of(leftFieldCollation);
+      final RelCollation leftCollation =
+          RelCollationTraitDef.INSTANCE.canonize(
+              RelCollations.of(leftFieldCollation));
       // If left table already sorted don't add a sort
       if (RelMdUtil.checkInputForCollationAndLimit(
           metadataQuery,
@@ -119,8 +121,9 @@ public class SortJoinCopyRule
       newRightInput = join.getRight();
     } else {
       final RelCollation rightCollation =
-          RelCollations.shift(RelCollations.of(rightFieldCollation),
-              -join.getLeft().getRowType().getFieldCount());
+          RelCollationTraitDef.INSTANCE.canonize(
+              RelCollations.shift(RelCollations.of(rightFieldCollation),
+                  -join.getLeft().getRowType().getFieldCount()));
       // If right table already sorted don't add a sort
       if (RelMdUtil.checkInputForCollationAndLimit(
           metadataQuery,

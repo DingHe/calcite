@@ -31,8 +31,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-import static java.lang.Long.parseLong;
-
 /**
  * Table function that executes the OS "vmstat" command
  * to share memory statistics.
@@ -87,9 +85,9 @@ public class VmstatTableFunction {
                       return 0;
                     }
                     if (value.endsWith(".")) {
-                      return parseLong(value);
+                      return Long.parseLong(value);
                     }
-                    return parseLong(value);
+                    return Long.parseLong(value);
                   }
                 });
       }

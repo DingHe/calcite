@@ -38,8 +38,6 @@ public class RedshiftSqlDialect extends SqlDialect {
       new RelDataTypeSystemImpl() {
         @Override public int getMaxPrecision(SqlTypeName typeName) {
           switch (typeName) {
-          case DECIMAL:
-            return 38;
           case VARCHAR:
             return 65535;
           case CHAR:
@@ -50,20 +48,11 @@ public class RedshiftSqlDialect extends SqlDialect {
         }
 
         @Override public int getMaxNumericPrecision() {
-          return getMaxPrecision(SqlTypeName.DECIMAL);
-        }
-
-        @Override public int getMaxScale(SqlTypeName typeName) {
-          switch (typeName) {
-          case DECIMAL:
-            return 37;
-          default:
-            return super.getMaxScale(typeName);
-          }
+          return 38;
         }
 
         @Override public int getMaxNumericScale() {
-          return getMaxScale(SqlTypeName.DECIMAL);
+          return 37;
         }
       };
 

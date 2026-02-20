@@ -23,8 +23,6 @@ import org.apache.calcite.rel.type.RelProtoDataType;
 import org.apache.calcite.schema.impl.AbstractTable;
 import org.apache.calcite.util.Source;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,12 +34,12 @@ import java.util.List;
  */
 public abstract class CsvTable extends AbstractTable {
   protected final Source source;
-  protected final @Nullable RelProtoDataType protoRowType;
-  private @Nullable RelDataType rowType;
-  private @Nullable List<RelDataType> fieldTypes;
+  protected final RelProtoDataType protoRowType;
+  private RelDataType rowType;
+  private List<RelDataType> fieldTypes;
 
   /** Creates a CsvTable. */
-  CsvTable(Source source, @Nullable RelProtoDataType protoRowType) {
+  CsvTable(Source source, RelProtoDataType protoRowType) {
     this.source = source;
     this.protoRowType = protoRowType;
   }

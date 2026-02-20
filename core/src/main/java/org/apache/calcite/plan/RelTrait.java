@@ -42,7 +42,7 @@ public interface RelTrait {
 
   /**
    * Returns the RelTraitDef that defines this RelTrait.
-   *
+   * 返回该特征的特征定义
    * @return the RelTraitDef that defines this RelTrait
    */
   RelTraitDef getTraitDef();
@@ -59,14 +59,14 @@ public interface RelTrait {
 
   /**
    * Returns whether this trait satisfies a given trait.
-   *
+   * 如果特征与另一个特征相同或更严格，则一个特征满足另一个特征。例如，ORDER BY x, y 满足 ORDER BY x。可以参考RelCollationImpl的实现
    * <p>A trait satisfies another if it is the same or stricter. For example,
    * {@code ORDER BY x, y} satisfies {@code ORDER BY x}.
-   *
+   * 特征满足关系是偏序的，也就是自反（自己满足自己）、反对称、可传递的。
    * <p>A trait's {@code satisfies} relation must be a partial order (reflexive,
    * anti-symmetric, transitive). Many traits cannot be "loosened"; their
    * {@code satisfies} is an equivalence relation, where only X satisfies X.
-   *
+   * 如果特征有多个值，则只要Ti满足T,则集合满足T
    * <p>If a trait has multiple values
    * (see {@link org.apache.calcite.plan.RelCompositeTrait})
    * a collection (T0, T1, ...) satisfies T if any Ti satisfies T.
@@ -76,18 +76,18 @@ public interface RelTrait {
    */
   boolean satisfies(RelTrait trait);
 
-  /**
+  /** 特征的简洁名称
    * Returns a succinct name for this trait. The planner may use this String
    * to describe the trait.
    */
   @Override String toString();
 
-  /**
+  /** 把特征注册到优化器里面
    * Registers a trait instance with the planner.
    *
    * <p>This is an opportunity to add rules that relate to that trait. However,
    * typical implementations will do nothing.
-   *
+   * 主要是在优化器里面注册规则，例如jdbcConvention的实现
    * @param planner Planner
    */
   void register(RelOptPlanner planner);
@@ -97,7 +97,7 @@ public interface RelTrait {
    *
    * <p>Some traits may be changed if the columns order is changed by a mapping
    * of the {@link Project} operator.
-   *
+   * 有些特征使用mapping映射project的排序就有可能改变
    * <p>For example, if relation {@code SELECT a, b ORDER BY a, b} is sorted by
    * columns [0, 1], then the project {@code SELECT b, a} over this relation
    * will be sorted by columns [1, 0]. In the same time project {@code SELECT b}
@@ -114,7 +114,7 @@ public interface RelTrait {
     return (T) this;
   }
 
-  /**
+  /** 判断此特征是否是默认的特征值
    * Returns whether this trait is the default trait value.
    */
   default boolean isDefault() {

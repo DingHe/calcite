@@ -54,8 +54,7 @@ import java.io.StringReader;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Compiles a scalar expression ({@link RexNode}) to an expression that
@@ -201,7 +200,7 @@ public class JaninoRexCompiler implements Interpreter.ScalarCompiler {
       throws CompileException, IOException {
     ICompilerFactory compilerFactory;
     ClassLoader classLoader =
-        requireNonNull(JaninoRexCompiler.class.getClassLoader(), "classLoader");
+        Objects.requireNonNull(JaninoRexCompiler.class.getClassLoader(), "classLoader");
     try {
       compilerFactory = CompilerFactoryFactory.getDefaultCompilerFactory(classLoader);
     } catch (Exception e) {

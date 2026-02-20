@@ -29,8 +29,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Predicates that are known to hold in the output of a particular relational
@@ -78,32 +77,31 @@ public class RelOptPredicateList {
           ImmutableMap.of());
 
   /** Predicates that can be pulled up from the relational expression and its
-   * inputs. */
+   * inputs.适用于关系表达式输出的每一行的谓词。它们是从输入的关系表达式和关系运算符推断出来的。 */
   public final ImmutableList<RexNode> pulledUpPredicates;
 
   /** Predicates that were inferred from the right input.
-   * Empty if the relational expression is not a join. */
+   * Empty if the relational expression is not a join. 包含从右输入推导出的谓词。如果关系表达式不是连接操作，则此列表为空*/
   public final ImmutableList<RexNode> leftInferredPredicates;
 
   /** Predicates that were inferred from the left input.
-   * Empty if the relational expression is not a join. */
+   * Empty if the relational expression is not a join.包含从左输入推导出的谓词。如果不适用，则此列表为空 */
   public final ImmutableList<RexNode> rightInferredPredicates;
 
   /** A map of each (e, constant) pair that occurs within
-   * {@link #pulledUpPredicates}. */
+   * {@link #pulledUpPredicates}.一个映射，包含在 pulledUpPredicates 中出现的每一对（表达式，常量）。这在优化过程中非常有用 */
   public final ImmutableMap<RexNode, RexNode> constantMap;
 
   private RelOptPredicateList(ImmutableList<RexNode> pulledUpPredicates,
       ImmutableList<RexNode> leftInferredPredicates,
       ImmutableList<RexNode> rightInferredPredicates,
       ImmutableMap<RexNode, RexNode> constantMap) {
-    this.pulledUpPredicates =
-        requireNonNull(pulledUpPredicates, "pulledUpPredicates");
+    this.pulledUpPredicates = Objects.requireNonNull(pulledUpPredicates, "pulledUpPredicates");
     this.leftInferredPredicates =
-        requireNonNull(leftInferredPredicates, "leftInferredPredicates");
+        Objects.requireNonNull(leftInferredPredicates, "leftInferredPredicates");
     this.rightInferredPredicates =
-        requireNonNull(rightInferredPredicates, "rightInferredPredicates");
-    this.constantMap = requireNonNull(constantMap, "constantMap");
+        Objects.requireNonNull(rightInferredPredicates, "rightInferredPredicates");
+    this.constantMap = Objects.requireNonNull(constantMap, "constantMap");
   }
 
   /** Creates a RelOptPredicateList with only pulled-up predicates, no inferred
@@ -167,7 +165,7 @@ public class RelOptPredicateList {
     }
     final ImmutableMap<RexNode, RexNode> constantMap =
         RexUtil.predicateConstants(RexNode.class, rexBuilder,
-            pulledUpPredicatesList);
+            pulledUpPredicatesList);  //从pulledUpPredicatesList中提取常量谓词
     return new RelOptPredicateList(pulledUpPredicatesList,
         leftInferredPredicateList, rightInferredPredicatesList, constantMap);
   }
@@ -216,7 +214,7 @@ public class RelOptPredicateList {
       return ImmutableList.<E>builder().addAll(list1).addAll(list2).build();
     }
   }
-
+ //根据指定的偏移量调整谓词，适用于子查询等场景，其中列的位置可能会变化
   public RelOptPredicateList shift(RexBuilder rexBuilder, int offset) {
     return RelOptPredicateList.of(rexBuilder,
         RexUtil.shift(pulledUpPredicates, offset),
@@ -225,7 +223,7 @@ public class RelOptPredicateList {
   }
 
   /** Returns whether an expression is effectively NOT NULL due to an
-   * {@code e IS NOT NULL} condition in this predicate list. */
+   * {@code e IS NOT NULL} condition in this predicate list. 根据该列表中的谓词判断一个表达式是否有效地为 NOT NULL。它会检查类似 e IS NOT NULL 的条件，并递归处理比较表达式*/
   public boolean isEffectivelyNotNull(RexNode e) {
     if (!e.getType().isNullable()) {
       return true;

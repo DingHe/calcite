@@ -42,7 +42,7 @@ import static java.util.Objects.requireNonNull;
  * A rule driver that applies rules in a Top-Down manner.
  * By ensuring rule applying orders, there could be ways for
  * space pruning and rule mutual exclusivity check.
- *
+ * 一个task是一个工厂片段
  * <p>This implementation uses tasks to manage rule matches.
  * A Task is a piece of work to be executed, it may apply some rules
  * or schedule other tasks.
@@ -54,17 +54,17 @@ class TopDownRuleDriver implements RuleDriver {
 
   private final VolcanoPlanner planner;
 
-  /**
+  /** 规则队列
    * The rule queue designed for top-down rule applying.
    */
   private final TopDownRuleQueue ruleQueue;
 
-  /**
+  /** 等待执行的任务
    * All tasks waiting for execution.
    */
   private final Stack<Task> tasks = new Stack<>(); // TODO: replace with Deque
 
-  /**
+  /** 当前正在应用并且可能产生新的RelNode的任务
    * A task that is currently applying and may generate new RelNode.
    * It provides a callback to schedule tasks for new RelNodes that
    * are registered during task performing.
@@ -264,7 +264,7 @@ class TopDownRuleDriver implements RuleDriver {
    */
   private static class TaskDescriptor {
     private boolean first = true;
-    private final StringBuilder builder = new StringBuilder();
+    private StringBuilder builder = new StringBuilder();
 
     void log(Task task) {
       if (!LOGGER.isDebugEnabled()) {
@@ -302,13 +302,13 @@ class TopDownRuleDriver implements RuleDriver {
     }
   }
 
-  /**
+  /** 开始优化RelSubset
    * Optimizes a RelSubset.
    * It schedules optimization tasks for RelNodes in the RelSet.
    */
   private class OptimizeGroup implements Task {
-    private final RelSubset group;
-    private final RelOptCost upperBound;
+    private final RelSubset group;  //具有相同物理属性的相等集
+    private RelOptCost upperBound;
 
     OptimizeGroup(RelSubset group, RelOptCost upperBound) {
       this.group = group;
@@ -316,8 +316,8 @@ class TopDownRuleDriver implements RuleDriver {
     }
 
     @Override public void perform() {
-      RelOptCost winner = group.getWinnerCost();
-      if (winner != null) {
+      RelOptCost winner = group.getWinnerCost(); //从物理属性相同的相等关系集中获取最优的成本
+      if (winner != null) { //不为空，则已经优化过
         return;
       }
 
@@ -360,18 +360,18 @@ class TopDownRuleDriver implements RuleDriver {
     }
   }
 
-  /**
+  /** 正在被优化的RelSubset
    * Marks the RelSubset optimized.
    * When GroupOptimized returns, the group is either fully
    * optimized and has a winner or failed to be optimized.
    */
   private static class GroupOptimized implements Task {
-    private final RelSubset group;
+    private final RelSubset group; //正在被优化的RelSubset
 
     GroupOptimized(RelSubset group) {
       this.group = group;
     }
-
+    //就是标志优化完成
     @Override public void perform() {
       group.setOptimized();
     }
@@ -382,15 +382,15 @@ class TopDownRuleDriver implements RuleDriver {
     }
   }
 
-  /**
+  /** 优化逻辑节点，包括它的输入
    * Optimizes a logical node, including exploring its input and applying rules for it.
    */
   private class OptimizeMExpr implements Task {
-    private final RelNode mExpr;
+    private final RelNode mExpr; //传入的逻辑节点
     private final RelSubset group;
 
     // When true, only apply transformation rules for mExpr.
-    private final boolean explore;
+    private final boolean explore; ////true表示只应用逻辑转换规则
 
     OptimizeMExpr(RelNode mExpr,
         RelSubset group, boolean explore) {
@@ -400,7 +400,7 @@ class TopDownRuleDriver implements RuleDriver {
     }
 
     @Override public void perform() {
-      if (explore && group.isExplored()) {
+      if (explore && group.isExplored()) { //如果需要只只应用转换规则，并且已经应用，则返回
         return;
       }
       // 1. explore input.
@@ -480,13 +480,13 @@ class TopDownRuleDriver implements RuleDriver {
     }
   }
 
-  /**
+  /** 从规则队列抽取规则并应用到任务
    * Extracts rule matches from rule queue and adds them to task stack.
    */
   private class ApplyRules implements Task {
     private final RelNode mExpr;
     private final RelSubset group;
-    private final boolean exploring;
+    private final boolean exploring; //只应用逻辑转换规则
 
     ApplyRules(RelNode mExpr, RelSubset group, boolean exploring) {
       this.mExpr = mExpr;
@@ -514,9 +514,9 @@ class TopDownRuleDriver implements RuleDriver {
    * Applies a rule match.
    */
   private class ApplyRule implements GeneratorTask {
-    private final VolcanoRuleMatch match;
+    private final VolcanoRuleMatch match; //要应用的规则
     private final RelSubset group;
-    private final boolean exploring;
+    private final boolean exploring; //ture，只应用转换规则
 
     ApplyRule(VolcanoRuleMatch match, RelSubset group, boolean exploring) {
       this.match = match;
@@ -530,7 +530,7 @@ class TopDownRuleDriver implements RuleDriver {
 
     @Override public void perform() {
       applyGenerator(this, match::onMatch);
-    }
+    }  //rule真正执行的入口地方
 
     @Override public RelSubset group() {
       return group;

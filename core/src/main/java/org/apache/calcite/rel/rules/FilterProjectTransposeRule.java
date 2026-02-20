@@ -164,10 +164,7 @@ public class FilterProjectTransposeRule
     }
     // convert the filter to one that references the child of the project
     RexNode newCondition =
-        RelOptUtil.pushPastProjectUnlessBloat(filter.getCondition(), project, config.bloat());
-    if (newCondition == null) {
-      return;
-    }
+        RelOptUtil.pushPastProject(filter.getCondition(), project);
 
     final RelBuilder relBuilder = call.builder();
     RelNode newFilterRel;
@@ -261,14 +258,5 @@ public class FilterProjectTransposeRule
                   b2.operand(relClass).anyInputs())))
           .as(Config.class);
     }
-
-    /** Limit how much complexity can increase during merging.
-     * Default is {@link RelOptUtil#DEFAULT_BLOAT}. */
-    @Value.Default default int bloat() {
-      return RelOptUtil.DEFAULT_BLOAT;
-    }
-
-    /** Sets {@link #bloat()}. */
-    Config withBloat(int bloat);
   }
 }

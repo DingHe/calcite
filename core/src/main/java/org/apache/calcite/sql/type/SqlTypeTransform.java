@@ -27,7 +27,7 @@ import org.apache.calcite.sql.SqlOperatorBinding;
  *
  * <p>This class is an example of the
  * {@link org.apache.calcite.util.Glossary#STRATEGY_PATTERN strategy pattern}.
- *
+ * sql类型转换
  * @see SqlTypeTransforms
  */
 public interface SqlTypeTransform {
@@ -44,9 +44,4 @@ public interface SqlTypeTransform {
   RelDataType transformType(
       SqlOperatorBinding opBinding,
       RelDataType typeToTransform);
-
-  /** Creates an operand type transform. */
-  default SqlOperatorBinding apply(SqlOperatorBinding operatorBinding) {
-    return operatorBinding.transform(this);
-  }
 }

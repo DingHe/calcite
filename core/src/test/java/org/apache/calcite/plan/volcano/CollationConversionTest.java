@@ -48,8 +48,6 @@ import static org.apache.calcite.plan.volcano.PlannerTests.TestLeafRel;
 import static org.apache.calcite.plan.volcano.PlannerTests.TestSingleRel;
 import static org.apache.calcite.plan.volcano.PlannerTests.newCluster;
 
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -84,17 +82,17 @@ class CollationConversionTest {
             cluster.traitSetOf(PHYS_CALLING_CONVENTION).plus(ROOT_COLLATION));
     planner.setRoot(convertedRel);
     RelNode result = planner.chooseDelegate().findBestExp();
-    assertThat(result, instanceOf(RootSingleRel.class));
+    assertTrue(result instanceof RootSingleRel);
     assertTrue(result.getTraitSet().contains(ROOT_COLLATION));
     assertTrue(result.getTraitSet().contains(PHYS_CALLING_CONVENTION));
 
     final RelNode input = result.getInput(0);
-    assertThat(input, instanceOf(PhysicalSort.class));
+    assertTrue(input instanceof PhysicalSort);
     assertTrue(result.getTraitSet().contains(ROOT_COLLATION));
     assertTrue(input.getTraitSet().contains(PHYS_CALLING_CONVENTION));
 
     final RelNode input2 = input.getInput(0);
-    assertThat(input2, instanceOf(LeafRel.class));
+    assertTrue(input2 instanceof LeafRel);
     assertTrue(input2.getTraitSet().contains(LEAF_COLLATION));
     assertTrue(input.getTraitSet().contains(PHYS_CALLING_CONVENTION));
   }
@@ -286,14 +284,12 @@ class CollationConversionTest {
   /** Physical sort node (not logical). */
   private static class PhysicalSort extends Sort {
     PhysicalSort(RelOptCluster cluster, RelTraitSet traits, RelNode input,
-        RelCollation collation, @Nullable RexNode offset,
-        @Nullable RexNode fetch) {
+        RelCollation collation, RexNode offset, RexNode fetch) {
       super(cluster, traits, input, collation, offset, fetch);
     }
 
     public Sort copy(RelTraitSet traitSet, RelNode newInput,
-        RelCollation newCollation, @Nullable RexNode offset,
-        @Nullable RexNode fetch) {
+        RelCollation newCollation, RexNode offset, RexNode fetch) {
       return new PhysicalSort(getCluster(), traitSet, newInput, newCollation,
           offset, fetch);
     }

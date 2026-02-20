@@ -29,8 +29,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -51,7 +49,6 @@ import java.util.function.Predicate;
 import java.util.stream.StreamSupport;
 
 import static java.util.Collections.unmodifiableMap;
-import static java.util.Objects.requireNonNull;
 
 /**
  * Internal objects (and deserializers) used to parse Elasticsearch results
@@ -67,10 +64,9 @@ final class ElasticsearchJson {
   /**
    * Visits leaves of the aggregation where all values are stored.
    */
-  static void visitValueNodes(Aggregations aggregations,
-      Consumer<Map<String, Object>> consumer) {
-    requireNonNull(aggregations, "aggregations");
-    requireNonNull(consumer, "consumer");
+  static void visitValueNodes(Aggregations aggregations, Consumer<Map<String, Object>> consumer) {
+    Objects.requireNonNull(aggregations, "aggregations");
+    Objects.requireNonNull(consumer, "consumer");
 
     Map<RowKey, List<MultiValue>> rows = new LinkedHashMap<>();
 
@@ -96,19 +92,12 @@ final class ElasticsearchJson {
    * Visits Elasticsearch
    * <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping.html">mapping
    * properties</a> and calls consumer for each {@code field / type} pair.
-   *
-   * <p>Nested fields are represented as {@code foo.bar.qux}.
-   *
-   * <p>Also supports
-   * <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/multi-fields.html">
-   * multi-field mappings</a>.
-   * These fields are also represented as {@code foo.bar} with the difference
-   * that the type of the parent cannot be "nested".
+   * Nested fields are represented as {@code foo.bar.qux}.
    */
   static void visitMappingProperties(ObjectNode mapping,
       BiConsumer<String, String> consumer) {
-    requireNonNull(mapping, "mapping");
-    requireNonNull(consumer, "consumer");
+    Objects.requireNonNull(mapping, "mapping");
+    Objects.requireNonNull(consumer, "consumer");
     if (mapping.has("properties")) {
       visitMappingProperties(new ArrayDeque<>(), mapping, consumer);
     }
@@ -116,35 +105,24 @@ final class ElasticsearchJson {
 
   private static void visitMappingProperties(Deque<String> path,
       ObjectNode mapping, BiConsumer<String, String> consumer) {
-    requireNonNull(mapping, "mapping");
+    Objects.requireNonNull(mapping, "mapping");
     if (mapping.isMissingNode()) {
       return;
     }
 
-    // check if we've reached a leaf
+    // check if we have reached actual field mapping (leaf of JSON tree)
     Predicate<JsonNode> isLeaf = node -> node.path("type").isValueNode();
 
-    // "properties" is present under the root or under "nested" fields
     if (mapping.path("properties").isObject()
         && !isLeaf.test(mapping.path("properties"))) {
-      // recurse on "nested" field
-      visitMappingProperties(path, (ObjectNode) mapping.get("properties"),
-          consumer);
-      return;
-    }
-
-    // "fields" is used for multi-fields
-    if (mapping.path("fields").isObject()
-        && !isLeaf.test(mapping.path("fields"))) {
-      // recurse on multi-field
-      visitMappingProperties(path, (ObjectNode) mapping.get("fields"),
-          consumer);
+      // recurse
+      visitMappingProperties(path, (ObjectNode) mapping.get("properties"), consumer);
       return;
     }
 
     if (isLeaf.test(mapping)) {
-      // if we reached a leaf we can stop as we've already registered the type
-      // mapping
+      // this is leaf (register field / type mapping)
+      consumer.accept(String.join(".", path), mapping.get("type").asText());
       return;
     }
 
@@ -154,12 +132,6 @@ final class ElasticsearchJson {
       final String name = entry.getKey();
       final ObjectNode node = (ObjectNode) entry.getValue();
       path.add(name);
-
-      // type is present
-      if (node.get("type") != null) {
-        consumer.accept(String.join(".", path), node.get("type").asText());
-      }
-
       visitMappingProperties(path, node, consumer);
       path.removeLast();
     }
@@ -174,7 +146,7 @@ final class ElasticsearchJson {
     private final int hashCode;
 
     private RowKey(final Map<String, Object> keys) {
-      this.keys = requireNonNull(keys, "keys");
+      this.keys = Objects.requireNonNull(keys, "keys");
       this.hashCode = Objects.hashCode(keys);
     }
 
@@ -257,7 +229,7 @@ final class ElasticsearchJson {
         @JsonProperty("aggregations") Aggregations aggregations,
         @JsonProperty("_scroll_id") String scrollId,
         @JsonProperty("took") long took) {
-      this.hits = requireNonNull(hits, "hits");
+      this.hits = Objects.requireNonNull(hits, "hits");
       this.aggregations = aggregations;
       this.scrollId = scrollId;
       this.took = took;
@@ -294,7 +266,7 @@ final class ElasticsearchJson {
     SearchHits(@JsonProperty("total")final SearchTotal total,
                @JsonProperty("hits") final List<SearchHit> hits) {
       this.total = total;
-      this.hits = requireNonNull(hits, "hits");
+      this.hits = Objects.requireNonNull(hits, "hits");
     }
 
     public List<SearchHit> hits() {
@@ -373,7 +345,7 @@ final class ElasticsearchJson {
     SearchHit(@JsonProperty(ElasticsearchConstants.ID) final String id,
                       @JsonProperty("_source") final Map<String, Object> source,
                       @JsonProperty("fields") final Map<String, Object> fields) {
-      this.id = requireNonNull(id, "id");
+      this.id = Objects.requireNonNull(id, "id");
 
       // both can't be null
       if (source == null && fields == null) {
@@ -405,7 +377,7 @@ final class ElasticsearchJson {
     }
 
     Object valueOrNull(String name) {
-      requireNonNull(name, "name");
+      Objects.requireNonNull(name, "name");
 
       // for "select *" return whole document
       if (ElasticsearchConstants.isSelectAll(name)) {
@@ -433,8 +405,7 @@ final class ElasticsearchJson {
      * @param path field path(s), optionally with dots ({@code a.b.c}).
      * @return value located at path {@code path} or {@code null} if not found.
      */
-    private static @Nullable Object valueFromPath(
-        @Nullable Map<String, Object> map, String path) {
+    private static Object valueFromPath(Map<String, Object> map, String path) {
       if (map == null) {
         return null;
       }
@@ -484,7 +455,7 @@ final class ElasticsearchJson {
     private Map<String, Aggregation> aggregationsAsMap;
 
     Aggregations(List<? extends Aggregation> aggregations) {
-      this.aggregations = requireNonNull(aggregations, "aggregations");
+      this.aggregations = Objects.requireNonNull(aggregations, "aggregations");
     }
 
     /**
@@ -595,8 +566,8 @@ final class ElasticsearchJson {
         final String name,
         final Aggregations aggregations) {
       this.key = key; // key can be set after construction
-      this.name = requireNonNull(name, "name");
-      this.aggregations = requireNonNull(aggregations, "aggregations");
+      this.name = Objects.requireNonNull(name, "name");
+      this.aggregations = Objects.requireNonNull(aggregations, "aggregations");
     }
 
     /**
@@ -641,8 +612,8 @@ final class ElasticsearchJson {
     private final Map<String, Object> values;
 
     MultiValue(final String name, final Map<String, Object> values) {
-      this.name = requireNonNull(name, "name");
-      this.values = requireNonNull(values, "values");
+      this.name = Objects.requireNonNull(name, "name");
+      this.values = Objects.requireNonNull(values, "values");
     }
 
     @Override public String getName() {

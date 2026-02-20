@@ -23,17 +23,17 @@ package org.apache.calcite.util;
 public enum Optionality {
   /** A property is <em>mandatory</em> if an instance must possess it;
    * it is an error if it does not. */
-  MANDATORY,
+  MANDATORY, //强制
 
   /** A property is <em>optional</em> if an instance may or may not possess it;
    * neither state is an error. */
-  OPTIONAL,
+  OPTIONAL, //可选
 
   /** A property is <em>ignored</em> if an instance may or may not possess it;
    * if it possesses the property, the effect is as if it does not. */
-  IGNORED,
+  IGNORED, //忽略
 
   /** A property is <em>forbidden</em> if an instance must not possess it;
    * it is an error if the instance has the property. */
-  FORBIDDEN
+  FORBIDDEN  //禁止
 }

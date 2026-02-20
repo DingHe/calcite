@@ -59,8 +59,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import static org.apache.calcite.rel.RelCollations.containsOrderless;
 
 import static java.util.Objects.requireNonNull;
@@ -96,8 +94,7 @@ public class EnumerableMergeJoin extends Join implements EnumerableRel {
 
     final List<RelCollation> collations =
         traits.getTraits(RelCollationTraitDef.INSTANCE);
-    requireNonNull(collations, "collations");
-    checkArgument(!collations.isEmpty());
+    assert collations != null && collations.size() > 0;
     ImmutableIntList rightKeys = joinInfo.rightKeys
         .incr(left.getRowType().getFieldCount());
     // Currently it has very limited ability to represent the equivalent traits
@@ -350,9 +347,11 @@ public class EnumerableMergeJoin extends Join implements EnumerableRel {
       keyMap.put(sourceKeys.get(i), targetKeys.get(i));
     }
 
-    return Mappings.target(keyMap,
-        (left2Right ? left : right).getRowType().getFieldCount(),
-        (left2Right ? right : left).getRowType().getFieldCount());
+    Mappings.TargetMapping mapping =
+        Mappings.target(keyMap,
+            (left2Right ? left : right).getRowType().getFieldCount(),
+            (left2Right ? right : left).getRowType().getFieldCount());
+    return mapping;
   }
 
   /**

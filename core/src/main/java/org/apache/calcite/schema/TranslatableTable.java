@@ -22,7 +22,7 @@ import org.apache.calcite.rel.RelNode;
 /**
  * Extension to {@link Table} that specifies how it is to be translated to
  * a {@link org.apache.calcite.rel.RelNode relational expression}.
- *
+ * 定义如何把表转为关系表达式，如果没有定义此接口，则转为EnumerableTableScan。
  * <p>It is optional for a Table to implement this interface. If Table does
  * not implement this interface, it will be converted to an
  * {@link org.apache.calcite.adapter.enumerable.EnumerableTableScan}.

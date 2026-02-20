@@ -62,7 +62,7 @@ class NodeUpdateHelper {
     }
 
     if (newValue instanceof List
-        && ((List<?>) newValue).isEmpty()
+        && ((List<?>) newValue).size() == 0
         && !update.containsKey(attr)) {
       return;
     }

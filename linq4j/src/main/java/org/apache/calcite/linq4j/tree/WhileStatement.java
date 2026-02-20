@@ -20,8 +20,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Represents a "while" statement.
  */
@@ -31,8 +29,10 @@ public class WhileStatement extends Statement {
 
   public WhileStatement(Expression condition, Statement body) {
     super(ExpressionType.While, Void.TYPE);
-    this.condition = requireNonNull(condition, "condition");
-    this.body = requireNonNull(body, "body");
+    assert condition != null : "condition should not be null";
+    assert body != null : "body should not be null";
+    this.condition = condition;
+    this.body = body;
   }
 
   @Override public Statement accept(Shuttle shuttle) {
@@ -63,8 +63,15 @@ public class WhileStatement extends Statement {
     }
 
     WhileStatement that = (WhileStatement) o;
-    return body.equals(that.body)
-        && condition.equals(that.condition);
+
+    if (!body.equals(that.body)) {
+      return false;
+    }
+    if (!condition.equals(that.condition)) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

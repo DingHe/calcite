@@ -36,8 +36,7 @@ import com.google.common.collect.ImmutableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Implementation of {@link org.apache.calcite.sql.SqlSpatialTypeOperatorTable} containing
@@ -61,12 +60,15 @@ public class SqlSpatialTypeOperatorTable implements SqlOperatorTable {
         SqlSpatialTypeFunctions.class.getName(), "*", true);
 
     // Register the spatial aggregate functions.
-    schema.add("ST_UNION",
-        requireNonNull(AggregateFunctionImpl.create(UnionOperation.class)));
-    schema.add("ST_ACCUM",
-        requireNonNull(AggregateFunctionImpl.create(AccumOperation.class)));
-    schema.add("ST_COLLECT",
-        requireNonNull(AggregateFunctionImpl.create(CollectOperation.class)));
+    schema.add(
+        "ST_UNION", Objects.requireNonNull(
+        AggregateFunctionImpl.create(UnionOperation.class)));
+    schema.add(
+        "ST_ACCUM", Objects.requireNonNull(
+        AggregateFunctionImpl.create(AccumOperation.class)));
+    schema.add(
+        "ST_COLLECT", Objects.requireNonNull(
+        AggregateFunctionImpl.create(CollectOperation.class)));
 
     // Create a catalog reader to retrieve the operators.
     CalciteCatalogReader catalogReader =

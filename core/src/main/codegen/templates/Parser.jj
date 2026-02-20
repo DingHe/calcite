@@ -28,7 +28,7 @@ options {
 PARSER_BEGIN(${parser.class})
 
 package ${parser.package};
-
+/*如果 parser.imports 为空或不存在，!default 会提供默认值*/
 <#list (parser.imports!default.parser.imports) as importStr>
 import ${importStr};
 </#list>
@@ -40,7 +40,6 @@ import org.apache.calcite.runtime.CalciteContextException;
 import org.apache.calcite.sql.JoinConditionType;
 import org.apache.calcite.sql.JoinType;
 import org.apache.calcite.sql.SqlAlter;
-import org.apache.calcite.sql.SqlAsofJoin;
 import org.apache.calcite.sql.SqlBasicTypeNameSpec;
 import org.apache.calcite.sql.SqlBinaryOperator;
 import org.apache.calcite.sql.SqlCall;
@@ -150,12 +149,12 @@ public class ${parser.class} extends SqlAbstractParserImpl
 
     // Can't use quoted literal because of a bug in how JavaCC translates
     // backslash-backslash.
-    private static final char BACKSLASH = 0x5c;
-    private static final char DOUBLE_QUOTE = 0x22;
-    private static final String DQ = DOUBLE_QUOTE + "";
-    private static final String DQDQ = DQ + DQ;
+    private static final char BACKSLASH = 0x5c; //反斜杠在字符串处理中通常用于转义字符，因此需要将其表示为一个常量
+    private static final char DOUBLE_QUOTE = 0x22; //双引号通常用于字符串的界定符，解析时需要用到
+    private static final String DQ = DOUBLE_QUOTE + ""; //这个常量是将 DOUBLE_QUOTE（双引号字符）转换为字符串。即 ", 用于后续构建字符串或与其它字符串拼接
+    private static final String DQDQ = DQ + DQ; //这是一个字符串常量，值是两个双引号拼接在一起，即 ""
     private static final SqlLiteral LITERAL_ZERO =
-        SqlLiteral.createExactNumeric("0", SqlParserPos.ZERO);
+        SqlLiteral.createExactNumeric("0", SqlParserPos.ZERO); //定义了一个表示数字 0 的常量，使用 SqlLiteral.createExactNumeric 方法创建一个精确的数值文字常量
     private static final SqlLiteral LITERAL_ONE =
         SqlLiteral.createExactNumeric("1", SqlParserPos.ZERO);
     private static final SqlLiteral LITERAL_MINUS_ONE =
@@ -164,12 +163,12 @@ public class ${parser.class} extends SqlAbstractParserImpl
 
     private static Metadata metadata;
 
-    private Casing unquotedCasing;
-    private Casing quotedCasing;
+    private Casing unquotedCasing;   //不带引号的标识符的处理
+    private Casing quotedCasing;     //带引号标识符的处理
     private int identifierMaxLength;
-    private SqlConformance conformance;
+    private SqlConformance conformance;  //SQl兼容语法
 
-    /**
+    /**  创建解析器的工厂
      * {@link SqlParserImplFactory} implementation for creating parser.
      */
     public static final SqlParserImplFactory FACTORY = new SqlParserImplFactory() {
@@ -194,7 +193,7 @@ public class ${parser.class} extends SqlAbstractParserImpl
             throw new AssertionError(e);
         }
     }
-
+    //如果metadata没有初始化，则新建一个
     public Metadata getMetadata() {
         synchronized (${parser.class}.class) {
             if (metadata == null) {
@@ -235,7 +234,7 @@ public class ${parser.class} extends SqlAbstractParserImpl
     public SqlNode parseSqlExpressionEof() throws Exception {
         return SqlExpressionEof();
     }
-
+    //解析语句
     public SqlNode parseSqlStmtEof() throws Exception {
         return SqlStmtEof();
     }
@@ -405,7 +404,7 @@ JAVACODE List startList(Object o)
  * usage of hints could easily mask unintended ambiguities resulting from
  * future changes to the grammar, making it very brittle.
  */
-
+//token 变量通常是一个 Token 类型的对象，它代表当前正在处理的词法单元
 JAVACODE protected SqlParserPos getPos()
 {
     return new SqlParserPos(
@@ -997,7 +996,7 @@ List<SqlNode> FunctionParameterList(ExprContext exprContext) :
         return list;
     }
 }
-
+//匹配<DISTINCT> 或者<ALL>关键字
 SqlLiteral AllOrDistinct() :
 {
 }
@@ -1131,7 +1130,7 @@ SqlNodeList SqlStmtList() :
     }
 }
 
-/**
+/** 解析一个sql语句，dml  dql 或者 ddl
  * Parses an SQL statement.
  */
 SqlNode SqlStmt() :
@@ -1183,7 +1182,7 @@ SqlNode SqlStmt() :
     }
 }
 
-/**
+/** 解析一个sql语句，末尾是文件结束符号
  * Parses an SQL statement followed by the end-of-file symbol.
  */
 SqlNode SqlStmtEof() :
@@ -1324,7 +1323,7 @@ SqlNode TableHints(SqlIdentifier tableName) :
     }
 }
 
-/**
+/** 解析select表达式，不包含order by语句
  * Parses a leaf SELECT expression without ORDER BY.
  */
 SqlSelect SqlSelect() :
@@ -1343,16 +1342,16 @@ SqlSelect SqlSelect() :
     final Span s;
 }
 {
-    <SELECT> { s = span(); }
+    <SELECT> { s = span(); } //开始位置记录
     [ <HINT_BEG> AddHint(hints) ( <COMMA> AddHint(hints) )* <COMMENT_END> ]
-    SqlSelectKeywords(keywords)
+    SqlSelectKeywords(keywords)   //留给方言实现的特定接口，目前是空的实现，也就是调用了E()函数
     (
         <STREAM> {
-            keywords.add(SqlSelectKeyword.STREAM.symbol(getPos()));
+            keywords.add(SqlSelectKeyword.STREAM.symbol(getPos())); //匹配到STREAM关键字，则在keywords里面加入了此关键字
         }
     )?
     (
-        keyword = AllOrDistinct() { keywords.add(keyword); }
+        keyword = AllOrDistinct() { keywords.add(keyword); }  //匹配DISTINCT 或者ALL关键字
     )?
     {
         keywordList = new SqlNodeList(keywords, s.addAll(keywords).pos());
@@ -1745,10 +1744,10 @@ SqlNode SqlInsert() :
     (
         LOOKAHEAD(2)
         p = ParenthesizedCompoundIdentifierList() {
-            if (!p.right.isEmpty()) {
+            if (p.right.size() > 0) {
                 tableRef = extend(tableRef, p.right);
             }
-            if (!p.left.isEmpty()) {
+            if (p.left.size() > 0) {
                 columnList = p.left;
             } else {
                 columnList = null;
@@ -1820,14 +1819,14 @@ SqlNode SqlUpdate() :
     ( tableRef = TableHints(tableName) | { tableRef = tableName; } )
     [ tableRef = ExtendTable(tableRef) ]
     ( [ <AS> ] alias = SimpleIdentifier() | { alias = null; } )
-    <SET> id = CompoundIdentifier() {
+    <SET> id = SimpleIdentifier() {
         targetColumnList.add(id);
     }
     // TODO:  support DEFAULT also
     <EQ> AddExpression(sourceExpressionList, ExprContext.ACCEPT_SUB_QUERY)
     (
         <COMMA>
-        id = CompoundIdentifier() { targetColumnList.add(id); }
+        id = SimpleIdentifier() { targetColumnList.add(id); }
         <EQ> AddExpression(sourceExpressionList, ExprContext.ACCEPT_SUB_QUERY)
     )*
     ( where = Where() | { where = null; } )
@@ -1940,24 +1939,18 @@ SqlInsert WhenNotMatchedClause(SqlNode table) :
     }
 }
 
-/**
+/**解析select的一个字段，就是选择项
  * Parses one item in a select list.
  */
 void AddSelectItem(List<SqlNode> list) :
 {
-    SqlNode e;
+    final SqlNode e;
     final SqlIdentifier id;
 }
 {
     e = SelectExpression()
     (
-        [ <AS>
-            [ <MEASURE> {
-                    e = SqlInternalOperators.MEASURE.createCall(
-                        e.getParserPosition(), e);
-                }
-            ]
-        ]
+        [ <AS> ]
         (
             id = SimpleIdentifier()
         |
@@ -2000,7 +1993,6 @@ SqlLiteral Natural() :
 SqlLiteral JoinType() :
 {
     JoinType joinType;
-    boolean asof = false;
 }
 {
     (
@@ -2013,9 +2005,7 @@ SqlLiteral JoinType() :
     |
         <INNER> <JOIN> { joinType = JoinType.INNER; }
     |
-        <ASOF> <JOIN> { joinType = JoinType.ASOF; }
-    |
-        <LEFT> [ <OUTER> | <ASOF> { asof = true; } ] <JOIN> { joinType = asof ? JoinType.LEFT_ASOF : JoinType.LEFT; }
+        <LEFT> [ <OUTER> ] <JOIN> { joinType = JoinType.LEFT; }
     |
         <RIGHT> [ <OUTER> ] <JOIN> { joinType = JoinType.RIGHT; }
     |
@@ -2041,7 +2031,7 @@ SqlNode FromClause() :
     SqlLiteral joinType;
 }
 {
-    e = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN)
+    e = Join()
     (
         // Comma joins should only occur at top-level in the FROM clause.
         // Valid:
@@ -2050,36 +2040,39 @@ SqlNode FromClause() :
         // Not valid:
         //  * FROM a CROSS JOIN (b, c)
         LOOKAHEAD(1)
-        e = JoinOrCommaTable(e)
+        <COMMA> { joinType = JoinType.COMMA.symbol(getPos()); }
+        e2 = Join() {
+            e = new SqlJoin(joinType.getParserPosition(),
+                e,
+                SqlLiteral.createBoolean(false, joinType.getParserPosition()),
+                joinType,
+                e2,
+                JoinConditionType.NONE.symbol(SqlParserPos.ZERO),
+                null);
+        }
     )*
     { return e; }
 }
 
-SqlNode JoinOrCommaTable(SqlNode e) :
+SqlNode Join() :
 {
-    SqlNode e2;
-    SqlLiteral joinType;
+    SqlNode e;
 }
 {
-    LOOKAHEAD(2)
-    <COMMA> { joinType = JoinType.COMMA.symbol(getPos()); }
-    e2 = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN) {
-        return new SqlJoin(joinType.getParserPosition(),
-            e,
-            SqlLiteral.createBoolean(false, joinType.getParserPosition()),
-            joinType,
-            e2,
-            JoinConditionType.NONE.symbol(SqlParserPos.ZERO),
-            null);
+    e = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN)
+    (
+        LOOKAHEAD(2)
+        e = JoinTable(e)
+    )*
+    {
+        return e;
     }
-|
-    e2 = JoinTable(e) { return e2; }
 }
 
 /** Matches "LEFT JOIN t ON ...", "RIGHT JOIN t USING ...", "JOIN t". */
 SqlNode JoinTable(SqlNode e) :
 {
-    SqlNode e2, condition, matchCondition = null;
+    SqlNode e2, condition;
     final SqlLiteral natural, joinType, on, using;
     SqlNodeList list;
 }
@@ -2096,32 +2089,13 @@ SqlNode JoinTable(SqlNode e) :
     //
     // We allow CROSS JOIN (joinType = CROSS_JOIN) to have a join condition,
     // even though that is not valid SQL; the validator will catch it.
-    LOOKAHEAD(4)
+    LOOKAHEAD(3)
     natural = Natural()
     joinType = JoinType()
     e2 = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN)
     (
-        [ <MATCH_CONDITION> matchCondition = Expression(ExprContext.ACCEPT_SUB_QUERY) ]
         <ON> { on = JoinConditionType.ON.symbol(getPos()); }
         condition = Expression(ExprContext.ACCEPT_SUB_QUERY) {
-            JoinType type = joinType.getValueAs(JoinType.class);
-            if (matchCondition != null) {
-                if (type != JoinType.ASOF && type != JoinType.LEFT_ASOF) {
-                    throw SqlUtil.newContextException(getPos(), RESOURCE.matchConditionRequiresAsof());
-                }
-                return new SqlAsofJoin(joinType.getParserPosition(),
-                    e,
-                    natural,
-                    joinType,
-                    e2,
-                    on,
-                    condition,
-                    matchCondition);
-            } else {
-                if (type == JoinType.ASOF || type == JoinType.LEFT_ASOF) {
-                    throw SqlUtil.newContextException(getPos(), RESOURCE.asofRequiresMatchCondition());
-                }
-            }
             return new SqlJoin(joinType.getParserPosition(),
                 e,
                 natural,
@@ -2248,8 +2222,6 @@ SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
         tableRef = addLateral(tableRef, lateral)
         [ tableRef = MatchRecognize(tableRef) ]
     |
-        LOOKAHEAD(2)
-        [ <LATERAL> ] // "LATERAL" is implicit with "UNNEST", so ignore
         <UNNEST> { s = span(); }
         args = ParenthesizedQueryOrCommaList(ExprContext.ACCEPT_SUB_QUERY)
         [
@@ -3608,7 +3580,7 @@ void AddWithItem(List<SqlWithItem> list, SqlLiteral recursive) :
     { list.add(new SqlWithItem(id.getParserPosition(), id, columnList, definition, recursive)); }
 }
 
-/**
+/** 解析叶子查询或者表达式
  * Parses either a row expression, a leaf query expression, or
  * a parenthesized expression of any kind.
  */
@@ -3832,12 +3804,8 @@ List<Object> Expression2(ExprContext exprContext) :
                 AddExpression2b(list, ExprContext.ACCEPT_SUB_QUERY)
             |
                 <LBRACKET>
-                ( <OFFSET> { itemOp = SqlLibraryOperators.OFFSET; } <LPAREN> { e = Expression(ExprContext.ACCEPT_SUB_QUERY); } <RPAREN>
-                | <ORDINAL> { itemOp = SqlLibraryOperators.ORDINAL; } <LPAREN> { e = Expression(ExprContext.ACCEPT_SUB_QUERY); } <RPAREN>
-                | <SAFE_OFFSET> { itemOp = SqlLibraryOperators.SAFE_OFFSET; } <LPAREN> { e = Expression(ExprContext.ACCEPT_SUB_QUERY); } <RPAREN>
-                | <SAFE_ORDINAL> { itemOp = SqlLibraryOperators.SAFE_ORDINAL; } <LPAREN> { e = Expression(ExprContext.ACCEPT_SUB_QUERY); } <RPAREN>
-                | { itemOp = SqlStdOperatorTable.ITEM; } e = Expression(ExprContext.ACCEPT_SUB_QUERY)
-                )
+                itemOp = getItemOp()
+                e = Expression(ExprContext.ACCEPT_SUB_QUERY)
                 <RBRACKET> {
                     list.add(
                         new SqlParserUtil.ToTreeListItem(
@@ -3872,6 +3840,22 @@ List<Object> Expression2(ExprContext exprContext) :
     )
 }
 
+/** Returns the appropriate ITEM operator for indexing arrays. */
+SqlOperator getItemOp() :
+{
+}
+{
+    <OFFSET> { return SqlLibraryOperators.OFFSET; }
+|
+    <ORDINAL> { return SqlLibraryOperators.ORDINAL; }
+|
+    <SAFE_OFFSET> { return SqlLibraryOperators.SAFE_OFFSET; }
+|
+    <SAFE_ORDINAL> { return SqlLibraryOperators.SAFE_ORDINAL; }
+|
+    { return SqlStdOperatorTable.ITEM; }
+}
+
 /** Parses a comparison operator inside a SOME / ALL predicate. */
 SqlKind comp() :
 {
@@ -3897,7 +3881,7 @@ SqlKind comp() :
     }
 }
 
-/**
+/** 解析一元表达式或者括号表达式
  * Parses a unary row expression, or a parenthesized expression of any
  * kind.
  */
@@ -3911,7 +3895,7 @@ SqlNode Expression3(ExprContext exprContext) :
 }
 {
     LOOKAHEAD(2)
-    e = AtomicRowExpression()
+    e = AtomicRowExpression()  //主要是解析字面量、函数调用等
     {
         checkNonQueryExpression(exprContext);
         return e;
@@ -3990,7 +3974,7 @@ SqlNode Expression3(ExprContext exprContext) :
     {
         if (list1.size() == 1) {
             // interpret as single value or query
-            return list1.get(0).clone(list1.getParserPosition());
+            return list1.get(0);
         } else {
             // interpret as row constructor
             return SqlStdOperatorTable.ROW.createCall(span().end(list1),
@@ -4246,12 +4230,12 @@ SqlNode AtomicRowExpression() :
 {
     (
         LOOKAHEAD(2)
-        e = LiteralOrIntervalExpression()
+        e = LiteralOrIntervalExpression()  //解析interval时间间隔、数值、字符串、日期等字符串字面量
     |
-        e = DynamicParam()
+        e = DynamicParam()  //动态参数
     |
         LOOKAHEAD(2)
-        e = BuiltinFunctionCall()
+        e = BuiltinFunctionCall()  //解析内置函数的调用
     |
         e = JdbcFunctionCall()
     |
@@ -4534,13 +4518,13 @@ SqlNode NonIntervalLiteral() :
 }
 {
     (
-        e = NumericLiteral()
+        e = NumericLiteral()  //数值字面量
     |
-        e = StringLiteral()
+        e = StringLiteral()  //字符串字面量
     |
-        e = SpecialLiteral()
+        e = SpecialLiteral()  //true false null unkown等特殊字面量
     |
-        e = DateTimeLiteral()
+        e = DateTimeLiteral() //日期格式的字面量
 <#-- additional literal parser methods are included here -->
 <#list (parser.literalParserMethods!default.parser.literalParserMethods) as method>
     |
@@ -4808,15 +4792,15 @@ String SimpleStringLiteral() :
 }
 {
     <QUOTED_STRING> {
-        return SqlParserUtil.parseString(token.image);
+        return SqlParserUtil.parseString(token.image); //该规则用于解析标准的单引号字符串字面量，形式为 '<string>'
     }
 |
     <BIG_QUERY_QUOTED_STRING> {
-        return SqlParserUtil.stripQuotes(token.image, "'", "'", "\\'", Casing.UNCHANGED);
+        return SqlParserUtil.stripQuotes(token.image, "'", "'", "\\'", Casing.UNCHANGED); //该规则用于解析BigQuery风格的单引号字符串字面量
     }
 |
     <BIG_QUERY_DOUBLE_QUOTED_STRING> {
-        return SqlParserUtil.stripQuotes(token.image, DQ, DQ, "\\\"", Casing.UNCHANGED);
+        return SqlParserUtil.stripQuotes(token.image, DQ, DQ, "\\\"", Casing.UNCHANGED); //该规则用于解析 BigQuery 风格的双引号字符串字面量，形式为 "string"
     }
 }
 
@@ -4965,7 +4949,7 @@ SqlNode ArrayConstructor() :
         // by enumeration "ARRAY[e0, e1, ..., eN]"
         <LBRACKET> // TODO: do trigraph as well ??( ??)
         (
-            args = ExpressionCommaList(s, ExprContext.ACCEPT_SUB_QUERY)
+            args = ExpressionCommaList(s, ExprContext.ACCEPT_NON_QUERY)
         |
             { args = SqlNodeList.EMPTY; }
         )
@@ -5095,6 +5079,7 @@ SqlLiteral IntervalLiteral() :
 /** Parses an interval literal (e.g. {@code INTERVAL '2:3' HOUR TO MINUTE})
  * or an interval expression (e.g. {@code INTERVAL emp.empno MINUTE}
  * or {@code INTERVAL 3 MONTHS}). */
+ //这段代码主要是解析INTERVAL时间间隔字面量
 SqlNode IntervalLiteralOrExpression() :
 {
     final String p;
@@ -5210,7 +5195,7 @@ TimeUnit Second() :
 |
     <SECONDS> { return warn(TimeUnit.SECOND); }
 }
-
+//这个方法用于解析 SQL 中的 INTERVAL 表达式的时间单位和精度。它支持解析多种常见的时间单位，并且根据 TO 关键字的出现，可能会解析一个结束单位
 SqlIntervalQualifier IntervalQualifier() :
 {
     final Span s;
@@ -5221,10 +5206,10 @@ SqlIntervalQualifier IntervalQualifier() :
 }
 {
     (
-        start = Year() { s = span(); } startPrec = PrecisionOpt()
+        start = Year() { s = span(); } startPrec = PrecisionOpt() //首先匹配 Year（年），并且记录位置 s = span()，解析开始单位的精度（可选）
         (
             LOOKAHEAD(2) <TO> end = Month()
-        |   { end = null; }
+        |   { end = null; } //LOOKAHEAD 用于前瞻分析，如果接下来的部分是 TO，则开始解析结束单位为 Month()，即月；如果没有 TO，则结束单位为 null，表示没有结束单位
         )
     |
         start = Quarter() { s = span(); } startPrec = PrecisionOpt()
@@ -5423,7 +5408,7 @@ SqlDynamicParam DynamicParam() :
 {
 }
 {
-    <HOOK> {
+    <HOOK> {  //HOOK就是？
         return new SqlDynamicParam(nDynamicParams++, getPos());
     }
 }
@@ -5930,8 +5915,8 @@ SqlTypeNameSpec SqlTypeName2(Span s) :
 SqlTypeNameSpec SqlTypeName3(Span s) :
 {
     final SqlTypeName sqlTypeName;
-    int precision = RelDataType.PRECISION_NOT_SPECIFIED;
-    int scale = RelDataType.SCALE_NOT_SPECIFIED;
+    int precision = -1;
+    int scale = -1;
 }
 {
     (
@@ -5944,7 +5929,7 @@ SqlTypeNameSpec SqlTypeName3(Span s) :
         precision = UnsignedIntLiteral()
         [
             <COMMA>
-            scale = IntLiteral()
+            scale = UnsignedIntLiteral()
         ]
         <RPAREN>
     ]
@@ -6242,40 +6227,40 @@ SqlNode CursorExpression(ExprContext exprContext) :
     }
 }
 
-/**
+/** 解析内置函数的调用
  * Parses a call to a builtin function with special syntax.
  */
 SqlNode BuiltinFunctionCall() :
 {
-    final SqlIdentifier name;
-    final List<SqlNode> args = new ArrayList<SqlNode>();
+    final SqlIdentifier name; //保存函数名称
+    final List<SqlNode> args = new ArrayList<SqlNode>(); //保存函数调用的参数列表
     SqlNode e;
-    final Span s;
+    final Span s; //表示当前函数调用的位置信息
     SqlDataTypeSpec dt;
-    final SqlIntervalQualifier unit;
+    final SqlIntervalQualifier unit; //用于时间或日期相关的单位（如 YEAR, MONTH），用于 EXTRACT 函数
     final SqlNode node;
     final SqlLiteral style; // mssql convert 'style' operand
-    final SqlFunction f;
-    final SqlNode format;
+    final SqlFunction f; //用于表示 SQL 函数
+    final SqlNode format; //格式化参数，特定于某些函数
 }
 {
     //~ FUNCTIONS WITH SPECIAL SYNTAX ---------------------------------------
     (
         (  <CAST> { f = SqlStdOperatorTable.CAST; }
         | <SAFE_CAST> { f = SqlLibraryOperators.SAFE_CAST; }
-        | <TRY_CAST> { f = SqlLibraryOperators.TRY_CAST; }
+        | <TRY_CAST> { f = SqlLibraryOperators.TRY_CAST; } //这三种函数用于类型转换
         )
         { s = span(); }
-        <LPAREN> AddExpression(args, ExprContext.ACCEPT_SUB_QUERY)
+        <LPAREN> AddExpression(args, ExprContext.ACCEPT_SUB_QUERY) //表示解析函数参数，可以是表达式或子查询
         <AS>
         (
-            dt = DataType() { args.add(dt); }
+            dt = DataType() { args.add(dt); }  //数据类型
         |
-            <INTERVAL> e = IntervalQualifier() { args.add(e); }
+            <INTERVAL> e = IntervalQualifier() { args.add(e); } //或者时间间隔
         )
         [ <FORMAT> format = StringLiteral() { args.add(format); } ]
         <RPAREN> {
-            return f.createCall(s.end(this), args);
+            return f.createCall(s.end(this), args); //函数调用会通过 f.createCall() 方法生成一个函数调用对象
         }
     |
         <EXTRACT> { s = span(); }
@@ -7953,7 +7938,7 @@ SqlBinaryOperator BinaryRowOperator() :
 |   op = BinaryMultisetOperator() { return op; }
 }
 
-/**
+/** 一元操作符解析
  * Parses a prefix row operator like NOT.
  */
 SqlPrefixOperator PrefixRowOperator() :
@@ -8042,7 +8027,6 @@ SqlPostfixOperator PostfixRowOperator() :
 |   < ARRAY_CONCAT_AGG: "ARRAY_CONCAT_AGG" >
 |   < ARRAY_MAX_CARDINALITY: "ARRAY_MAX_CARDINALITY" >
 |   < AS: "AS" >
-|   < ASOF: "ASOF" >
 |   < ASC: "ASC" >
 |   < ASENSITIVE: "ASENSITIVE" >
 |   < ASSERTION: "ASSERTION" >
@@ -8343,12 +8327,10 @@ SqlPostfixOperator PostfixRowOperator() :
 |   < MATCH: "MATCH" >
 |   < MATCHED: "MATCHED" >
 |   < MATCHES: "MATCHES" >
-|   < MATCH_CONDITION: "MATCH_CONDITION">
 |   < MATCH_NUMBER: "MATCH_NUMBER">
 |   < MATCH_RECOGNIZE: "MATCH_RECOGNIZE">
 |   < MAX: "MAX" >
 |   < MAXVALUE: "MAXVALUE" >
-|   < MEASURE: "MEASURE" >
 |   < MEASURES: "MEASURES" >
 |   < MEMBER: "MEMBER" >
 |   < MERGE: "MERGE" > { beforeTableName(); }
@@ -8847,16 +8829,16 @@ void NonReservedKeyWord2of3() :
 // which use single-quote as the escape character.
 <DEFAULT, DQID, BTID> TOKEN :
 {
-    < QUOTED_STRING: <QUOTE> ( (~["'"]) | ("''"))* <QUOTE> >
+    < QUOTED_STRING: <QUOTE> ( (~["'"]) | ("''"))* <QUOTE> >   //表示单引号的字符串，转义用''
 |
-    < PREFIXED_STRING_LITERAL: ("_" <CHARSETNAME> | "N") <QUOTED_STRING> >
+    < PREFIXED_STRING_LITERAL: ("_" <CHARSETNAME> | "N") <QUOTED_STRING> >  //定义带有前缀的字符串字面量。常见的前缀有 N（表示 Unicode 字符串）或数据库特定的字符集（如 LATIN1 或 UTF8）
 |
-    < UNICODE_STRING_LITERAL: "U" "&" <QUOTED_STRING> >
+    < UNICODE_STRING_LITERAL: "U" "&" <QUOTED_STRING> >   //定义 Unicode 字符串字面量
 |
-    < C_STYLE_ESCAPED_STRING_LITERAL: "E" <QUOTE> ( (~["'", "\\"]) | ("\\" ~[]) | "''")* <QUOTE> >
+    < C_STYLE_ESCAPED_STRING_LITERAL: "E" <QUOTE> ( (~["'", "\\"]) | ("\\" ~[]) | "''")* <QUOTE> >  //该规则的作用是解析带有转义字符的字符串（例如 E'Line 1\nLine 2'）
 |
     < #CHARSETNAME: (["a"-"z","A"-"Z","0"-"9"])
-    (["a"-"z","A"-"Z","0"-"9",":",".","-","_"])*
+    (["a"-"z","A"-"Z","0"-"9",":",".","-","_"])*  //定义字符集名称的规则。字符集名称通常由字母、数字、冒号、点、连字符和下划线组成。
     >
 }
 

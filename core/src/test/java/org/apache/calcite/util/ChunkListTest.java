@@ -33,7 +33,7 @@ import java.util.Random;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,11 +51,11 @@ class ChunkListTest {
     final ChunkList<Integer> list0 = new ChunkList<>(list);
     final ChunkList<Integer> list1 = new ChunkList<>(list);
     list1.add(123);
-    assertThat(list, hasSize(0));
-    assertThat(list0, hasSize(0));
-    assertThat(list1, hasSize(1));
+    assertEquals(0, list.size());
+    assertEquals(0, list0.size());
+    assertEquals(1, list1.size());
     assertTrue(list.isEmpty());
-    assertThat(list, hasToString("[]"));
+    assertEquals("[]", list.toString());
 
     try {
       list.remove(0);
@@ -79,45 +79,45 @@ class ChunkListTest {
     }
 
     list.add(7);
-    assertThat(list, hasSize(1));
-    assertThat(list.get(0), is(7));
+    assertEquals(1, list.size());
+    assertEquals(7, (int) list.get(0));
     assertFalse(list.isEmpty());
-    assertThat(list, hasToString("[7]"));
+    assertEquals("[7]", list.toString());
 
     list.add(9);
     list.add(null);
     list.add(11);
-    assertThat(list, hasSize(4));
-    assertThat(list.get(0), is(7));
-    assertThat(list.get(1), is(9));
+    assertEquals(4, list.size());
+    assertEquals(7, (int) list.get(0));
+    assertEquals(9, (int) list.get(1));
     assertNull(list.get(2));
-    assertThat(list.get(3), is(11));
+    assertEquals(11, (int) list.get(3));
     assertFalse(list.isEmpty());
-    assertThat(list, hasToString("[7, 9, null, 11]"));
+    assertEquals("[7, 9, null, 11]", list.toString());
 
     assertTrue(list.contains(9));
     assertFalse(list.contains(8));
 
     list.addAll(Collections.nCopies(70, 1));
-    assertThat(list, hasSize(74));
-    assertThat((int) list.get(40), is(1));
-    assertThat((int) list.get(70), is(1));
+    assertEquals(74, list.size());
+    assertEquals(1, (int) list.get(40));
+    assertEquals(1, (int) list.get(70));
 
     int n = 0;
     for (Integer integer : list) {
       Util.discard(integer);
       ++n;
     }
-    assertThat(list, hasSize(n));
+    assertEquals(n, list.size());
 
     int i = list.indexOf(null);
-    assertThat(i, is(2));
+    assertEquals(2, i);
 
     // can't sort if null is present
     list.set(2, 123);
 
     i = list.indexOf(null);
-    assertThat(i, is(-1));
+    assertEquals(-1, i);
 
     // sort an empty list
     Collections.sort(list0);
@@ -128,11 +128,11 @@ class ChunkListTest {
     assertThat(list1, hasSize(1));
 
     Collections.sort(list);
-    assertThat(list, hasSize(74));
+    assertEquals(74, list.size());
 
     list.remove((Integer) 7);
     Collections.sort(list);
-    assertThat((int) list.get(3), is(1));
+    assertEquals(1, (int) list.get(3));
 
     // remove all instances of a value that exists
     boolean b = list.removeAll(Collections.singletonList(9));
@@ -161,14 +161,14 @@ class ChunkListTest {
     //noinspection MismatchedQueryAndUpdateOfCollection
     final ChunkList<String> list2 = new ChunkList<>();
     list2.listIterator(0).add("x");
-    assertThat(list2, hasToString("[x]"));
+    assertEquals("[x]", list2.toString());
 
     // add at start
     list2.add(0, "y");
-    assertThat(list2, hasToString("[y, x]"));
+    assertEquals("[y, x]", list2.toString());
 
     list2.remove(0);
-    assertThat(list2, hasToString("[x]"));
+    assertEquals("[x]", list2.toString());
 
     // clear a list of length 5, one element at a time, using an iterator
     list2.clear();
@@ -325,8 +325,8 @@ class ChunkListTest {
           assertTrue(list.size() < size);
           assertTrue(list2.size() < size);
         } else {
-          assertThat(list, hasSize(size));
-          assertThat(list2, hasSize(size));
+          assertTrue(list.size() == size);
+          assertTrue(list2.size() == size);
         }
         removeCount += size - list.size();
         break;
@@ -370,8 +370,8 @@ class ChunkListTest {
         ++addCount;
         break;
       }
-      assertThat(initialCount + addCount - removeCount, is(list.size()));
-      assertThat(list2, is(list));
+      assertEquals(list.size(), initialCount + addCount - removeCount);
+      assertEquals(list, list2);
     }
   }
 

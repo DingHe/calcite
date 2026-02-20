@@ -25,8 +25,6 @@ import org.apache.calcite.util.Pair;
 import com.alibaba.innodb.java.reader.comparator.ComparisonOperator;
 import com.google.common.collect.ImmutableList;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -54,8 +52,7 @@ import static java.util.Objects.requireNonNull;
 public class IndexCondition {
 
   static final IndexCondition EMPTY_CONDITION =
-      create("", QueryType.PK_FULL_SCAN,
-          null, ComparisonOperator.NOP, ComparisonOperator.NOP,
+      create(null, null, null, ComparisonOperator.NOP, ComparisonOperator.NOP,
           ImmutableList.of(), ImmutableList.of());
 
   /** Field names per row type. */
@@ -78,11 +75,11 @@ public class IndexCondition {
       List<String> fieldNames,
       String indexName,
       List<String> indexColumnNames,
-      @Nullable RelCollation implicitCollation,
-      @Nullable List<RexNode> pushDownConditions,
-      @Nullable List<RexNode> remainderConditions,
+      RelCollation implicitCollation,
+      List<RexNode> pushDownConditions,
+      List<RexNode> remainderConditions,
       QueryType queryType,
-      @Nullable List<Object> pointQueryKey,
+      List<Object> pointQueryKey,
       ComparisonOperator rangeQueryLowerOp,
       ComparisonOperator rangeQueryUpperOp,
       List<Object> rangeQueryLowerKey,
@@ -130,7 +127,7 @@ public class IndexCondition {
       List<RexNode> pushDownConditions,
       List<RexNode> remainderConditions) {
     return new IndexCondition(fieldNames, indexName, indexColumnNames, null,
-        pushDownConditions, remainderConditions, QueryType.PK_FULL_SCAN, null,
+        pushDownConditions, remainderConditions, null, null,
         ComparisonOperator.NOP, ComparisonOperator.NOP, ImmutableList.of(),
         ImmutableList.of());
   }
@@ -142,7 +139,7 @@ public class IndexCondition {
   public static IndexCondition create(
       String indexName,
       QueryType queryType,
-      @Nullable List<Object> pointQueryKey,
+      List<Object> pointQueryKey,
       ComparisonOperator rangeQueryLowerOp,
       ComparisonOperator rangeQueryUpperOp,
       List<Object> rangeQueryLowerKey,

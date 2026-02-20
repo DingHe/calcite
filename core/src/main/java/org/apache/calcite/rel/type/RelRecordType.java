@@ -35,9 +35,9 @@ import static java.util.Objects.requireNonNull;
  */
 public class RelRecordType extends RelDataTypeImpl implements Serializable {
   /** Name resolution policy; usually {@link StructKind#FULLY_QUALIFIED}. */
-  private final StructKind kind;
+  private final StructKind kind; //结构字段的引用规则
   private final boolean nullable;
-  private final @Nullable Map<String, RelDataTypeField> fieldNameMap;
+  private final @Nullable Map<String, RelDataTypeField> fieldNameMap; //字段名称和类型的映射
 
   /** Minimum number of fields where it is worth populating {@link #fieldNameMap}
    * to accelerate lookups by field name. */
@@ -166,10 +166,10 @@ public class RelRecordType extends RelDataTypeImpl implements Serializable {
    * immutable list.
    */
   private static class SerializableRelRecordType implements Serializable {
-    private final List<RelDataTypeField> fields;
+    private List<RelDataTypeField> fields;
 
     private SerializableRelRecordType(List<RelDataTypeField> fields) {
-      this.fields = requireNonNull(fields, "fields");
+      this.fields = fields;
     }
 
     /**

@@ -33,7 +33,7 @@ import static java.util.Objects.requireNonNull;
 
 /**
  * Builder for {@link BlockStatement}.
- *
+ * BlockStatement的建造类
  * <p>Has methods that help ensure that variable names are unique.
  */
 public class BlockBuilder {
@@ -110,11 +110,11 @@ public class BlockBuilder {
    * @param block Expression
    * @param optimize Whether to try to optimize by assigning the expression to
    * a variable. Do not do this if the expression has
-   * side effects or a time-dependent value.
+   * side-effects or a time-dependent value.
    */
   public Expression append(String name, BlockStatement block,
       boolean optimize) {
-    if (!statements.isEmpty()) {
+    if (statements.size() > 0) {
       Statement lastStatement = statements.get(statements.size() - 1);
       if (lastStatement instanceof GotoStatement) {
         // convert "return expr;" into "expr;"
@@ -214,7 +214,7 @@ public class BlockBuilder {
    */
   public Expression append(String name, Expression expression,
       boolean optimize) {
-    if (!statements.isEmpty()) {
+    if (statements.size() > 0) {
       Statement lastStatement = statements.get(statements.size() - 1);
       if (lastStatement instanceof GotoStatement) {
         // convert "return expr;" into "expr;"

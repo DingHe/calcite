@@ -39,8 +39,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static java.util.Objects.requireNonNull;
-
 /** Schema that provides TPC-H tables, populated according to a
  * particular scale factor. */
 public class TpchSchema extends AbstractSchema {
@@ -147,14 +145,11 @@ public class TpchSchema extends AbstractSchema {
 
     @Override public RelDataType getRowType(RelDataTypeFactory typeFactory) {
       final RelDataTypeFactory.Builder builder = typeFactory.builder();
-      final String prefix;
+      String prefix = "";
       if (columnPrefix) {
         final String t = tpchTable.getTableName().toUpperCase(Locale.ROOT);
-        prefix =
-            requireNonNull(columnPrefixes.get(t),
-                () -> "prefix for table " + t);
-      } else {
-        prefix = "";
+        prefix = columnPrefixes.get(t);
+        assert prefix != null : t;
       }
       for (TpchColumn<E> column : tpchTable.getColumns()) {
         final String c = (prefix + column.getColumnName())

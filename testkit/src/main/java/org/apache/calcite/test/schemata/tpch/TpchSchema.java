@@ -80,8 +80,8 @@ public class TpchSchema {
    * Part supplier in TPC-H.
    */
   public static class PartSupp {
-    public final int psPartkey;
-    public final int psSupplyCost;
+    public int psPartkey;
+    public int psSupplyCost;
 
     public PartSupp(int psPartkey, int psSupplyCost) {
       this.psPartkey = psPartkey;

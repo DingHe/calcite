@@ -21,25 +21,24 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.lang.reflect.Modifier;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
-/**
+/** 类的字段声明
  * Declaration of a field.
  */
 public class FieldDeclaration extends MemberDeclaration {
-  public final int modifier;
-  public final ParameterExpression parameter;
-  public final @Nullable Expression initializer;
+  public final int modifier; //修饰符
+  public final ParameterExpression parameter; //参数
+  public final @Nullable Expression initializer; //初始参数
 
   public FieldDeclaration(int modifier, ParameterExpression parameter,
       @Nullable Expression initializer) {
+    assert parameter != null : "parameter should not be null";
     this.modifier = modifier;
-    this.parameter = requireNonNull(parameter, "parameter");
+    this.parameter = parameter;
     this.initializer = initializer;
   }
-
+  //如果initializer被shuttle修改，则返回新的MemberDeclaration，否则不变
   @Override public MemberDeclaration accept(Shuttle shuttle) {
-    shuttle = shuttle.preVisit(this);
+    shuttle = shuttle.preVisit(this); //什么也没做，返回来Shuttle
     // do not visit parameter - visit may not return a ParameterExpression
     final Expression initializer =
         this.initializer == null ? null : this.initializer.accept(shuttle);
@@ -49,7 +48,7 @@ public class FieldDeclaration extends MemberDeclaration {
   @Override public <R> R accept(Visitor<R> visitor) {
     return visitor.visit(this);
   }
-
+  //在writer写入字段声明,例如 int a = 0;
   @Override public void accept(ExpressionWriter writer) {
     String modifiers = Modifier.toString(modifier);
     writer.append(modifiers);
@@ -73,9 +72,19 @@ public class FieldDeclaration extends MemberDeclaration {
     }
 
     FieldDeclaration that = (FieldDeclaration) o;
-    return modifier == that.modifier
-        && Objects.equals(initializer, that.initializer)
-        && parameter.equals(that.parameter);
+
+    if (modifier != that.modifier) {
+      return false;
+    }
+    if (initializer != null ? !initializer.equals(that.initializer) : that
+        .initializer != null) {
+      return false;
+    }
+    if (!parameter.equals(that.parameter)) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

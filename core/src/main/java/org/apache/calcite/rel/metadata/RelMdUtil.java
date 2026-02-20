@@ -62,8 +62,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 import static org.apache.calcite.util.NumberUtil.multiply;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * RelMdUtil provides utility methods used by the metadata provider methods.
  */
@@ -110,7 +108,9 @@ public class RelMdUtil {
     RexCall call = (RexCall) artificialSelectivityFuncNode;
     assert call.getOperator() == ARTIFICIAL_SELECTIVITY_FUNC;
     RexNode operand = call.getOperands().get(0);
-    return RexLiteral.numberValue(operand).doubleValue();
+    @SuppressWarnings("unboxing.of.nullable")
+    double doubleValue = ((RexLiteral) operand).getValueAs(Double.class);
+    return doubleValue;
   }
 
   /**
@@ -831,10 +831,6 @@ public class RelMdUtil {
     }
     double innerRowCount = left * right * selectivity;
     switch (join.getJoinType()) {
-    case ASOF:
-      return left * selectivity;
-    case LEFT_ASOF:
-      return left;
     case INNER:
       return innerRowCount;
     case LEFT:
@@ -905,12 +901,12 @@ public class RelMdUtil {
    * cardinality of its result. */
   private static class CardOfProjExpr extends RexVisitorImpl<@Nullable Double> {
     private final RelMetadataQuery mq;
-    private final Project rel;
+    private Project rel;
 
     CardOfProjExpr(RelMetadataQuery mq, Project rel) {
       super(true);
-      this.mq = requireNonNull(mq, "mq");
-      this.rel = requireNonNull(rel, "rel");
+      this.mq = mq;
+      this.rel = rel;
     }
 
     @Override public @Nullable Double visitInputRef(RexInputRef var) {

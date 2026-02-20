@@ -50,8 +50,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression that combines two relational expressions according to
  * some condition.
@@ -63,7 +61,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class Join extends BiRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  protected final RexNode condition;
+  protected final RexNode condition; //join的条件
   protected final ImmutableSet<CorrelationId> variablesSet;
   protected final ImmutableList<RelHint> hints;
 
@@ -71,7 +69,7 @@ public abstract class Join extends BiRel implements Hintable {
    * Values must be of enumeration {@link JoinRelType}, except that
    * {@link JoinRelType#RIGHT} is disallowed.
    */
-  protected final JoinRelType joinType;
+  protected final JoinRelType joinType; //join的类型
 
   protected final JoinInfo joinInfo;
 
@@ -101,9 +99,9 @@ public abstract class Join extends BiRel implements Hintable {
       Set<CorrelationId> variablesSet,
       JoinRelType joinType) {
     super(cluster, traitSet, left, right);
-    this.condition = requireNonNull(condition, "condition");
+    this.condition = Objects.requireNonNull(condition, "condition");
     this.variablesSet = ImmutableSet.copyOf(variablesSet);
-    this.joinType = requireNonNull(joinType, "joinType");
+    this.joinType = Objects.requireNonNull(joinType, "joinType");
     this.joinInfo = JoinInfo.of(left, right, condition);
     this.hints = ImmutableList.copyOf(hints);
   }
@@ -311,7 +309,7 @@ public abstract class Join extends BiRel implements Hintable {
         fieldNameList, systemFieldList);
   }
 
-  @Override public Join copy(RelTraitSet traitSet, List<RelNode> inputs) {
+  @Override public final Join copy(RelTraitSet traitSet, List<RelNode> inputs) {
     assert inputs.size() == 2;
     return copy(traitSet, getCondition(), inputs.get(0), inputs.get(1),
         joinType, isSemiJoinDone());

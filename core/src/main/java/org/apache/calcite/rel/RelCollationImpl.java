@@ -142,7 +142,7 @@ public class RelCollationImpl implements RelCollation {
     return (RelCollationImpl) RexUtil.apply(mapping, this);
   }
 
-  @Override public boolean satisfies(RelTrait trait) {
+  @Override public boolean satisfies(RelTrait trait) {  //一样或者以排序列开头的特征
     return this == trait
         || trait instanceof RelCollationImpl
         && Util.startsWith(fieldCollations,

@@ -97,7 +97,7 @@ public class JdbcToEnumerableConverter
     // Generate:
     //   ResultSetEnumerable.of(schema.getDataSource(), "select ...")
     final BlockBuilder builder0 = new BlockBuilder(false);
-    final JdbcRel child = (JdbcRel) getInput();
+    final JdbcRel child = (JdbcRel) getInput(); //获得输入
     final PhysType physType =
         PhysTypeImpl.of(
             implementor.getTypeFactory(), getRowType(),
@@ -238,7 +238,7 @@ public class JdbcToEnumerableConverter
     boolean offset = false;
     switch (calendarPolicy) {
     case LOCAL:
-      requireNonNull(calendar_, "calendar_");
+      assert calendar_ != null : "calendar must not be null";
       dateTimeArgs.add(calendar_);
       break;
     case NULL:
@@ -355,7 +355,7 @@ public class JdbcToEnumerableConverter
         ? "getObject"
         : "get" + SqlFunctions.initcap(castNonNull(primitive.primitiveName));
   }
-
+  //根据方言生成sql
   private SqlString generateSql(SqlDialect dialect) {
     final JdbcImplementor jdbcImplementor =
         new JdbcImplementor(dialect,

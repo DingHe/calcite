@@ -39,10 +39,10 @@ public interface InterpretableRel extends RelNode {
   class InterpreterImplementor {
     public final Compiler compiler;
     public final Map<String, Object> internalParameters =
-        new LinkedHashMap<>();
-    public final CalcitePrepare.@Nullable SparkHandler spark;
-    public final DataContext dataContext;
-    public final Map<RelNode, List<Sink>> relSinks = new HashMap<>();
+        new LinkedHashMap<>(); //内部参数
+    public final CalcitePrepare.@Nullable SparkHandler spark; //spark的handler
+    public final DataContext dataContext; //数据上下文
+    public final Map<RelNode, List<Sink>> relSinks = new HashMap<>(); //关系节点对应的输出
 
     public InterpreterImplementor(Compiler compiler,
         CalcitePrepare.@Nullable SparkHandler spark,

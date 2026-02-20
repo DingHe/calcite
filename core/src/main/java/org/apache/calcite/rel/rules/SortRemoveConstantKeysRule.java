@@ -78,7 +78,8 @@ public class SortRemoveConstantKeysRule
       return;
     }
 
-    final RelCollation collation = RelCollations.of(collationsList);
+    final RelCollation collation =
+        RelCollationTraitDef.INSTANCE.canonize(RelCollations.of(collationsList));
     final Sort result =
         sort.copy(
             sort.getTraitSet().replaceIf(RelCollationTraitDef.INSTANCE, () -> collation),

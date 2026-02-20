@@ -41,12 +41,10 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
-import java.net.URL;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * JUnit5 extension to start and stop embedded Cassandra server.
@@ -85,9 +83,9 @@ class CassandraExtension implements ParameterResolver, ExecutionCondition {
   }
 
   static ImmutableMap<String, String> getDataset(String resourcePath) {
-    URL u = CassandraExtension.class.getResource(resourcePath);
     return ImmutableMap.of("model",
-        Sources.of(requireNonNull(u, "u")).file().getAbsolutePath());
+        Sources.of(Objects.requireNonNull(CassandraExtension.class.getResource(resourcePath)))
+            .file().getAbsolutePath());
   }
 
   /** Registers a Cassandra resource in root context, so it can be shared with

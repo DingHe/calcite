@@ -33,6 +33,8 @@ dependencies {
     implementation("org.apache.calcite.avatica:avatica-core")
     implementation("org.apache.commons:commons-lang3")
     implementation("org.slf4j:slf4j-api")
+    implementation("mysql:mysql-connector-java:8.0.33")
+
 
     testImplementation(project(":testkit"))
     testRuntimeOnly("org.apache.logging.log4j:log4j-slf4j-impl")

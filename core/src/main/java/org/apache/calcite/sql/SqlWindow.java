@@ -45,8 +45,6 @@ import java.util.List;
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 import static org.apache.calcite.util.Static.RESOURCE;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * SQL window specification.
  *
@@ -132,8 +130,8 @@ public class SqlWindow extends SqlCall {
     super(pos);
     this.declName = declName;
     this.refName = refName;
-    this.partitionList = requireNonNull(partitionList, "partitionList");
-    this.orderList = requireNonNull(orderList, "orderList");
+    this.partitionList = partitionList;
+    this.orderList = orderList;
     this.isRows = isRows;
     this.lowerBound = lowerBound;
     this.upperBound = upperBound;
@@ -143,6 +141,8 @@ public class SqlWindow extends SqlCall {
     assert exclude.symbolValue(Exclusion.class) == Exclusion.EXCLUDE_NO_OTHER
         || (lowerBound != null || upperBound != null);
     assert declName == null || declName.isSimple();
+    assert partitionList != null;
+    assert orderList != null;
   }
 
   public static SqlWindow create(@Nullable SqlIdentifier declName, @Nullable SqlIdentifier refName,
@@ -496,7 +496,7 @@ public class SqlWindow extends SqlCall {
   public SqlWindow overlay(SqlWindow that, SqlValidator validator) {
     // check 7.11 rule 10c
     final SqlNodeList partitions = getPartitionList();
-    if (!partitions.isEmpty()) {
+    if (0 != partitions.size()) {
       throw validator.newValidationError(partitions.get(0),
           RESOURCE.partitionNotAllowed());
     }
@@ -504,7 +504,7 @@ public class SqlWindow extends SqlCall {
     // 7.11 rule 10d
     final SqlNodeList baseOrder = getOrderList();
     final SqlNodeList refOrder = that.getOrderList();
-    if (!baseOrder.isEmpty() && !refOrder.isEmpty()) {
+    if ((0 != baseOrder.size()) && (0 != refOrder.size())) {
       throw validator.newValidationError(baseOrder.get(0),
           RESOURCE.orderByOverlap());
     }
@@ -520,7 +520,7 @@ public class SqlWindow extends SqlCall {
     }
 
     SqlIdentifier declNameNew = declName;
-    SqlIdentifier refNameNew;
+    SqlIdentifier refNameNew = refName;
     SqlNodeList partitionListNew = partitionList;
     SqlNodeList orderListNew = orderList;
     SqlLiteral isRowsNew = isRows;
@@ -659,7 +659,7 @@ public class SqlWindow extends SqlCall {
     }
 
     // 6.10 rule 6a Function RANK & DENSE_RANK require ORDER BY clause
-    if (orderList.isEmpty()
+    if (orderList.size() == 0
         && !SqlValidatorUtil.containsMonotonic(scope)
         && windowCall != null
         && windowCall.getOperator().requiresOrder()) {
@@ -675,7 +675,7 @@ public class SqlWindow extends SqlCall {
       SqlTypeFamily orderTypeFam = null;
 
       // SQL03 7.10 Rule 11a
-      if (!orderList.isEmpty()) {
+      if (orderList.size() > 0) {
         // if order by is a compound list then range not allowed
         if (orderList.size() > 1
             && !isRows()
@@ -718,7 +718,7 @@ public class SqlWindow extends SqlCall {
 
       // Validate across boundaries. 7.10 Rule 8 a-d
       checkSpecialLiterals(this, validator);
-    } else if (orderList.isEmpty()
+    } else if (orderList.size() == 0
         && !SqlValidatorUtil.containsMonotonic(scope)
         && windowCall != null
         && windowCall.getOperator().requiresOrder()) {
@@ -731,8 +731,7 @@ public class SqlWindow extends SqlCall {
     }
   }
 
-  private static boolean onlySymbolBounds(@Nullable SqlNode lowerBound,
-      @Nullable SqlNode upperBound) {
+  private boolean onlySymbolBounds(@Nullable SqlNode lowerBound, @Nullable SqlNode upperBound) {
     return lowerBound != null && upperBound != null
         && (isCurrentRow(lowerBound) || isUnboundedPreceding(lowerBound))
         && (isCurrentRow(upperBound) || isUnboundedFollowing(upperBound));
@@ -925,13 +924,13 @@ public class SqlWindow extends SqlCall {
       return create(
           (SqlIdentifier) operands[0],
           (SqlIdentifier) operands[1],
-          (SqlNodeList) requireNonNull(operands[2]),
-          (SqlNodeList) requireNonNull(operands[3]),
-          (SqlLiteral) requireNonNull(operands[4]),
+          (SqlNodeList) operands[2],
+          (SqlNodeList) operands[3],
+          (SqlLiteral) operands[4],
           operands[5],
           operands[6],
           (SqlLiteral) operands[7],
-          (SqlLiteral) requireNonNull(operands[8]),
+          (SqlLiteral) operands[8],
           pos);
     }
 
@@ -970,13 +969,13 @@ public class SqlWindow extends SqlCall {
       if (window.refName != null) {
         window.refName.unparse(writer, 0, 0);
       }
-      if (!window.partitionList.isEmpty()) {
+      if (window.partitionList.size() > 0) {
         writer.sep("PARTITION BY");
         final SqlWriter.Frame partitionFrame = writer.startList("", "");
         window.partitionList.unparse(writer, 0, 0);
         writer.endList(partitionFrame);
       }
-      if (!window.orderList.isEmpty()) {
+      if (window.orderList.size() > 0) {
         writer.sep("ORDER BY");
         final SqlWriter.Frame orderFrame = writer.startList("", "");
         window.orderList.unparse(writer, 0, 0);

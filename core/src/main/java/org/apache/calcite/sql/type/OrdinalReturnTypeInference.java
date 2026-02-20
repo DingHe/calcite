@@ -19,7 +19,7 @@ package org.apache.calcite.sql.type;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlOperatorBinding;
 
-/**
+/** 根据索引i返回对应的操作数类型当作返回值类型
  * Returns the type of the operand at a particular 0-based ordinal position.
  */
 public class OrdinalReturnTypeInference implements SqlReturnTypeInference {

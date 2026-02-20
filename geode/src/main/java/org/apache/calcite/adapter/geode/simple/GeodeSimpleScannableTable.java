@@ -37,8 +37,8 @@ import static org.apache.calcite.adapter.geode.util.GeodeUtils.convertToRowValue
 public class GeodeSimpleScannableTable extends AbstractTable implements ScannableTable {
 
   private final RelDataType relDataType;
-  private final String regionName;
-  private final ClientCache clientCache;
+  private String regionName;
+  private ClientCache clientCache;
 
   public GeodeSimpleScannableTable(String regionName, RelDataType relDataType,
       ClientCache clientCache) {

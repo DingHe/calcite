@@ -114,7 +114,7 @@ class ArrowTranslator {
     return predicates;
   }
 
-  /** Translate a binary or unary relation. */
+  /** Translate a binary relation. */
   private String translateMatch2(RexNode node) {
     switch (node.getKind()) {
     case EQUALS:
@@ -127,12 +127,8 @@ class ArrowTranslator {
       return translateBinary("greater_than", "<", (RexCall) node);
     case GREATER_THAN_OR_EQUAL:
       return translateBinary("greater_than_or_equal_to", "<=", (RexCall) node);
-    case IS_NULL:
-      return translateUnary("isnull", (RexCall) node);
-    case IS_NOT_NULL:
-      return translateUnary("isnotnull", (RexCall) node);
     default:
-      throw new UnsupportedOperationException("Unsupported operator " + node);
+      throw new UnsupportedOperationException("Unsupported binary operator " + node);
     }
   }
 
@@ -189,34 +185,6 @@ class ArrowTranslator {
     return name + " " + op + " " + valueString + " " + valueType;
   }
 
-  /** Translates a call to a unary operator. */
-  private String translateUnary(String op, RexCall call) {
-    final RexNode opNode = call.operands.get(0);
-    @Nullable String expression = translateUnary2(op, opNode);
-
-    if (expression != null) {
-      return expression;
-    }
-
-    throw new UnsupportedOperationException("Unsupported unary operator " + call);
-  }
-
-  /** Translates a call to a unary operator. Returns null on failure. */
-  private @Nullable String translateUnary2(String op, RexNode opNode) {
-    if (opNode.getKind() == SqlKind.INPUT_REF) {
-      final RexInputRef inputRef = (RexInputRef) opNode;
-      final String name = fieldNames.get(inputRef.getIndex());
-      return translateUnaryOp(op, name);
-    }
-
-    return null;
-  }
-
-  /** Combines a field name and a unary operator to produce a predicate string. */
-  private String translateUnaryOp(String op, String name) {
-    return name + " " + op;
-  }
-
   private static String getLiteralType(Object literal) {
     if (literal instanceof BigDecimal) {
       BigDecimal bigDecimalLiteral = (BigDecimal) literal;
@@ -228,8 +196,6 @@ class ArrowTranslator {
       }
     } else if (String.class.equals(literal.getClass())) {
       return "string";
-    } else if (literal instanceof Double) {
-      return "float";
     }
     throw new UnsupportedOperationException("Unsupported literal " + literal);
   }

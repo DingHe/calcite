@@ -28,7 +28,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.List;
 import java.util.function.BiFunction;
 
-/**
+/** 为insert update 和 new 提供默认值
  * InitializerExpressionFactory supplies default values for INSERT, UPDATE, and NEW.
  */
 public interface InitializerExpressionFactory {
@@ -39,7 +39,7 @@ public interface InitializerExpressionFactory {
    * then non-generated values cannot be inserted into the column.
    *
    * @see #generationStrategy(RelOptTable, int)
-   *
+   * 判断列是否是生成的
    * @deprecated Use {@code c.generationStrategy(t, i) == VIRTUAL
    * || c.generationStrategy(t, i) == STORED}
    */
@@ -50,7 +50,7 @@ public interface InitializerExpressionFactory {
 
   /**
    * Returns how a column is populated.
-   *
+   * 可以空值、非空、或者可插入
    * @param table   the table containing the column
    * @param iColumn the 0-based offset of the column in the table
    *
@@ -65,7 +65,7 @@ public interface InitializerExpressionFactory {
   /**
    * Creates an expression which evaluates to the default value for a
    * particular column.
-   *
+   *  默认值表达式
    * <p>If the default value comes from a un-validated {@link org.apache.calcite.sql.SqlNode},
    * make sure to invoke {@link InitializerContext#validateExpression} first before you actually
    * do the conversion with method {@link InitializerContext#convertExpression}.

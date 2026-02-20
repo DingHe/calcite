@@ -39,11 +39,10 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import static org.apache.calcite.util.DateTimeStringUtils.ISO_DATETIME_FRACTIONAL_SECOND_FORMAT;
 import static org.apache.calcite.util.DateTimeStringUtils.getDateFormatter;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Filter element of a Druid "groupBy" or "topN" query.
@@ -462,7 +461,7 @@ abstract class DruidJsonFilter implements DruidJson {
 
     JsonExpressionFilter(String expression) {
       super(Type.EXPRESSION);
-      this.expression = requireNonNull(expression, "expression");
+      this.expression = Objects.requireNonNull(expression, "expression");
     }
 
     @Override public void write(JsonGenerator generator) throws IOException {
@@ -522,11 +521,11 @@ abstract class DruidJsonFilter implements DruidJson {
   protected static class JsonBound extends DruidJsonFilter {
     private final String dimension;
 
-    private final @Nullable String lower;
+    private final String lower;
 
     private final boolean lowerStrict;
 
-    private final @Nullable String upper;
+    private final String upper;
 
     private final boolean upperStrict;
 
@@ -534,8 +533,8 @@ abstract class DruidJsonFilter implements DruidJson {
 
     private final ExtractionFunction extractionFunction;
 
-    protected JsonBound(String dimension, @Nullable String lower,
-        boolean lowerStrict, @Nullable String upper, boolean upperStrict,
+    protected JsonBound(String dimension, String lower,
+        boolean lowerStrict, String upper, boolean upperStrict,
         boolean alphaNumeric, ExtractionFunction extractionFunction) {
       super(Type.BOUND);
       this.dimension = dimension;
@@ -629,7 +628,7 @@ abstract class DruidJsonFilter implements DruidJson {
 
   public static DruidJsonFilter getSelectorFilter(String column, String value,
       ExtractionFunction extractionFunction) {
-    requireNonNull(column, "column");
+    Objects.requireNonNull(column, "column");
     return new JsonSelector(column, value, extractionFunction);
   }
 

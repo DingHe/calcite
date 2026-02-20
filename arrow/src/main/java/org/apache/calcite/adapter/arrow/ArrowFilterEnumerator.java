@@ -29,11 +29,7 @@ import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.ipc.ArrowFileReader;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.io.IOException;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Enumerator that reads from a filtered collection of Arrow value-vectors.
@@ -41,8 +37,8 @@ import static java.util.Objects.requireNonNull;
 class ArrowFilterEnumerator extends AbstractArrowEnumerator {
   private final BufferAllocator allocator;
   private final Filter filter;
-  private @Nullable ArrowBuf buf;
-  private @Nullable SelectionVector selectionVector;
+  private ArrowBuf buf;
+  private SelectionVector selectionVector;
   private int selectionVectorIndex;
 
   ArrowFilterEnumerator(ArrowFileReader arrowFileReader, ImmutableIntList fields, Filter filter) {
@@ -75,7 +71,7 @@ class ArrowFilterEnumerator extends AbstractArrowEnumerator {
           selectionVectorIndex = 0;
           this.valueVectors.clear();
           loadNextArrowBatch();
-          requireNonNull(selectionVector, "selectionVector");
+          assert selectionVector != null;
           if (selectionVectorIndex >= selectionVector.getRecordCount()) {
             // the "filtered" batch is empty, but there may be more batches to fetch
             continue;

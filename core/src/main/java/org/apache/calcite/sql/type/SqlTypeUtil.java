@@ -85,7 +85,7 @@ public abstract class SqlTypeUtil {
    * comparable, i.e. of the same charset and collation of same charset
    */
   public static boolean isCharTypeComparable(List<RelDataType> argTypes) {
-    requireNonNull(argTypes, "argTypes");
+    assert argTypes != null;
     assert argTypes.size() >= 2;
 
     // Filter out ANY and NULL elements.
@@ -265,7 +265,7 @@ public abstract class SqlTypeUtil {
     return type;
   }
 
-  /**
+  /** 如果存在操作数类型允许为空，则新创建允许为空的type
    * Recreates a given RelDataType with nullability iff any of the param
    * argTypes are nullable.
    */
@@ -280,7 +280,7 @@ public abstract class SqlTypeUtil {
     return type;
   }
 
-  /**
+  /**如果所有的字段都允许为空，则返回true，否则false
    * Returns whether all of array of types are nullable.
    */
   public static boolean allNullable(List<RelDataType> types) {
@@ -292,7 +292,7 @@ public abstract class SqlTypeUtil {
     return true;
   }
 
-  /**
+  /** 判断某个类型或者一组类型是否允许数据为空
    * Returns whether one or more of an array of types is nullable.
    */
   public static boolean containsNullable(List<RelDataType> types) {
@@ -304,7 +304,7 @@ public abstract class SqlTypeUtil {
     return false;
   }
 
-  /**
+  /** 判断某个类型或者结构体的列是否允许为空
    * Determines whether a type or any of its fields (if a structured type) are
    * nullable.
    */
@@ -330,10 +330,6 @@ public abstract class SqlTypeUtil {
   public static RelDataType keepSourceTypeAndTargetNullability(RelDataType sourceRelDataType,
                                              RelDataType targetRelDataType,
                                              RelDataTypeFactory typeFactory) {
-    checkArgument(
-        (targetRelDataType.isStruct() && sourceRelDataType.isStruct())
-            || (!targetRelDataType.isStruct() && !sourceRelDataType.isStruct()),
-        "one is a struct, while the other one is not");
     if (!targetRelDataType.isStruct()) {
       return typeFactory.createTypeWithNullability(
               sourceRelDataType, targetRelDataType.isNullable());
@@ -1101,19 +1097,18 @@ public abstract class SqlTypeUtil {
 
     // TODO jvs 28-Dec-2004:  support row types, user-defined types,
     // interval types, multiset types, etc
-    requireNonNull(typeName, "typeName");
+    assert typeName != null;
 
     final SqlTypeNameSpec typeNameSpec;
     if (isAtomic(type) || isNull(type)
         || type.getSqlTypeName() == SqlTypeName.UNKNOWN
         || type.getSqlTypeName() == SqlTypeName.GEOMETRY) {
-      int precision =
-          typeName.allowsPrec() ? type.getPrecision() : RelDataType.PRECISION_NOT_SPECIFIED;
+      int precision = typeName.allowsPrec() ? type.getPrecision() : -1;
       // fix up the precision.
       if (maxPrecision > 0 && precision > maxPrecision) {
         precision = maxPrecision;
       }
-      int scale = typeName.allowsScale() ? type.getScale() :  RelDataType.SCALE_NOT_SPECIFIED;
+      int scale = typeName.allowsScale() ? type.getScale() : -1;
       if (maxScale > 0 && scale > maxScale) {
         scale = maxScale;
       }
@@ -1167,8 +1162,7 @@ public abstract class SqlTypeUtil {
   public static SqlDataTypeSpec convertTypeToSpec(RelDataType type) {
     // TODO jvs 28-Dec-2004:  collation
     String charSetName = inCharFamily(type) ? type.getCharset().name() : null;
-    return convertTypeToSpec(type, charSetName,
-        RelDataType.PRECISION_NOT_SPECIFIED, RelDataType.SCALE_NOT_SPECIFIED);
+    return convertTypeToSpec(type, charSetName, -1, -1);
   }
 
   public static RelDataType createMultisetType(
@@ -1519,10 +1513,14 @@ public abstract class SqlTypeUtil {
     }
 
     // We can implicitly convert from character to date
-    return family1 == SqlTypeFamily.CHARACTER
+    if (family1 == SqlTypeFamily.CHARACTER
         && canConvertStringInCompare(family2)
         || family2 == SqlTypeFamily.CHARACTER
-        && canConvertStringInCompare(family1);
+        && canConvertStringInCompare(family1)) {
+      return true;
+    }
+
+    return false;
   }
 
   /** Returns the least restrictive type T, such that a value of type T can be
@@ -1805,7 +1803,6 @@ public abstract class SqlTypeUtil {
 
   /** Returns a DECIMAL type with the maximum precision for the current
    * type system. */
-  @SuppressWarnings("deprecation") // [CALCITE-6598]
   public static RelDataType getMaxPrecisionScaleDecimal(RelDataTypeFactory factory) {
     int maxPrecision = factory.getTypeSystem().getMaxNumericPrecision();
     int maxScale = factory.getTypeSystem().getMaxNumericScale();
@@ -1875,36 +1872,5 @@ public abstract class SqlTypeUtil {
     default:
       return true;
     }
-  }
-
-  /** Strips MEASURE wrappers from a type.
-   *
-   * <p>For example:
-   * <ul>
-   *   <li>"{@code INTEGER}" remains "{@code INTEGER}";
-   *   <li>"{@code MEASURE<DECIMAL>}" becomes "{@code DECIMAL}";
-   *   <li>"{@code (empno INTEGER NOT NULL, rating MEASURE<DECIMAL>)}"
-   *     becomes "{@code (empno INTEGER NOT NULL, rating DECIMAL)}".
-   * </ul>
-   */
-  public static RelDataType fromMeasure(RelDataTypeFactory typeFactory,
-      RelDataType type) {
-    if (type.isStruct()) {
-      final RelDataTypeFactory.Builder builder = typeFactory.builder();
-      int changeCount = 0;
-      for (RelDataTypeField field : type.getFieldList()) {
-        final RelDataType type2 = fromMeasure(typeFactory, field.getType());
-        if (type2 != field.getType()) {
-          ++changeCount;
-        }
-        builder.add(field.getName(), type2);
-      }
-      // Avoid the effort of re-creating the same type
-      return changeCount == 0 ? type : builder.build();
-    }
-    if (type.isMeasure()) {
-      return ((MeasureSqlType) type).types.get(0);
-    }
-    return type;
   }
 }

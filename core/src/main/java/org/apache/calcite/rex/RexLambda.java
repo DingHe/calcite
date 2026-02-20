@@ -27,22 +27,20 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Represents a lambda expression.
  */
 public class RexLambda extends RexNode {
   //~ Instance fields --------------------------------------------------------
 
-  private final List<RexLambdaRef> parameters;
-  private final RexNode expression;
+  private final List<RexLambdaRef> parameters; //保存了 Lambda 表达式的参数列表，每个参数通过 RexLambdaRef 表示
+  private final RexNode expression; //是 Lambda 表达式的主体部分，表示 Lambda 的实际计算或操作，它是一个 RexNode 对象，可能是其他类型的表达式节点（如常量、运算符等）
 
   //~ Constructors -----------------------------------------------------------
 
   RexLambda(List<RexLambdaRef> parameters, RexNode expression) {
     this.parameters = ImmutableList.copyOf(parameters);
-    this.expression = requireNonNull(expression, "expression");
+    this.expression = Objects.requireNonNull(expression, "expression");
   }
 
   //~ Methods ----------------------------------------------------------------

@@ -21,13 +21,13 @@ import org.apache.calcite.rel.type.RelDataType;
 import java.util.List;
 
 /**
- * Node in a planner.
+ * Node in a planner.  优化器中的节点
  */
 public interface RelOptNode {
   /**
    * Returns the ID of this relational expression, unique among all relational
    * expressions created since the server was started.
-   *
+   * 关系表达式的唯一id
    * @return Unique ID
    */
   int getId();
@@ -36,7 +36,7 @@ public interface RelOptNode {
    * Returns a string which concisely describes the definition of this
    * relational expression. Two relational expressions are equivalent if
    * their digests and {@link #getRowType()} (except the field names) are the same.
-   *
+   * digests和rowType相等则认为两节点相等
    * <p>The digest does not contain the relational expression's identity --
    * that would prevent similar relational expressions from ever comparing
    * equal -- but does include the identity of children (on the assumption
@@ -56,20 +56,20 @@ public interface RelOptNode {
    * after optimization, although doing so could render a tree of RelNodes
    * unimplementable. If a RelNode's traits need to be modified during
    * optimization, clone the RelNode and change the clone's traits.
-   *
+   * 优化前后不能修改
    * @return this RelNode's trait set
    */
-  RelTraitSet getTraitSet();
+  RelTraitSet getTraitSet(); //优化用到关系节点的特征
 
   // TODO: We don't want to require that nodes have very detailed row type. It
   // may not even be known at planning time.
-  RelDataType getRowType();
+  RelDataType getRowType(); //获取行的数据类型
 
   /**
    * Returns a string which describes the relational expression and, unlike
    * {@link #getDigest()}, also includes the identity. Typically returns
    * "rel#{id}:{digest}".
-   *
+   * 返回格式rel#{id}:{digest}
    * @return String which describes the relational expression and, unlike
    *   {@link #getDigest()}, also includes the identity
    */
@@ -79,14 +79,14 @@ public interface RelOptNode {
   /**
    * Returns an array of this relational expression's inputs. If there are no
    * inputs, returns an empty list, not {@code null}.
-   *
+   * 这个关系表达式的输入
    * @return Array of this relational expression's inputs
    */
   List<? extends RelOptNode> getInputs();
 
   /**
    * Returns the cluster this relational expression belongs to.
-   *
+   * 返回关系节点所属的cluster
    * @return cluster
    */
   RelOptCluster getCluster();

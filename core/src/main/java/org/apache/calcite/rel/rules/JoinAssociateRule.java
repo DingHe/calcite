@@ -46,6 +46,37 @@ import java.util.List;
  *
  * @see JoinCommuteRule
  * @see CoreRules#JOIN_ASSOCIATE
+ *
+ * @Value.Enclosing 是 Immutables 库中用于嵌套类的注解。当你想在不可变类的外部类中定义多个嵌套的不可变类时，
+ * 可以使用这个注解来将它们包装在一个公共外部类中。
+ *
+ * 主要作用：
+ * 包围类：@Value.Enclosing 标记的外部类可以包含多个不可变的嵌套类，这样可以避免每个嵌套类都生成顶级类文件。
+ * 生成嵌套类的实现类：对于每个嵌套类，Immutables 会在外部类的基础上生成嵌套类的实现。
+ *import org.immutables.value.Value;
+ *
+ * @Value.Enclosing
+ * public class ProductCatalog {
+ *
+ *     @Value.Immutable
+ *     public interface Product {
+ *         String name();
+ *         double price();
+ *     }
+ *
+ *     @Value.Immutable
+ *     public interface Category {
+ *         String name();
+ *         int id();
+ *     }
+ * }
+ *
+ * 生成的类：
+ * 在上述代码中，@Value.Enclosing 被应用在 ProductCatalog 类上，它包含两个嵌套的不可变接口 Product 和 Category。使用 @Value.Immutable 注解后，Immutables 会生成以下类：
+ *
+ * ProductCatalog.ImmutableProduct
+ * ProductCatalog.ImmutableCategory
+ * 这允许你在外部类的命名空间内创建多个不可变类，方便管理和使用。
  */
 @Value.Enclosing
 public class JoinAssociateRule
@@ -187,6 +218,8 @@ public class JoinAssociateRule
 
     /** Defines an operand tree for the given classes. */
     default Config withOperandFor(Class<? extends Join> joinClass) {
+      //b0是一个OperandBuilder，operand方法返回一个OperandDetailBuilder
+      //b1也是一个OperandBuilder，operand方法返回一个OperandDetailBuilder，anyInputs表示接受任意数量的输入
       return withOperandSupplier(b0 ->
           b0.operand(joinClass).inputs(
               b1 -> b1.operand(joinClass).anyInputs(),

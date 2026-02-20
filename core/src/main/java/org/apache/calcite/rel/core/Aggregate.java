@@ -68,7 +68,7 @@ import static java.util.Objects.requireNonNull;
  * <p>It corresponds to the {@code GROUP BY} operator in a SQL query
  * statement, together with the aggregate functions in the {@code SELECT}
  * clause.
- *
+ * 代表了Group by 语句
  * <p>Rules:
  *
  * <ul>
@@ -80,7 +80,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class Aggregate extends SingleRel implements Hintable {
 
   protected final ImmutableList<RelHint> hints;
-
+  //判断是否是简单聚合
   public static boolean isSimple(Aggregate aggregate) {
     return aggregate.getGroupType() == Group.SIMPLE;
   }
@@ -483,10 +483,10 @@ public abstract class Aggregate extends SingleRel implements Hintable {
 
   /** Describes the kind of roll-up. */
   public enum Group {
-    SIMPLE,
-    ROLLUP,
-    CUBE,
-    OTHER;
+    SIMPLE, //简单分组通常指的是直接根据一个列或多个列进行分组
+    ROLLUP, //针对多个列的分组，ROLLUP会依次进行更少列的聚合，直到最后汇总出空集合
+    CUBE,  //CUBE会计算所有列的所有组合的聚合结果，包括列的每种可能子集
+    OTHER; //表示其它不属于上述分类的分组方式
 
     public static Group induce(ImmutableBitSet groupSet,
         List<ImmutableBitSet> groupSets) {
@@ -535,8 +535,8 @@ public abstract class Aggregate extends SingleRel implements Hintable {
         }
         g = bitSet;
       }
-      requireNonNull(g, "groupSet must not be empty");
-      checkArgument(g.isEmpty());
+      assert g != null : "groupSet must not be empty";
+      assert g.isEmpty();
       return true;
     }
 

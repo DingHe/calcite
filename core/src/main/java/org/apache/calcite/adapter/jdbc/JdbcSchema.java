@@ -67,7 +67,6 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import javax.sql.DataSource;
 
-import static java.lang.Integer.parseInt;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -465,10 +464,10 @@ public class JdbcSchema implements Schema, Wrapper {
         typeString = typeString.substring(0, open);
         int comma = rest.indexOf(",");
         if (comma >= 0) {
-          precision = parseInt(rest.substring(0, comma));
-          scale = parseInt(rest.substring(comma));
+          precision = Integer.parseInt(rest.substring(0, comma));
+          scale = Integer.parseInt(rest.substring(comma));
         } else {
-          precision = parseInt(rest);
+          precision = Integer.parseInt(rest);
         }
       }
     }

@@ -31,8 +31,6 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.core.Values;
 import org.apache.calcite.rel.core.Window;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * A hint predicate that specifies which kind of relational
  * expression the hint can be applied to.
@@ -117,17 +115,17 @@ public class NodeTypeHintPredicate implements HintPredicate {
 
     /** Relational expression clazz that the hint can apply to. */
     @SuppressWarnings("ImmutableEnumChecker")
-    private final Class<?> relClazz;
+    private Class<?> relClazz;
 
     NodeType(Class<?> relClazz) {
       this.relClazz = relClazz;
     }
   }
 
-  private final NodeType nodeType;
+  private NodeType nodeType;
 
   public NodeTypeHintPredicate(NodeType nodeType) {
-    this.nodeType = requireNonNull(nodeType, "nodeType");
+    this.nodeType = nodeType;
   }
 
   @Override public boolean apply(RelHint hint, RelNode rel) {

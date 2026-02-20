@@ -33,8 +33,7 @@ import com.google.common.collect.ImmutableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Relational expression representing a scan of an Elasticsearch type.
@@ -44,7 +43,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class ElasticsearchTableScan extends TableScan implements ElasticsearchRel {
   private final ElasticsearchTable elasticsearchTable;
-  private final @Nullable RelDataType projectRowType;
+  private final RelDataType projectRowType;
 
   /**
    * Creates an ElasticsearchTableScan.
@@ -57,10 +56,9 @@ public class ElasticsearchTableScan extends TableScan implements ElasticsearchRe
    */
   ElasticsearchTableScan(RelOptCluster cluster, RelTraitSet traitSet,
        RelOptTable table, ElasticsearchTable elasticsearchTable,
-       @Nullable RelDataType projectRowType) {
+       RelDataType projectRowType) {
     super(cluster, traitSet, ImmutableList.of(), table);
-    this.elasticsearchTable =
-        requireNonNull(elasticsearchTable, "elasticsearchTable");
+    this.elasticsearchTable = Objects.requireNonNull(elasticsearchTable, "elasticsearchTable");
     this.projectRowType = projectRowType;
 
     assert getConvention() == ElasticsearchRel.CONVENTION;
@@ -78,8 +76,7 @@ public class ElasticsearchTableScan extends TableScan implements ElasticsearchRe
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
     final float f = projectRowType == null ? 1f : (float) projectRowType.getFieldCount() / 100f;
-    final RelOptCost cost = super.computeSelfCost(planner, mq);
-    return requireNonNull(cost, "cost").multiplyBy(.1 * f);
+    return super.computeSelfCost(planner, mq).multiplyBy(.1 * f);
   }
 
   @Override public void register(RelOptPlanner planner) {

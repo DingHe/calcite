@@ -31,8 +31,7 @@ import org.apache.calcite.util.Util;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Relational expression that computes a repeat union (recursive union in SQL
@@ -49,7 +48,19 @@ import static java.util.Objects.requireNonNull;
  *   of iterations is reached). For UNION (but not UNION ALL), discard
  *   duplicated results.
  * </ul>
- *
+ * RepeatUnion 可以用来表示一些复杂的集合操作，比如层次查询、递归查询等。
+ * 例如
+ * WITH RECURSIVE employees_with_managers AS (
+ *   SELECT employee_id, manager_id
+ *   FROM employees
+ *   WHERE manager_id IS NULL
+ *   UNION ALL
+ *   SELECT e.employee_id, e.manager_id
+ *   FROM employees e
+ *   JOIN employees_with_managers m ON e.manager_id = m.employee_id
+ * )
+ * SELECT * FROM employees_with_managers;
+ * 在这个例子中，WITH RECURSIVE 子句定义了一个递归公共表表达式，而 UNION ALL 操作则用于递归地构建员工及其上级的层次结构
  * <p>NOTE: The current API is experimental and subject to change without
  * notice.
  */
@@ -70,7 +81,7 @@ public abstract class RepeatUnion extends BiRel {
   /**
    * Transient table where repeat union's intermediate results will be stored (optional).
    */
-  protected final @Nullable RelOptTable transientTable;
+  protected final @Nullable RelOptTable transientTable; //中间结果临时存储表
 
   //~ Constructors -----------------------------------------------------------
   protected RepeatUnion(RelOptCluster cluster, RelTraitSet traitSet,
@@ -81,7 +92,7 @@ public abstract class RepeatUnion extends BiRel {
     this.all = all;
     this.transientTable = transientTable;
     if (transientTable != null) {
-      requireNonNull(transientTable.unwrap(TransientTable.class));
+      Objects.requireNonNull(transientTable.unwrap(TransientTable.class));
     }
   }
 

@@ -16,8 +16,6 @@
  */
 package org.apache.calcite.test.schemata.hr;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.Objects;
 
 /**
@@ -28,10 +26,10 @@ public class Employee {
   public final int deptno;
   public final String name;
   public final float salary;
-  public final @Nullable Integer commission;
+  public final Integer commission;
 
   public Employee(int empid, int deptno, String name, float salary,
-      @Nullable Integer commission) {
+      Integer commission) {
     this.empid = empid;
     this.deptno = deptno;
     this.name = name;

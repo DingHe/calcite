@@ -37,7 +37,7 @@ import org.apache.calcite.sql.SqlDialect;
  * from "JDBC#A" convention to "JDBC#B", even though we don't do it currently.
  * (That would involve asking database B to open a database link to database
  * A.)
- *
+ * 表示查询计划会通过 JDBC 执行在传统的关系型数据库上。它将查询转换为 SQL 查询，最终在数据库系统中执行，适用于与数据库交互的场景
  * <p>As a result, converter rules from and to this convention need to be
  * instantiated, at the start of planning, for each JDBC database in play.
  */

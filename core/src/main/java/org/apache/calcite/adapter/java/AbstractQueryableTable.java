@@ -33,7 +33,7 @@ public abstract class AbstractQueryableTable extends AbstractTable
 
   protected AbstractQueryableTable(Type elementType) {
     super();
-    this.elementType = elementType;
+    this.elementType = elementType; //表元素的数据类型
   }
 
   @Override public Type getElementType() {

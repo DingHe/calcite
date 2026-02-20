@@ -30,7 +30,6 @@ import com.alibaba.innodb.java.reader.util.Utils;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,7 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
 /**
@@ -59,11 +57,15 @@ public class InnodbAdapterTest {
 
   private static final ImmutableMap<String, String> INNODB_MODEL =
       ImmutableMap.of("model",
-          Sources.of(
-                  requireNonNull(
-                      InnodbAdapterTest.class.getResource("/model.json"),
-                      "url"))
+          Sources.of(InnodbAdapterTest.class.getResource("/model.json"))
               .file().getAbsolutePath());
+  /*
+  add by xdh
+   */
+  private static final ImmutableMap<String, String> INNODB_MODEL1 = ImmutableMap.of("model",
+      Sources.of(InnodbAdapterTest.class.getResource("/model2.json"))
+          .file().getAbsolutePath());
+
 
   @Test void testSelectCount() {
     sql("SELECT * FROM \"EMP\"")
@@ -147,7 +149,7 @@ public class InnodbAdapterTest {
   }
 
   @Test void testSelectByPrimaryKey() {
-    for (Integer empno : EMPNO_MAP.keySet()) {
+    for (Integer empno : empnoMap.keySet()) {
       sql("SELECT * FROM \"EMP\" WHERE EMPNO = " + empno)
           .explainContains("PLAN=InnodbToEnumerableConverter\n"
               + "  InnodbFilter(condition=[(PK_POINT_QUERY, index=PRIMARY_KEY, EMPNO="
@@ -363,7 +365,7 @@ public class InnodbAdapterTest {
   }
 
   @Test void testSelectByPrimaryKeyRangeQueryGteLteEqualsProjectSomeFields() {
-    for (Integer empno : EMPNO_MAP.keySet()) {
+    for (Integer empno : empnoMap.keySet()) {
       sql("SELECT EMPNO FROM \"EMP\" WHERE EMPNO >= " + empno
           + " AND EMPNO <= " + empno)
           .explainContains("PLAN=InnodbToEnumerableConverter\n"
@@ -918,7 +920,7 @@ public class InnodbAdapterTest {
     sql("SELECT * FROM \"EMP\" WHERE DEPTNO = 30 AND SAL = 1250 AND COMM = 500.00")
         .explainContains("PLAN=InnodbToEnumerableConverter\n"
             + "  InnodbFilter(condition=[(SK_POINT_QUERY, index=DEPTNO_SAL_COMM_KEY, "
-            + "DEPTNO=30,SAL=1250.00,COMM=500.00)])\n"
+            + "DEPTNO=30,SAL=1250,COMM=500.00)])\n"
             + "    InnodbTableScan(table=[[test, EMP]])\n")
         .returns(some(7521));
   }
@@ -928,7 +930,7 @@ public class InnodbAdapterTest {
         .explainContains("PLAN=InnodbToEnumerableConverter\n"
             + "  InnodbProject(EMPNO=[$0], ENAME=[$1])\n"
             + "    InnodbFilter(condition=[(SK_POINT_QUERY, index=DEPTNO_SAL_COMM_KEY, "
-            + "DEPTNO=30,SAL=1250.00,COMM=500.00)])\n"
+            + "DEPTNO=30,SAL=1250,COMM=500.00)])\n"
             + "      InnodbTableScan(table=[[test, EMP]])")
         .returns("EMPNO=7521; ENAME=WARD\n");
   }
@@ -1083,7 +1085,7 @@ public class InnodbAdapterTest {
         .failsAtValidation("Object 'NOT_EXIST' not found");
   }
 
-  static final List<Pair<Integer, String>> ROWS =
+  static List<Pair<Integer, String>> rows =
       Lists.newArrayList(
           Pair.of(7369, "EMPNO=7369; ENAME=SMITH; JOB=CLERK; AGE=30; MGR=7902; "
               + "HIREDATE=1980-12-17; SAL=800.00; COMM=null; DEPTNO=20; EMAIL=smith@calcite; "
@@ -1142,10 +1144,10 @@ public class InnodbAdapterTest {
               + "CREATE_DATETIME=2016-09-02 23:15:01; CREATE_TIME=23:15:01; UPSERT_TIME="
               + expectedLocalTime("2016-09-02 23:15:01")));
 
-  static final List<Pair<Integer, String>> REVERSED_ROWS = ROWS.stream()
+  static List<Pair<Integer, String>> reversedRows = rows.stream()
       .sorted(Comparator.reverseOrder()).collect(toList());
 
-  static final Map<Integer, String> EMPNO_MAP = ROWS.stream()
+  static Map<Integer, String> empnoMap = rows.stream()
       .collect(Collectors.toMap(Pair::getKey, Pair::getValue));
 
   /**
@@ -1157,12 +1159,13 @@ public class InnodbAdapterTest {
 
   private CalciteAssert.AssertQuery sql(String sql) {
     return CalciteAssert.that()
-        .with(INNODB_MODEL)
+        //.with(INNODB_MODEL)
+        .with(INNODB_MODEL1)
         .enable(enabled())
         .query(sql);
   }
 
-  Hook.@Nullable Closeable closeable;
+  Hook.Closeable closeable;
 
   @BeforeEach
   public void before() {
@@ -1196,31 +1199,27 @@ public class InnodbAdapterTest {
   }
 
   private static String all() {
-    return String.join("\n", Pair.right(ROWS)) + "\n";
+    return String.join("\n", Pair.right(rows)) + "\n";
   }
 
   private static String allReversed() {
-    return String.join("\n", Pair.right(REVERSED_ROWS)) + "\n";
+    return String.join("\n", Pair.right(reversedRows)) + "\n";
   }
 
   private static String someEmpnoGt(int empno) {
-    return some(ROWS.stream().map(Pair::getKey).filter(i -> i > empno)
-        .collect(toList()));
+    return some(rows.stream().map(Pair::getKey).filter(i -> i > empno).collect(toList()));
   }
 
   private static String someEmpnoGte(int empno) {
-    return some(ROWS.stream().map(Pair::getKey).filter(i -> i >= empno)
-        .collect(toList()));
+    return some(rows.stream().map(Pair::getKey).filter(i -> i >= empno).collect(toList()));
   }
 
   private static String someEmpnoLt(int empno) {
-    return some(ROWS.stream().map(Pair::getKey).filter(i -> i < empno)
-        .collect(toList()));
+    return some(rows.stream().map(Pair::getKey).filter(i -> i < empno).collect(toList()));
   }
 
   private static String someEmpnoLte(int empno) {
-    return some(ROWS.stream().map(Pair::getKey).filter(i -> i <= empno)
-        .collect(toList()));
+    return some(rows.stream().map(Pair::getKey).filter(i -> i <= empno).collect(toList()));
   }
 
   private static String some(int... empnos) {
@@ -1232,7 +1231,7 @@ public class InnodbAdapterTest {
       return "";
     }
     List<String> result = empnos.stream()
-        .map(empno -> EMPNO_MAP.get(empno)).collect(toList());
+        .map(empno -> empnoMap.get(empno)).collect(toList());
     return join(result);
   }
 

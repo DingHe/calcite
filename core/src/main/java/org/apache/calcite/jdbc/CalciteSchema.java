@@ -54,17 +54,17 @@ import static java.util.Objects.requireNonNull;
 
 /**
  * Schema.
- *
+ * 包装用户定义的schema，用于calcite内部使用。
  * <p>Wrapper around user-defined schema used internally.
  */
 public abstract class CalciteSchema {
 
-  private final @Nullable CalciteSchema parent;
-  public final Schema schema;
-  public final String name;
+  private final @Nullable CalciteSchema parent; //父schema
+  public final Schema schema; //shema接口
+  public final String name; //名字
   /** Tables explicitly defined in this schema. Does not include tables in
    * {@link #schema}. */
-  protected final NameMap<TableEntry> tableMap;
+  protected final NameMap<TableEntry> tableMap; //记录表的实体
   protected final NameMultimap<FunctionEntry> functionMap;
   protected final NameMap<TypeEntry> typeMap;
   protected final NameMap<LatticeEntry> latticeMap;
@@ -550,7 +550,7 @@ public abstract class CalciteSchema {
    * therefore in principle it could belong to several schemas, or
    * even the same schema several times, with different names. In this
    * respect, it is like an inode in a Unix file system.
-   *
+   * CalciteSchema作为键，表、子schema等作为值
    * <p>The members of a schema must have unique names.
    */
   public abstract static class Entry {
@@ -575,7 +575,7 @@ public abstract class CalciteSchema {
     protected TableEntry(CalciteSchema schema, String name,
         ImmutableList<String> sqls) {
       super(schema, name);
-      this.sqls = requireNonNull(sqls, "sqls");
+      this.sqls = requireNonNull(sqls, "sqls"); //包含sql语句
     }
 
     public abstract Table getTable();
@@ -613,7 +613,7 @@ public abstract class CalciteSchema {
 
     public abstract TableEntry getStarTable();
   }
-
+  //schemaPlus的实现都是依赖CalciteSchema的功能来提供
   /** Implementation of {@link SchemaPlus} based on a
    * {@link org.apache.calcite.jdbc.CalciteSchema}. */
   private class SchemaPlusImpl implements SchemaPlus {

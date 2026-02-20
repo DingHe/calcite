@@ -37,7 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
+/** 该类主要是把在SqlOperatorTable中用属性方法定义的Operator也加入缓存中，这样方便检索。
  * ReflectiveSqlOperatorTable implements the {@link SqlOperatorTable} interface
  * by reflecting the public fields of a subclass.
  */
@@ -58,7 +58,8 @@ public abstract class ReflectiveSqlOperatorTable
 
   //~ Methods ----------------------------------------------------------------
 
-  /**
+  /** 该方法执行的是“后构造初始化”，因为类的构造函数需要先执行完毕，才可以通过反射对类中的字段进行操作.
+   * 通过反射的方式获取标准库的操作
    * Performs post-constructor initialization of an operator table. It can't
    * be part of the constructor, because the subclass constructor needs to
    * complete first.
@@ -68,7 +69,7 @@ public abstract class ReflectiveSqlOperatorTable
     final List<SqlOperator> list = new ArrayList<>();
     for (Field field : getClass().getFields()) {
       try {
-        final Object o = field.get(this);
+        final Object o = field.get(this); //获取当前字段的值，即字段所表示的对象实例
         if (o instanceof SqlOperator) {
           // Fields do not need the LibraryOperator tag, but if they have it,
           // we index them only if they contain STANDARD library.
@@ -87,7 +88,7 @@ public abstract class ReflectiveSqlOperatorTable
         throw Util.throwAsRuntime(Util.causeOrSelf(e));
       }
     }
-    setOperators(buildIndex(list));
+    setOperators(buildIndex(list)); //把反射获取的标准操作加入operators
     return this;
   }
 
@@ -139,7 +140,7 @@ public abstract class ReflectiveSqlOperatorTable
 
   /**
    * Registers a function or operator in the table.
-   *
+   * 把要注册的op跟已经存在的合并
    * @deprecated This table is designed to be initialized from the fields of
    * a class, and adding operators is not efficient
    */

@@ -31,8 +31,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * RelDataTypeFactory is a factory for datatype descriptors. It defines methods
@@ -375,7 +374,7 @@ public interface RelDataTypeFactory {
    * Callback that provides enough information to create fields.
    */
   @Deprecated // to be removed before 2.0
-  interface FieldInfo {
+  interface FieldInfo { //结构化类型的Field信息
     /**
      * Returns the number of fields.
      *
@@ -459,8 +458,8 @@ public interface RelDataTypeFactory {
 
   /** Fluid API to build a list of fields. */
   class Builder {
-    private final List<String> names = new ArrayList<>();
-    private final List<RelDataType> types = new ArrayList<>();
+    private final List<String> names = new ArrayList<>(); //字段名称
+    private final List<RelDataType> types = new ArrayList<>(); //对应的字段类型，1 v 1映射
     private StructKind kind = StructKind.FULLY_QUALIFIED;
     private final RelDataTypeFactory typeFactory;
     private boolean nullableRecord = false;
@@ -469,7 +468,7 @@ public interface RelDataTypeFactory {
      * Creates a Builder with the given type factory.
      */
     public Builder(RelDataTypeFactory typeFactory) {
-      this.typeFactory = requireNonNull(typeFactory, "typeFactory");
+      this.typeFactory = Objects.requireNonNull(typeFactory, "typeFactory");
     }
 
     /**
@@ -501,7 +500,7 @@ public interface RelDataTypeFactory {
       return types.get(index);
     }
 
-    /**
+    /** 添加一个字段
      * Adds a field with given name and type.
      */
     public Builder add(String name, RelDataType type) {
@@ -574,7 +573,7 @@ public interface RelDataTypeFactory {
       return this;
     }
 
-    /**
+    /** 添加一个Map迭代器的所有字段
      * Adds all fields in a collection.
      */
     public Builder addAll(

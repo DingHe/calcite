@@ -33,12 +33,12 @@ import java.util.List;
 
 /**
  * Planner rule that pushes
- * a {@link org.apache.calcite.rel.core.Project}
+ * a {@link org.apache.calcite.rel.logical.LogicalProject}
  * past a {@link org.apache.calcite.rel.core.SetOp}.
  *
  * <p>The children of the {@code SetOp} will project
  * only the {@link RexInputRef}s referenced in the original
- * {@code Project}.
+ * {@code LogicalProject}.
  *
  * @see CoreRules#PROJECT_SET_OP_TRANSPOSE
  */
@@ -64,7 +64,7 @@ public class ProjectSetOpTransposeRule
   //~ Methods ----------------------------------------------------------------
 
   @Override public void onMatch(RelOptRuleCall call) {
-    final Project origProject = call.rel(0);
+    final LogicalProject origProject = call.rel(0);
     final SetOp setOp = call.rel(1);
 
     // cannot push project past a distinct

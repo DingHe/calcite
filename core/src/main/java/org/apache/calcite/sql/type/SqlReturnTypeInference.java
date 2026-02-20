@@ -25,7 +25,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 /**
  * Strategy interface to infer the type of an operator call from the type of the
  * operands.
- *
+ * 策略模式的策略接口，用于根据操作数推断返回值类型
  * <p>This interface is an example of the
  * {@link org.apache.calcite.util.Glossary#STRATEGY_PATTERN strategy pattern}.
  * This makes
@@ -48,13 +48,13 @@ public interface SqlReturnTypeInference {
       SqlOperatorBinding opBinding);
 
   /** Returns a return-type inference that applies this rule then a
-   * transform. */
+   * transform. 根据inferReturnType的推断结果，再应用SqlTypeTransform*/
   default SqlReturnTypeInference andThen(SqlTypeTransform transform) {
     return ReturnTypes.cascade(this, transform);
   }
 
   /** Returns a return-type inference that applies this rule then another
-   * rule, until one of them returns a not-null result. */
+   * rule, until one of them returns a not-null result. 如果inferReturnType推断的结果为null，则应用transform*/
   default SqlReturnTypeInference orElse(SqlReturnTypeInference transform) {
     return ReturnTypes.chain(this, transform);
   }

@@ -24,25 +24,27 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Declaration of a method.
  */
 public class MethodDeclaration extends MemberDeclaration {
-  public final int modifier;
-  public final String name;
-  public final Type resultType;
-  public final List<ParameterExpression> parameters;
-  public final BlockStatement body;
+  public final int modifier; //修饰符号
+  public final String name; //方法名称
+  public final Type resultType; //返回值类型
+  public final List<ParameterExpression> parameters; //参数列表
+  public final BlockStatement body; //函数体
 
   public MethodDeclaration(int modifier, String name, Type resultType,
       List<ParameterExpression> parameters, BlockStatement body) {
+    assert name != null : "name should not be null";
+    assert resultType != null : "resultType should not be null";
+    assert parameters != null : "parameters should not be null";
+    assert body != null : "body should not be null";
     this.modifier = modifier;
-    this.name = requireNonNull(name, "name");
-    this.resultType = requireNonNull(resultType, "resultType");
-    this.parameters = requireNonNull(parameters, "parameters");
-    this.body = requireNonNull(body, "body");
+    this.name = name;
+    this.resultType = resultType;
+    this.parameters = parameters;
+    this.body = body;
   }
 
   @Override public MemberDeclaration accept(Shuttle shuttle) {
@@ -55,7 +57,7 @@ public class MethodDeclaration extends MemberDeclaration {
   @Override public <R> R accept(Visitor<R> visitor) {
     return visitor.visit(this);
   }
-
+  //生成代码
   @Override public void accept(ExpressionWriter writer) {
     String modifiers = Modifier.toString(modifier);
     writer.append(modifiers);
@@ -83,11 +85,24 @@ public class MethodDeclaration extends MemberDeclaration {
     }
 
     MethodDeclaration that = (MethodDeclaration) o;
-    return modifier == that.modifier
-        && body.equals(that.body)
-        && name.equals(that.name)
-        && parameters.equals(that.parameters)
-        && resultType.equals(that.resultType);
+
+    if (modifier != that.modifier) {
+      return false;
+    }
+    if (!body.equals(that.body)) {
+      return false;
+    }
+    if (!name.equals(that.name)) {
+      return false;
+    }
+    if (!parameters.equals(that.parameters)) {
+      return false;
+    }
+    if (!resultType.equals(that.resultType)) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

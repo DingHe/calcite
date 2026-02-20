@@ -310,7 +310,7 @@ public class Shuttle {
             methodDeclaration.resultType, methodDeclaration.name,
             methodDeclaration.parameters, body);
   }
-
+  //什么也没做，直接返回Shuttle
   public Shuttle preVisit(FieldDeclaration fieldDeclaration) {
     return this;
   }
@@ -322,7 +322,7 @@ public class Shuttle {
         : Expressions.fieldDecl(fieldDeclaration.modifier,
             fieldDeclaration.parameter, initializer);
   }
-
+  //什么也没做，直接返回
   public Expression visit(ParameterExpression parameterExpression) {
     return parameterExpression;
   }

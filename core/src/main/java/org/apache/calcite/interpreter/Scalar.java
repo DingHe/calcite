@@ -30,7 +30,7 @@ public interface Scalar {
   void execute(Context context, @Nullable Object[] results);
 
   /** Produces a {@link Scalar} when a query is executed.
-   *
+   * 函数接口，查询执行时，返回一个标量
    * <p>Call {@code producer.apply(DataContext)} to get a Scalar. */
   interface Producer extends Function<DataContext, Scalar> {
   }

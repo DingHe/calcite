@@ -36,13 +36,14 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /** Table backed by a Java list. */
 class MutableArrayTable extends AbstractModifiableTable
     implements Wrapper {
   final List rows = new ArrayList();
+  @SuppressWarnings("unused")
+  private final RelProtoDataType protoStoredRowType;
   private final RelProtoDataType protoRowType;
   private final InitializerExpressionFactory initializerExpressionFactory;
 
@@ -58,11 +59,10 @@ class MutableArrayTable extends AbstractModifiableTable
       RelProtoDataType protoRowType,
       InitializerExpressionFactory initializerExpressionFactory) {
     super(name);
-    requireNonNull(protoStoredRowType, "protoStoredRowType");
-    this.protoRowType = requireNonNull(protoRowType, "protoRowType");
+    this.protoStoredRowType = Objects.requireNonNull(protoStoredRowType, "protoStoredRowType");
+    this.protoRowType = Objects.requireNonNull(protoRowType, "protoRowType");
     this.initializerExpressionFactory =
-        requireNonNull(initializerExpressionFactory,
-            "initializerExpressionFactory");
+        Objects.requireNonNull(initializerExpressionFactory, "initializerExpressionFactory");
   }
 
   @Override public Collection getModifiableCollection() {

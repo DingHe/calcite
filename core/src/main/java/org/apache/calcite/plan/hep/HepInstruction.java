@@ -54,7 +54,7 @@ abstract class HepInstruction {
 
   //~ Inner Classes ----------------------------------------------------------
 
-  /** Instruction that executes all rules of a given class. */
+  /** Instruction that executes all rules of a given class. RuleClass是执行某一类规则，如果不属于这一类规则，则不执行*/
   static class RuleClass extends HepInstruction {
     final Class<? extends RelOptRule> ruleClass;
 

@@ -35,7 +35,7 @@ interface RuleDriver {
 
   /**
    * Callback when new RelNodes are added into RelSet.
-   *
+   * 当新的RelNode加入RelSet时，被调用
    * @param rel the new RelNode
    * @param subset subset to add
    */
@@ -43,7 +43,7 @@ interface RuleDriver {
 
   /**
    * Callback when RelSets are merged.
-   *
+   * 合并RelSet时调用
    * @param set the merged result set
    */
   void onSetMerged(RelSet set);

@@ -25,33 +25,27 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
-
-/**
+/** 方法调用表达式，通过ExpressionType.Call标识
  * Represents a call to either a static or an instance method.
  */
 public class MethodCallExpression extends Expression {
-  public final Method method;
-  public final @Nullable Expression targetExpression; // null for call to static method
-  public final List<Expression> expressions;
+  public final Method method; //方法
+  public final @Nullable Expression targetExpression; // null for call to static method，静态方法可以直接通过类名调用，实例方法需要实例话对象
+  public final List<Expression> expressions; //参数
   /** Cached hash code for the expression. */
   private int hash;
 
   MethodCallExpression(Type returnType, Method method,
       @Nullable Expression targetExpression, List<Expression> expressions) {
     super(ExpressionType.Call, returnType);
-    checkArgument((targetExpression == null)
-        == Modifier.isStatic(method.getModifiers()),
-        "static method requires target expression "
-            + "[static: %s, targetExpression: %s]",
-        Modifier.isStatic(method.getModifiers()),
-        targetExpression);
-    checkArgument(Types.toClass(returnType) == method.getReturnType());
-    this.method = requireNonNull(method, "method");
+    assert expressions != null : "expressions should not be null";
+    assert method != null : "method should not be null";
+    assert (targetExpression == null) == Modifier.isStatic(
+        method.getModifiers());
+    assert Types.toClass(returnType) == method.getReturnType();
+    this.method = method;
     this.targetExpression = targetExpression;
-    this.expressions = requireNonNull(expressions, "expressions");
+    this.expressions = expressions;
   }
 
   MethodCallExpression(Method method, @Nullable Expression targetExpression,
@@ -98,10 +92,10 @@ public class MethodCallExpression extends Expression {
       return;
     }
     if (targetExpression != null) {
-      // instance method
+      // instance method，实例方法要实例化对象
       targetExpression.accept(writer, lprec, nodeType.lprec);
     } else {
-      // static method
+      // static method，静态方法，直接通过类型调用
       writer.append(method.getDeclaringClass());
     }
     writer.append('.').append(method.getName()).append('(');
@@ -127,9 +121,19 @@ public class MethodCallExpression extends Expression {
     }
 
     MethodCallExpression that = (MethodCallExpression) o;
-    return expressions.equals(that.expressions)
-        && method.equals(that.method)
-        && Objects.equals(targetExpression, that.targetExpression);
+
+    if (!expressions.equals(that.expressions)) {
+      return false;
+    }
+    if (!method.equals(that.method)) {
+      return false;
+    }
+    if (targetExpression != null ? !targetExpression.equals(that
+        .targetExpression) : that.targetExpression != null) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

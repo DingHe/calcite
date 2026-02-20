@@ -25,7 +25,6 @@ import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 
 import org.apache.geode.cache.query.SelectResults;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,9 +41,9 @@ class GeodeEnumerator implements Enumerator<Object> {
 
   protected static final Logger LOGGER = LoggerFactory.getLogger(GeodeEnumerator.class.getName());
 
-  private final Iterator iterator;
-  private @Nullable Object current;
-  private final List<RelDataTypeField> fieldTypes;
+  private Iterator iterator;
+  private Object current;
+  private List<RelDataTypeField> fieldTypes;
 
   /**
    * Creates a GeodeEnumerator.
@@ -69,10 +68,7 @@ class GeodeEnumerator implements Enumerator<Object> {
    *
    * @return A rel row from the results
    */
-  @Override public @Nullable Object current() {
-    if (current == null) {
-      throw new IllegalStateException();
-    }
+  @Override public Object current() {
     return convertToRowValues(fieldTypes, current);
   }
 

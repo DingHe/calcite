@@ -250,10 +250,6 @@ public class RelOptFixture {
     return withConfig(c -> c.withExpand(expand));
   }
 
-  public RelOptFixture withInSubQueryThreshold(final int inSubQueryThreshold) {
-    return withConfig(c -> c.withInSubQueryThreshold(inSubQueryThreshold));
-  }
-
   public RelOptFixture withConfig(
       UnaryOperator<SqlToRelConverter.Config> transform) {
     return withFactory(f -> f.withSqlToRelConfig(transform));
@@ -362,7 +358,7 @@ public class RelOptFixture {
       HepPlanner prePlanner = new HepPlanner(preProgram);
       prePlanner.setRoot(relInitial);
       r1 = prePlanner.findBestExp();
-    }
+    } //before apply函数是直接返回r1
     final RelNode relBefore = before.apply(this, r1);
     assertThat(relBefore, notNullValue());
 

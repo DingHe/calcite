@@ -55,8 +55,7 @@ import java.io.File;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.GREATER_THAN;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -74,7 +73,7 @@ class PigRelBuilderStyleTest extends AbstractPigTest {
   }
 
   @Disabled("CALCITE-3660")
-  @Test void testScanAndFilter() {
+  @Test void testScanAndFilter() throws Exception {
     final SchemaPlus schema = createTestSchema();
     final RelBuilder builder = createRelBuilder(schema);
     final RelNode node = builder.scan("t")
@@ -176,7 +175,7 @@ class PigRelBuilderStyleTest extends AbstractPigTest {
   }
 
   @Disabled("CALCITE-3660")
-  @Test void testImplWithJoin() {
+  @Test void testImplWithJoin() throws Exception {
     final SchemaPlus schema = createTestSchema();
     final RelBuilder builder = createRelBuilder(schema);
     final RelNode node = builder.scan("t").scan("s")
@@ -195,7 +194,7 @@ class PigRelBuilderStyleTest extends AbstractPigTest {
   }
 
   @Test @Disabled("CALCITE-1751")
-  public void testImplWithJoinAndGroupBy() {
+  public void testImplWithJoinAndGroupBy() throws Exception {
     final SchemaPlus schema = createTestSchema();
     final RelBuilder builder = createRelBuilder(schema);
     final RelNode node = builder.scan("t").scan("s")
@@ -274,7 +273,7 @@ class PigRelBuilderStyleTest extends AbstractPigTest {
   private void assertScriptAndResults(String relAliasForStore, String script,
       String expectedScript, String[] expectedResults) {
     try {
-      assertThat(script, is(expectedScript));
+      assertEquals(expectedScript, script);
       script = script + "\nSTORE " + relAliasForStore + " INTO 'myoutput';";
       PigTest pigTest = new PigTest(script.split("[\\r\\n]+"));
       pigTest.assertOutputAnyOrder(expectedResults);

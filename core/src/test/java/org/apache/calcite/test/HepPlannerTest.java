@@ -45,12 +45,8 @@ import static org.apache.calcite.test.Matchers.isLinux;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.hasSize;
-
-import static java.util.Objects.requireNonNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * HepPlannerTest is a unit test for {@link HepPlanner}. See
@@ -97,7 +93,7 @@ class HepPlannerTest {
 
   @AfterAll
   public static void checkActualAndReferenceFiles() {
-    requireNonNull(diffRepos, "diffRepos").checkActualAndReferenceFiles();
+    diffRepos.checkActualAndReferenceFiles();
   }
 
   public RelOptFixture fixture() {
@@ -202,9 +198,7 @@ class HepPlannerTest {
     PrintWriter pw = new PrintWriter(sw);
 
     RelDotWriter planWriter = new RelDotWriter(pw, SqlExplainLevel.EXPPLAN_ATTRIBUTES, false);
-    final RelNode root1 = planner.getRoot();
-    assertThat(root1, notNullValue());
-    root1.explain(planWriter);
+    planner.getRoot().explain(planWriter);
     String planStr = sw.toString();
 
     assertThat(
@@ -214,8 +208,7 @@ class HepPlannerTest {
             + "}\n"));
   }
 
-  private void assertIncludesExactlyOnce(String message, String digest,
-      String substring) {
+  private void assertIncludesExactlyOnce(String message, String digest, String substring) {
     int pos = 0;
     int cnt = 0;
     while (pos >= 0) {
@@ -224,9 +217,9 @@ class HepPlannerTest {
         cnt++;
       }
     }
-    assertThat(message + " should include <<" + substring + ">> exactly once"
-        + ", actual value is " + digest,
-        cnt, is(1));
+    assertEquals(1, cnt,
+        () -> message + " should include <<" + substring + ">> exactly once"
+            + ", actual value is " + digest);
   }
 
   @Test void testMatchLimitOneTopDown() {
@@ -381,10 +374,10 @@ class HepPlannerTest {
         new RelOptMaterialization(tableRel, queryRel, null,
             ImmutableList.of("default", "mv"));
     planner.addMaterialization(mat1);
-    assertThat(planner.getMaterializations(), hasSize(1));
-    assertThat(mat1, is(planner.getMaterializations().get(0)));
+    assertEquals(planner.getMaterializations().size(), 1);
+    assertEquals(planner.getMaterializations().get(0), mat1);
     planner.clear();
-    assertThat(planner.getMaterializations(), empty());
+    assertEquals(planner.getMaterializations().size(), 0);
   }
 
   private long checkRuleApplyCount(HepMatchOrder matchOrder) {

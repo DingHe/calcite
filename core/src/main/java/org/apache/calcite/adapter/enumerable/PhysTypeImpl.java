@@ -56,11 +56,11 @@ import static java.util.Objects.requireNonNull;
 
 /** Implementation of {@link PhysType}. */
 public class PhysTypeImpl implements PhysType {
-  private final JavaTypeFactory typeFactory;
-  private final RelDataType rowType;
-  private final Type javaRowClass;
-  private final List<Class> fieldClasses = new ArrayList<>();
-  final JavaRowFormat format;
+  private final JavaTypeFactory typeFactory;  //类型工厂
+  private final RelDataType rowType; //行的关系数据类型
+  private final Type javaRowClass; //行的java类型
+  private final List<Class> fieldClasses = new ArrayList<>(); //每个字段的java类型
+  final JavaRowFormat format; //java中如何表示一行数据
 
   /** Creates a PhysTypeImpl. */
   PhysTypeImpl(
@@ -72,7 +72,7 @@ public class PhysTypeImpl implements PhysType {
     this.rowType = rowType;
     this.javaRowClass = javaRowClass;
     this.format = format;
-    for (RelDataTypeField field : rowType.getFieldList()) {
+    for (RelDataTypeField field : rowType.getFieldList()) {  //初始化每个字段的类型
       Type fieldType = typeFactory.getJavaClass(field.getType());
       fieldClasses.add(fieldType instanceof Class ? (Class) fieldType : Object[].class);
     }
@@ -124,11 +124,11 @@ public class PhysTypeImpl implements PhysType {
   @Override public PhysType project(List<Integer> integers, JavaRowFormat format) {
     return project(integers, false, format);
   }
-
+  //投影此物理类型到另一个物理类型
   @Override public PhysType project(List<Integer> integers, boolean indicator,
       JavaRowFormat format) {
     final RelDataTypeFactory.Builder builder = typeFactory.builder();
-    for (int index : integers) {
+    for (int index : integers) { //选出投影的列
       builder.add(rowType.getFieldList().get(index));
     }
     if (indicator) {

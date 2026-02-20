@@ -44,13 +44,13 @@ public interface SqlOperatorTable {
   void lookupOperatorOverloads(SqlIdentifier opName,
       @Nullable SqlFunctionCategory category,
       SqlSyntax syntax,
-      List<SqlOperator> operatorList,
+      List<SqlOperator> operatorList,  //返回值通过此参数返回
       SqlNameMatcher nameMatcher);
 
   /**
    * Retrieves a list of all functions and operators in this table. Used for
    * automated testing. Depending on the table type, may or may not be mutable.
-   *
+   * 返回全部的操作
    * @return list of SqlOperator objects
    */
   List<SqlOperator> getOperatorList();

@@ -30,12 +30,12 @@ import java.util.List;
 public interface RelCollation extends RelMultipleTrait {
   //~ Methods ----------------------------------------------------------------
 
-  /**
+  /** 参与排序的列信息
    * Returns the ordinals and directions of the columns in this ordering.
    */
   List<RelFieldCollation> getFieldCollations();
 
-  /**
+  /** 获取参与排序列的key
    * Returns the ordinals of the key columns.
    */
   default ImmutableIntList getKeys() {

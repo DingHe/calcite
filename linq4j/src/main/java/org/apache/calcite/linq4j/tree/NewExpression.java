@@ -24,15 +24,15 @@ import java.util.Objects;
 
 /**
  * Represents a constructor call.
- *
+ * 代表new一个对象
  * <p>If {@link #memberDeclarations} is not null (even if empty) represents
  * an anonymous class.
  */
 public class NewExpression extends Expression {
   @SuppressWarnings("HidingField")
-  public final Type type;
-  public final List<Expression> arguments;
-  public final @Nullable List<MemberDeclaration> memberDeclarations;
+  public final Type type; //构造函数所属的类
+  public final List<Expression> arguments; //参数
+  public final @Nullable List<MemberDeclaration> memberDeclarations; //如果有成员声明，则是new一个匿名对象
   /** Cached hash code for the expression. */
   private int hash;
 
@@ -59,7 +59,7 @@ public class NewExpression extends Expression {
   @Override public <R> R accept(Visitor<R> visitor) {
     return visitor.visit(this);
   }
-
+  //生成代码
   @Override void accept(ExpressionWriter writer, int lprec, int rprec) {
     writer.append("new ").append(type).list("(\n", ",\n", ")", arguments);
     if (memberDeclarations != null) {

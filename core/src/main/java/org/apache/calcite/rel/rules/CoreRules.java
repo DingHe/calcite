@@ -431,10 +431,6 @@ public class CoreRules {
   public static final SubQueryRemoveRule JOIN_SUB_QUERY_TO_CORRELATE =
       SubQueryRemoveRule.Config.JOIN.toRule();
 
-  /** Rule that converts SUM to SUM0 in OVER clauses in a project list. */
-  public static final ProjectOverSumToSum0Rule PROJECT_OVER_SUM_TO_SUM0_RULE =
-      ProjectOverSumToSum0Rule.Config.DEFAULT.toRule();
-
   /** Rule that transforms a {@link Project}
    * into a mixture of {@code LogicalProject}
    * and {@link LogicalWindow}. */
@@ -774,11 +770,6 @@ public class CoreRules {
    * (<code>all</code> = <code>true</code>). */
   public static final UnionToDistinctRule UNION_TO_DISTINCT =
       UnionToDistinctRule.Config.DEFAULT.toRule();
-
-  /** Rule that translates a {@link Union} to {@link Values}
-   * if it's all input are {@link Values}. */
-  public static final UnionToValuesRule UNION_TO_VALUES =
-      UnionToValuesRule.Config.DEFAULT.toRule();
 
   /** Rule that rewrite {@link Sample} which is bernoulli to the {@link Filter}. */
   public static final SampleToFilterRule SAMPLE_TO_FILTER =

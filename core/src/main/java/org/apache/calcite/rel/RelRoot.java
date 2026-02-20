@@ -41,7 +41,7 @@ import static java.util.Objects.requireNonNull;
  * Root of a tree of {@link RelNode}.
  *
  * <p>One important reason that RelRoot exists is to deal with queries like
- *
+ *  此类的出现主要是解决order by 字段不在select语句中的场景
  * <blockquote><code>SELECT name
  * FROM emp
  * ORDER BY empno DESC</code></blockquote>
@@ -79,11 +79,11 @@ import static java.util.Objects.requireNonNull;
  * }</code></blockquote>
  */
 public class RelRoot {
-  public final RelNode rel;
+  public final RelNode rel;  //实际的关系节点
   public final RelDataType validatedRowType;
   public final SqlKind kind;
-  public final ImmutablePairList<Integer, String> fields;
-  public final RelCollation collation;
+  public final ImmutablePairList<Integer, String> fields;  //最终输出的字段
+  public final RelCollation collation;  //排序字段
   public final ImmutableList<RelHint> hints;
 
   /**

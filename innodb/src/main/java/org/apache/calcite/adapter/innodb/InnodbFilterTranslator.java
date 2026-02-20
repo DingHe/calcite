@@ -47,8 +47,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Translates {@link RexNode} expressions into {@link IndexCondition}
  * which might be pushed down to an InnoDB data source.
@@ -499,9 +497,8 @@ class InnodbFilterTranslator {
     }
   }
 
-  private static boolean isSqlTypeMatch(RexCall rexCall,
-      SqlTypeName sqlTypeName) {
-    return requireNonNull(rexCall, "rexCall").type.getSqlTypeName()
-        == requireNonNull(sqlTypeName, "sqlTypeName");
+  private static boolean isSqlTypeMatch(RexCall rexCall, SqlTypeName sqlTypeName) {
+    assert rexCall != null;
+    return rexCall.type.getSqlTypeName() == sqlTypeName;
   }
 }

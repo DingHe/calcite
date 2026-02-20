@@ -18,8 +18,6 @@ package org.apache.calcite.test;
 
 import com.google.errorprone.annotations.Immutable;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 /** Information necessary to create a JDBC connection.
  *
  * <p>Specify one to run tests against a different database. */
@@ -30,7 +28,7 @@ public class ConnectionSpec {
   public final String password;
   public final String driver;
   public final String schema;
-  public final @Nullable String catalog;
+  public final String catalog;
 
   public ConnectionSpec(String url, String username, String password,
       String driver, String schema) {

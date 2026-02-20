@@ -16,33 +16,16 @@
  */
 package org.apache.calcite.util.format.postgresql;
 
-import org.apache.calcite.util.format.postgresql.format.AmPmFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.BcAdFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.DayOfWeekFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.FormatPattern;
-import org.apache.calcite.util.format.postgresql.format.MonthFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.NumberFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.RomanNumeralsFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.TimeZoneFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.TimeZoneHoursFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.TimeZoneMinutesFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.TimeZoneOffsetFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.YearWithCommasFormatPattern;
-import org.apache.calcite.util.format.postgresql.format.compiled.CompiledItem;
-import org.apache.calcite.util.format.postgresql.format.compiled.CompiledPattern;
-import org.apache.calcite.util.format.postgresql.format.compiled.LiteralCompiledItem;
-
-import com.google.common.collect.ImmutableList;
-
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.text.ParseException;
 import java.text.ParsePosition;
 import java.time.Month;
 import java.time.ZonedDateTime;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoField;
 import java.time.temporal.IsoFields;
 import java.time.temporal.JulianFields;
+import java.util.Locale;
 
 /**
  * Provides an implementation of toChar that matches PostgreSQL behaviour.
@@ -52,367 +35,238 @@ public class PostgresqlDateTimeFormatter {
    * The format patterns that are supported. Order is very important, since some patterns
    * are prefixes of other patterns.
    */
-  private static final FormatPattern[] FORMAT_PATTERNS =
-      new FormatPattern[] {
-          new NumberFormatPattern(
-              "HH24",
-              ChronoUnitEnum.HOURS_IN_DAY,
-              ZonedDateTime::getHour,
-              2,
-              2,
-              0,
-              23),
-          new NumberFormatPattern(
-              "HH12",
-              ChronoUnitEnum.HOURS_IN_HALF_DAY,
-              dt -> {
-                final int value = dt.get(ChronoField.HOUR_OF_AMPM);
-                return value > 0 ? value : 12;
-              },
-              2,
-              2,
-              0,
-              12),
-          new NumberFormatPattern(
-              "HH",
-              ChronoUnitEnum.HOURS_IN_HALF_DAY,
-              dt -> {
-                final int value = dt.get(ChronoField.HOUR_OF_AMPM);
-                return value > 0 ? value : 12;
-              },
-              2,
-              2,
-              0,
-              12),
-          new NumberFormatPattern(
-              "MI",
-              ChronoUnitEnum.MINUTES_IN_HOUR,
-              ZonedDateTime::getMinute,
-              2,
-              2,
-              0,
-              59),
-          new NumberFormatPattern(
-              "SSSSS",
-              ChronoUnitEnum.SECONDS_IN_DAY,
-              dt -> dt.get(ChronoField.SECOND_OF_DAY),
-              -1,
-              5,
-              0,
-              24 * 60 * 60 - 1),
-          new NumberFormatPattern(
-              "SSSS",
-              ChronoUnitEnum.SECONDS_IN_DAY,
-              dt -> dt.get(ChronoField.SECOND_OF_DAY),
-              1,
-              5,
-              0,
-              24 * 60 * 60 - 1),
-          new NumberFormatPattern(
-              "SS",
-              ChronoUnitEnum.SECONDS_IN_MINUTE,
-              ZonedDateTime::getSecond,
-              2,
-              2,
-              0,
-              59),
-          new NumberFormatPattern(
-              "MS",
-              ChronoUnitEnum.MILLIS,
-              dt -> dt.get(ChronoField.MILLI_OF_SECOND),
-              3,
-              3,
-              0,
-              999),
-          new NumberFormatPattern(
-              "US",
-              ChronoUnitEnum.MICROS,
-              dt -> dt.get(ChronoField.MICRO_OF_SECOND),
-              6,
-              6,
-              0,
-              999_999),
-          new NumberFormatPattern(
-              "FF1",
-              ChronoUnitEnum.TENTHS_OF_SECOND,
-              dt -> dt.get(ChronoField.MILLI_OF_SECOND) / 100,
-              1,
-              1,
-              0,
-              9),
-          new NumberFormatPattern(
-              "FF2",
-              ChronoUnitEnum.HUNDREDTHS_OF_SECOND,
-              dt -> dt.get(ChronoField.MILLI_OF_SECOND) / 10,
-              2,
-              2,
-              0,
-              99),
-          new NumberFormatPattern(
-              "FF3",
-              ChronoUnitEnum.MILLIS,
-              dt -> dt.get(ChronoField.MILLI_OF_SECOND),
-              3,
-              3,
-              0,
-              999),
-          new NumberFormatPattern(
-              "FF4",
-              ChronoUnitEnum.TENTHS_OF_MS,
-              dt -> dt.get(ChronoField.MICRO_OF_SECOND) / 100,
-              4,
-              4,
-              0,
-              9_999),
-          new NumberFormatPattern(
-              "FF5",
-              ChronoUnitEnum.HUNDREDTHS_OF_MS,
-              dt -> dt.get(ChronoField.MICRO_OF_SECOND) / 10,
-              5,
-              5,
-              0,
-              99_999),
-          new NumberFormatPattern(
-              "FF6",
-              ChronoUnitEnum.THOUSANDTHS_OF_MS,
-              dt -> dt.get(ChronoField.MICRO_OF_SECOND),
-              6,
-              6,
-              0,
-              999_999),
-          new AmPmFormatPattern("AM"),
-          new AmPmFormatPattern("PM"),
-          new AmPmFormatPattern("A.M."),
-          new AmPmFormatPattern("P.M."),
-          new AmPmFormatPattern("am"),
-          new AmPmFormatPattern("pm"),
-          new AmPmFormatPattern("a.m."),
-          new AmPmFormatPattern("p.m."),
-          new YearWithCommasFormatPattern(),
-          new NumberFormatPattern(
-              "YYYY",
-              ChronoUnitEnum.YEARS,
-              ZonedDateTime::getYear,
-              4,
-              -1,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "IYYY",
-              ChronoUnitEnum.YEARS_ISO_8601,
-              dt -> dt.get(IsoFields.WEEK_BASED_YEAR),
-              4,
-              -1,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "IYY",
-              ChronoUnitEnum.YEARS_IN_MILLENIA_ISO_8601,
-              dt -> dt.get(IsoFields.WEEK_BASED_YEAR) % 1000,
-              3,
-              3,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "IY",
-              ChronoUnitEnum.YEARS_IN_CENTURY_ISO_8601,
-              dt -> dt.get(IsoFields.WEEK_BASED_YEAR) % 100,
-              2,
-              2,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "YYY",
-              ChronoUnitEnum.YEARS_IN_MILLENIA,
-              dt -> dt.getYear() % 1000,
-              3,
-              3,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "YY",
-              ChronoUnitEnum.YEARS_IN_CENTURY,
-              dt -> dt.getYear() % 100,
-              2,
-              2,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "Y",
-              ChronoUnitEnum.YEARS_IN_CENTURY,
-              ZonedDateTime::getYear,
-              1,
-              1,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "IW",
-              ChronoUnitEnum.WEEKS_IN_YEAR_ISO_8601,
-              dt -> dt.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR),
-              2,
-              2,
-              1,
-              53),
-          new NumberFormatPattern(
-              "IDDD",
-              ChronoUnitEnum.DAYS_IN_YEAR_ISO_8601,
-              dt -> {
-                final Month month = dt.getMonth();
-                final int dayOfMonth = dt.getDayOfMonth();
-                final int weekNumber = dt.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+  @SuppressWarnings("TemporalAccessorGetChronoField")
+  private static final FormatPattern[] FORMAT_PATTERNS = new FormatPattern[] {
+      new NumberFormatPattern(
+          dt -> {
+            final int hour = dt.get(ChronoField.HOUR_OF_AMPM);
+            return String.format(Locale.ROOT, "%02d", hour == 0 ? 12 : hour);
+          },
+          "HH12"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.getHour()),
+          "HH24"),
+      new NumberFormatPattern(
+          dt -> {
+            final int hour = dt.get(ChronoField.HOUR_OF_AMPM);
+            return String.format(Locale.ROOT, "%02d", hour == 0 ? 12 : hour);
+          },
+          "HH"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.getMinute()),
+          "MI"),
+      new NumberFormatPattern(
+          dt -> Integer.toString(dt.get(ChronoField.SECOND_OF_DAY)),
+          "SSSSS", "SSSS"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.getSecond()),
+          "SS"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%03d", dt.get(ChronoField.MILLI_OF_SECOND)),
+          "MS"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%06d", dt.get(ChronoField.MICRO_OF_SECOND)),
+          "US"),
+      new NumberFormatPattern(
+          dt -> Integer.toString(dt.get(ChronoField.MILLI_OF_SECOND) / 100),
+          "FF1"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.get(ChronoField.MILLI_OF_SECOND) / 10),
+          "FF2"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%03d", dt.get(ChronoField.MILLI_OF_SECOND)),
+          "FF3"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%04d", dt.get(ChronoField.MICRO_OF_SECOND) / 100),
+          "FF4"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%05d", dt.get(ChronoField.MICRO_OF_SECOND) / 10),
+          "FF5"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%06d", dt.get(ChronoField.MICRO_OF_SECOND)),
+          "FF6"),
+      new EnumStringFormatPattern(ChronoField.AMPM_OF_DAY, "AM", "PM"),
+      new EnumStringFormatPattern(ChronoField.AMPM_OF_DAY, "am", "pm"),
+      new EnumStringFormatPattern(ChronoField.AMPM_OF_DAY, "A.M.", "P.M."),
+      new EnumStringFormatPattern(ChronoField.AMPM_OF_DAY, "a.m.", "p.m."),
+      new NumberFormatPattern(dt -> {
+        final String formattedYear = String.format(Locale.ROOT, "%0,4d", dt.getYear());
+        if (formattedYear.length() == 4 && formattedYear.charAt(0) == '0') {
+          return "0," + formattedYear.substring(1);
+        } else {
+          return formattedYear;
+        }
+      }, "Y,YYY") {
+        @Override protected String trimLeadingZeros(String value) {
+          return value;
+        }
+      },
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%04d", dt.getYear()),
+          "YYYY"),
+      new NumberFormatPattern(
+          dt -> Integer.toString(dt.get(IsoFields.WEEK_BASED_YEAR)),
+          "IYYY"),
+      new NumberFormatPattern(
+          dt -> {
+            final String yearString =
+                String.format(Locale.ROOT, "%03d", dt.get(IsoFields.WEEK_BASED_YEAR));
+            return yearString.substring(yearString.length() - 3);
+          },
+          "IYY"),
+      new NumberFormatPattern(
+          dt -> {
+            final String yearString =
+                String.format(Locale.ROOT, "%02d", dt.get(IsoFields.WEEK_BASED_YEAR));
+            return yearString.substring(yearString.length() - 2);
+          },
+          "IY"),
+      new NumberFormatPattern(
+          dt -> {
+            final String formattedYear = String.format(Locale.ROOT, "%03d", dt.getYear());
+            if (formattedYear.length() > 3) {
+              return formattedYear.substring(formattedYear.length() - 3);
+            } else {
+              return formattedYear;
+            }
+          },
+          "YYY"),
+      new NumberFormatPattern(
+          dt -> {
+            final String formattedYear = String.format(Locale.ROOT, "%02d", dt.getYear());
+            if (formattedYear.length() > 2) {
+              return formattedYear.substring(formattedYear.length() - 2);
+            } else {
+              return formattedYear;
+            }
+          },
+          "YY"),
+      new NumberFormatPattern(
+          dt -> {
+            final String formattedYear = Integer.toString(dt.getYear());
+            if (formattedYear.length() > 1) {
+              return formattedYear.substring(formattedYear.length() - 1);
+            } else {
+              return formattedYear;
+            }
+          },
+          "Y"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)),
+          "IW"),
+      new NumberFormatPattern(
+          dt -> {
+            final Month month = dt.getMonth();
+            final int dayOfMonth = dt.getDayOfMonth();
+            final int weekNumber = dt.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
 
-                if (month == Month.JANUARY && dayOfMonth < 4) {
-                  if (weekNumber == 1) {
-                    return dt.getDayOfWeek().getValue();
-                  }
-                } else if (month == Month.DECEMBER && dayOfMonth >= 29) {
-                  if (weekNumber == 1) {
-                    return dt.getDayOfWeek().getValue();
-                  }
-                }
+            if (month == Month.JANUARY && dayOfMonth < 4) {
+              if (weekNumber == 1) {
+                return String.format(Locale.ROOT, "%03d", dt.getDayOfWeek().getValue());
+              }
+            } else if (month == Month.DECEMBER && dayOfMonth >= 29) {
+              if (weekNumber == 1) {
+                return String.format(Locale.ROOT, "%03d", dt.getDayOfWeek().getValue());
+              }
+            }
 
-                return (weekNumber - 1) * 7 + dt.getDayOfWeek().getValue();
-              },
-              3,
-              3,
-              0,
-              371),
-          new NumberFormatPattern(
-              "ID",
-              ChronoUnitEnum.DAYS_IN_WEEK,
-              dt -> dt.getDayOfWeek().getValue(),
-              1,
-              1,
-              1,
-              7),
-          new NumberFormatPattern(
-              "I",
-              ChronoUnitEnum.YEARS_IN_CENTURY_ISO_8601,
-              dt -> dt.get(IsoFields.WEEK_BASED_YEAR),
-              1,
-              1,
-              0,
-              Integer.MAX_VALUE),
-          new BcAdFormatPattern("BC"),
-          new BcAdFormatPattern("AD"),
-          new BcAdFormatPattern("B.C."),
-          new BcAdFormatPattern("A.D."),
-          new BcAdFormatPattern("bc"),
-          new BcAdFormatPattern("ad"),
-          new BcAdFormatPattern("b.c."),
-          new BcAdFormatPattern("a.d."),
-          new MonthFormatPattern("MONTH"),
-          new MonthFormatPattern("Month"),
-          new MonthFormatPattern("month"),
-          new MonthFormatPattern("MON"),
-          new MonthFormatPattern("Mon"),
-          new MonthFormatPattern("mon"),
-          new NumberFormatPattern(
-              "MM",
-              ChronoUnitEnum.MONTHS_IN_YEAR,
-              dt -> dt.getMonth().getValue(),
-              2,
-              2,
-              1,
-              12),
-          new DayOfWeekFormatPattern("DAY"),
-          new DayOfWeekFormatPattern("Day"),
-          new DayOfWeekFormatPattern("day"),
-          new DayOfWeekFormatPattern("DY"),
-          new DayOfWeekFormatPattern("Dy"),
-          new DayOfWeekFormatPattern("dy"),
-          new NumberFormatPattern(
-              "DDD",
-              ChronoUnitEnum.DAYS_IN_YEAR,
-              ZonedDateTime::getDayOfYear,
-              3,
-              3,
-              1,
-              366),
-          new NumberFormatPattern(
-              "DD",
-              ChronoUnitEnum.DAYS_IN_MONTH,
-              ZonedDateTime::getDayOfMonth,
-              2,
-              2,
-              1,
-              31),
-          new NumberFormatPattern(
-              "D",
-              ChronoUnitEnum.DAYS_IN_WEEK,
-              dt -> {
-                int dayOfWeek = dt.getDayOfWeek().getValue() + 1;
-                if (dayOfWeek == 8) {
-                  return 1;
-                }
-                return dayOfWeek;
-              },
-              v -> v < 7 ? v + 1 : 1,
-              1,
-              1,
-              1,
-              7),
-          new NumberFormatPattern(
-              "WW",
-              ChronoUnitEnum.WEEKS_IN_YEAR,
-              dt -> (int) Math.ceil((double) dt.getDayOfYear() / 7),
-              -1,
-              2,
-              1,
-              53),
-          new NumberFormatPattern(
-              "W",
-              ChronoUnitEnum.WEEKS_IN_MONTH,
-              dt -> (int) Math.ceil((double) dt.getDayOfMonth() / 7),
-              1,
-              1,
-              1,
-              5),
-          new NumberFormatPattern(
-              "CC",
-              ChronoUnitEnum.CENTURIES,
-              dt -> {
-                if (dt.get(ChronoField.ERA) == 0) {
-                  return dt.getYear() / 100 - 1;
-                } else {
-                  return dt.getYear() / 100 + 1;
-                }
-              },
-              2,
-              Integer.MAX_VALUE,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "J",
-              ChronoUnitEnum.DAYS_JULIAN,
-              dt -> {
-                final int julianDays = (int) dt.getLong(JulianFields.JULIAN_DAY);
-                if (dt.getYear() < 0) {
-                  return 365 + julianDays;
-                } else {
-                  return julianDays;
-                }
-              },
-              -1,
-              -1,
-              0,
-              Integer.MAX_VALUE),
-          new NumberFormatPattern(
-              "Q",
-              ChronoUnitEnum.MONTHS_IN_YEAR,
-              dt -> dt.get(IsoFields.QUARTER_OF_YEAR),
-              1,
-              1,
-              1,
-              4),
-          new RomanNumeralsFormatPattern("RM"),
-          new RomanNumeralsFormatPattern("rm"),
-          new TimeZoneHoursFormatPattern(),
-          new TimeZoneMinutesFormatPattern(),
-          new TimeZoneFormatPattern("TZ"),
-          new TimeZoneFormatPattern("tz"),
-          new TimeZoneOffsetFormatPattern()
-      };
+            return String.format(Locale.ROOT, "%03d",
+                (weekNumber - 1) * 7 + dt.getDayOfWeek().getValue());
+          },
+          "IDDD"),
+      new NumberFormatPattern(
+          dt -> Integer.toString(dt.getDayOfWeek().getValue()),
+          "ID"),
+      new NumberFormatPattern(
+          dt -> {
+            final String yearString = Integer.toString(dt.get(IsoFields.WEEK_BASED_YEAR));
+            return yearString.substring(yearString.length() - 1);
+          },
+          "I"),
+      new EnumStringFormatPattern(ChronoField.ERA, "BC", "AD"),
+      new EnumStringFormatPattern(ChronoField.ERA, "bc", "ad"),
+      new EnumStringFormatPattern(ChronoField.ERA, "B.C.", "A.D."),
+      new EnumStringFormatPattern(ChronoField.ERA, "b.c.", "a.d."),
+      DateStringFormatPattern.forMonth(TextStyle.FULL, CapitalizationEnum.ALL_UPPER, "MONTH"),
+      DateStringFormatPattern.forMonth(TextStyle.FULL, CapitalizationEnum.CAPITALIZED, "Month"),
+      DateStringFormatPattern.forMonth(TextStyle.FULL, CapitalizationEnum.ALL_LOWER, "month"),
+      DateStringFormatPattern.forMonth(TextStyle.SHORT, CapitalizationEnum.ALL_UPPER, "MON"),
+      DateStringFormatPattern.forMonth(TextStyle.SHORT, CapitalizationEnum.CAPITALIZED, "Mon"),
+      DateStringFormatPattern.forMonth(TextStyle.SHORT, CapitalizationEnum.ALL_LOWER, "mon"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.getMonthValue()),
+          "MM"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.FULL, CapitalizationEnum.ALL_UPPER, "DAY"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.FULL, CapitalizationEnum.CAPITALIZED, "Day"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.FULL, CapitalizationEnum.ALL_LOWER, "day"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.SHORT, CapitalizationEnum.ALL_UPPER, "DY"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.SHORT, CapitalizationEnum.CAPITALIZED, "Dy"),
+      DateStringFormatPattern.forDayOfWeek(TextStyle.SHORT, CapitalizationEnum.ALL_LOWER, "dy"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%03d", dt.getDayOfYear()),
+          "DDD"),
+      new NumberFormatPattern(
+          dt -> String.format(Locale.ROOT, "%02d", dt.getDayOfMonth()),
+          "DD"),
+      new NumberFormatPattern(
+          dt -> {
+            int dayOfWeek = dt.getDayOfWeek().getValue() + 1;
+            if (dayOfWeek == 8) {
+              dayOfWeek = 1;
+            }
+            return Integer.toString(dayOfWeek);
+          },
+          "D"),
+      new NumberFormatPattern(
+          dt -> Integer.toString((int) Math.ceil((double) dt.getDayOfYear() / 7)),
+          "WW"),
+      new NumberFormatPattern(
+          dt -> Integer.toString((int) Math.ceil((double) dt.getDayOfMonth() / 7)),
+          "W"),
+      new NumberFormatPattern(
+          dt -> {
+            if (dt.get(ChronoField.ERA) == 0) {
+              return String.format(Locale.ROOT, "-%02d", Math.abs(dt.getYear() / 100 - 1));
+            } else {
+              return String.format(Locale.ROOT, "%02d", dt.getYear() / 100 + 1);
+            }
+          },
+          "CC"),
+      new NumberFormatPattern(
+          dt -> {
+            final long julianDays = dt.getLong(JulianFields.JULIAN_DAY);
+            if (dt.getYear() < 0) {
+              return Long.toString(365L + julianDays);
+            } else {
+              return Long.toString(julianDays);
+            }
+          },
+          "J"),
+      new NumberFormatPattern(
+          dt -> Integer.toString(dt.get(IsoFields.QUARTER_OF_YEAR)),
+          "Q"),
+      new RomanNumeralMonthFormatPattern(true, "RM"),
+      new RomanNumeralMonthFormatPattern(false, "rm"),
+      new TimeZoneHoursFormatPattern(),
+      new TimeZoneMinutesFormatPattern(),
+      new TimeZoneFormatPattern(true, "TZ"),
+      new TimeZoneFormatPattern(false, "tz"),
+      new StringFormatPattern("OF") {
+        @Override String dateTimeToString(ZonedDateTime dateTime, boolean haveFillMode,
+            @Nullable String suffix, Locale locale) {
+          final int hours = dateTime.getOffset().get(ChronoField.HOUR_OF_DAY);
+          final int minutes = dateTime.getOffset().get(ChronoField.MINUTE_OF_HOUR);
+
+          String formattedHours =
+              String.format(Locale.ROOT, "%s%02d", hours < 0 ? "-" : "+", hours);
+          if (minutes == 0) {
+            return formattedHours;
+          } else {
+            return String.format(Locale.ROOT, "%s:%02d", formattedHours, minutes);
+          }
+        }
+      }
+  };
 
   /**
    * Remove access to the default constructor.
@@ -420,66 +274,38 @@ public class PostgresqlDateTimeFormatter {
   private PostgresqlDateTimeFormatter() {
   }
 
-  public static CompiledDateTimeFormat compilePattern(String format) {
-    final ImmutableList.Builder<CompiledItem> compiledPatterns = ImmutableList.builder();
+  /**
+   * Converts a format string such as "YYYY-MM-DD" with a datetime to a string representation.
+   *
+   * @see <a href="https://www.postgresql.org/docs/14/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIME-TABLE">PostgreSQL</a>
+   *
+   * @param formatString input format string
+   * @param dateTime datetime to convert
+   * @return formatted string representation of the datetime
+   */
+  public static String toChar(String formatString, ZonedDateTime dateTime) {
     final ParsePosition parsePosition = new ParsePosition(0);
-    final ParsePosition nextPatternPosition = new ParsePosition(parsePosition.getIndex());
+    final StringBuilder sb = new StringBuilder();
 
-    FormatPattern nextPattern = getNextPattern(format, nextPatternPosition);
-    while (nextPattern != null) {
-      // Add the literal if one exists before the next pattern
-      if (parsePosition.getIndex() < nextPatternPosition.getIndex()) {
-        compiledPatterns.add(
-            new LiteralCompiledItem(
-                format.substring(parsePosition.getIndex(), nextPatternPosition.getIndex())));
-      }
-
-      try {
-        final CompiledPattern compiledPattern =
-            nextPattern.compilePattern(format, nextPatternPosition);
-        compiledPatterns.add(compiledPattern);
-        parsePosition.setIndex(
-            nextPatternPosition.getIndex() + compiledPattern.getFormatPatternLength());
-        nextPatternPosition.setIndex(parsePosition.getIndex());
-        nextPattern = getNextPattern(format, nextPatternPosition);
-      } catch (ParseException e) {
-        throw new IllegalArgumentException();
-      }
-    }
-
-    if (parsePosition.getIndex() < format.length()) {
-      compiledPatterns.add(new LiteralCompiledItem(format.substring(parsePosition.getIndex())));
-    }
-
-    return new CompiledDateTimeFormat(compiledPatterns.build());
-  }
-
-  private static @Nullable FormatPattern getNextPattern(String format,
-      ParsePosition parsePosition) {
-    while (parsePosition.getIndex() < format.length()) {
-      String formatTrimmed = format.substring(parsePosition.getIndex());
-
-      boolean prefixFound = true;
-      while (prefixFound) {
-        prefixFound = false;
-
-        for (PatternModifier modifier : PatternModifier.values()) {
-          if (modifier.isPrefix() && formatTrimmed.startsWith(modifier.getModifierString())) {
-            formatTrimmed = formatTrimmed.substring(modifier.getModifierString().length());
-            prefixFound = true;
-          }
-        }
-      }
+    while (parsePosition.getIndex() < formatString.length()) {
+      boolean matched = false;
 
       for (FormatPattern formatPattern : FORMAT_PATTERNS) {
-        if (formatTrimmed.startsWith(formatPattern.getPattern())) {
-          return formatPattern;
+        final String formattedString =
+            formatPattern.convert(parsePosition, formatString, dateTime);
+        if (formattedString != null) {
+          sb.append(formattedString);
+          matched = true;
+          break;
         }
       }
 
-      parsePosition.setIndex(parsePosition.getIndex() + 1);
+      if (!matched) {
+        sb.append(formatString.charAt(parsePosition.getIndex()));
+        parsePosition.setIndex(parsePosition.getIndex() + 1);
+      }
     }
 
-    return null;
+    return sb.toString();
   }
 }

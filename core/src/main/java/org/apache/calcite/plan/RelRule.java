@@ -28,15 +28,14 @@ import org.immutables.value.Value;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Rule that is parameterized via a configuration.
- *
+ * 该类主要是通过参数化配置来定义rule
  * <p>Eventually (before Calcite version 2.0), this class will replace
  * {@link RelOptRule}. Constructors of {@code RelOptRule} are deprecated, so new
  * rule classes should extend {@code RelRule}, not {@code RelOptRule}.
@@ -121,21 +120,22 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
 
   /** Creates a RelRule. */
   protected RelRule(C config) {
-    super(OperandBuilderImpl.operand(config.operandSupplier()),
+    super(OperandBuilderImpl.operand(config.operandSupplier()), //这里通过config.operandSupplier()函数 提供的OperandTransform就可以构建RelOptRuleOperand
         config.relBuilderFactory(), config.description());
     this.config = config;
   }
 
   /** Rule configuration. */
   public interface Config {
+    //主要方法toRule()、operandSupplier()和withOperandSupplier(OperandTransform transform)
 
     /** Creates a rule that uses this configuration. Sub-class must override. */
     RelOptRule toRule();
 
     /** Casts this configuration to another type, usually a sub-class. */
     default <T extends Object> T as(Class<T> class_) {
-      if (class_.isAssignableFrom(this.getClass())) {
-        return class_.cast(this);
+      if (class_.isAssignableFrom(this.getClass())) { //说明class_是this的父类
+        return class_.cast(this); //把this转为class_类型，父类可以转为子类
       } else {
         throw new UnsupportedOperationException(
             String.format(Locale.ROOT,
@@ -161,7 +161,8 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     /** Sets {@link #description()}. */
     Config withDescription(@Nullable String description);
 
-    /** Creates the operands for the rule instance. */
+    /** Creates the operands for the rule instance.
+     * OperandTransform是一个函数接口，接收OperandBuilder参数，返回Done*/
     @Value.Default default OperandTransform operandSupplier() {
       return s -> {
         throw new IllegalArgumentException("Rules must have at least one "
@@ -187,10 +188,15 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   public interface OperandBuilder {
     /** Starts building an operand by specifying its class.
      * Call further methods on the returned {@link OperandDetailBuilder} to
-     * complete the operand. */
+     * complete the operand.
+     * 开始构建一个操作数，指定此操作数需要匹配的RelNode类型。relClass是一个Class对象，表示操作数所要匹配的关系表达式节点的类型
+     * 返回一个OperandDetailBuilder对象，用于进一步为该操作数设置细节，如输入模式、转换特性等
+     * */
     <R extends RelNode> OperandDetailBuilder<R> operand(Class<R> relClass);
 
-    /** Supplies an operand that has been built manually. */
+    /** Supplies an operand that has been built manually.
+     * 直接指定一个已经手动构建的操作数。即允许用户直接传入已经构建好的操作数而不是通过OperandBuilder一步步生成
+     * */
     Done exactly(RelOptRuleOperand operand);
   }
 
@@ -204,10 +210,10 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
    *
    * @param <R> Type of relational expression */
   public interface OperandDetailBuilder<R extends RelNode> {
-    /** Sets a trait of this operand. */
+    /** Sets a trait of this operand. 设置特性*/
     OperandDetailBuilder<R> trait(RelTrait trait);
 
-    /** Sets the predicate of this operand. */
+    /** Sets the predicate of this operand. 设置谓词*/
     OperandDetailBuilder<R> predicate(Predicate<? super R> predicate);
 
     /** Indicates that this operand has a single input. */
@@ -234,9 +240,26 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   private static class OperandBuilderImpl implements OperandBuilder {
     final List<RelOptRuleOperand> operands = new ArrayList<>();
 
+    /**
+     *为什么 operands.size() == 1 是必要的？
+     * 单一操作数的构建：在调用 operand(OperandTransform transform) 方法时，期望的行为是只构建一个操作数。
+     * OperandTransform 被设计用来构建 单个 操作数，这也是调用链中 OperandBuilder 的职责。
+     *
+     * 确保规范性：通过检查 operands.size() == 1，该方法确保每次调用只会生成一个有效的操作数，避免用户错误地构建了多个操作数，或者没有构建任何操作数。
+     * 如果不进行这样的检查，可能会导致规则匹配时的逻辑混乱。
+     *
+     * 操作数的明确性：RelOptRuleOperand 表示一个关系表达式匹配规则，它本质上是一个模式。因此，在一个 RelRule 中，一个操作数对应一个具体的匹配模式。
+     * 如果多个操作数混杂在一起，规则的定义就会变得模糊不清。
+     *
+     * 总结：
+     * operand(OperandTransform transform) 方法之所以要求 operands.size() == 1，是为了确保每次调用该方法时只构建了一个 RelOptRuleOperand，
+     * 即每次规则定义时只构建一个匹配模式。
+     * 这个检查是为了保证代码的规范性和正确性，避免错误操作。
+     */
     static RelOptRuleOperand operand(OperandTransform transform) {
       final OperandBuilderImpl b = new OperandBuilderImpl();
-      requireNonNull(transform.apply(b), "done");
+      final Done done = transform.apply(b);
+      Objects.requireNonNull(done, "done");
       if (b.operands.size() != 1) {
         throw new IllegalArgumentException("operand supplier must call one of "
             + "the following methods: operand or exactly");
@@ -245,7 +268,7 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     }
 
     @Override public <R extends RelNode> OperandDetailBuilder<R> operand(Class<R> relClass) {
-      return new OperandDetailBuilderImpl<>(this, relClass);
+      return new OperandDetailBuilderImpl<>(this, relClass);//这里的parent传入OperandBuilder本身，是为了让Detail更好操作operands属性，构建RelOptRuleOperand
     }
 
     @Override public Done exactly(RelOptRuleOperand operand) {
@@ -260,18 +283,20 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   private static class OperandDetailBuilderImpl<R extends RelNode>
       implements OperandDetailBuilder<R> {
     private final OperandBuilderImpl parent;
+    //指定要构建的操作数的具体类型，确保其符合预期的关系表达式类型
     private final Class<R> relClass;
+    //用于构建该操作数的输入，支持复杂的关系表达式结构
     final OperandBuilderImpl inputBuilder = new OperandBuilderImpl();
     private @Nullable RelTrait trait;
     private Predicate<? super R> predicate = r -> true;
 
     OperandDetailBuilderImpl(OperandBuilderImpl parent, Class<R> relClass) {
-      this.parent = requireNonNull(parent, "parent");
-      this.relClass = requireNonNull(relClass, "relClass");
+      this.parent = Objects.requireNonNull(parent, "parent");
+      this.relClass = Objects.requireNonNull(relClass, "relClass");
     }
 
     @Override public OperandDetailBuilderImpl<R> trait(RelTrait trait) {
-      this.trait = requireNonNull(trait, "trait");
+      this.trait = Objects.requireNonNull(trait, "trait");
       return this;
     }
 
@@ -304,14 +329,14 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
 
     @Override public Done oneInput(OperandTransform transform) {
       final Done done = transform.apply(inputBuilder);
-      requireNonNull(done, "done");
+      Objects.requireNonNull(done, "done");
       return done(RelOptRuleOperandChildPolicy.SOME);
     }
 
     @Override public Done inputs(OperandTransform... transforms) {
       for (OperandTransform transform : transforms) {
         final Done done = transform.apply(inputBuilder);
-        requireNonNull(done, "done");
+        Objects.requireNonNull(done, "done");
       }
       return done(RelOptRuleOperandChildPolicy.SOME);
     }
@@ -319,13 +344,16 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     @Override public Done unorderedInputs(OperandTransform... transforms) {
       for (OperandTransform transform : transforms) {
         final Done done = transform.apply(inputBuilder);
-        requireNonNull(done, "done");
+        Objects.requireNonNull(done, "done");
       }
       return done(RelOptRuleOperandChildPolicy.UNORDERED);
     }
   }
 
-  /** Singleton instance of {@link Done}. */
+  /** Singleton instance of {@link Done}.
+   * DoneImpl.INSTANCE 是一个枚举常量，它在类加载时就被创建，并且只会创建一次，确保它是唯一的实例。
+   * 由于 DoneImpl 实现了 Done 接口，INSTANCE 常量可以作为 Done 类型的实例在代码中传递，用于表示操作数的构建完成。
+   * */
   private enum DoneImpl implements Done {
     INSTANCE
   }
@@ -334,7 +362,37 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
    * {@link RelRule} that differ only in implementations of
    * {@link #onMatch(RelOptRuleCall)} method.
    *
-   * @param <R> Rule type */
+   * @param <R> Rule type
+   *
+   * MatchHandler 类的作用
+   * 回调接口:
+   *
+   * MatchHandler 是一个函数式接口，继承自 BiConsumer<R, RelOptRuleCall>。这意味着它具有一个接受两个参数的 accept 方法，分别是规则的实例和规则调用的上下文。其主要目的是作为处理匹配的回调函数。
+   * 简化规则匹配的实现:
+   *
+   * 在实现 RelRule 的子类时，通常需要重写 onMatch(RelOptRuleCall call) 方法，以定义在匹配规则时要执行的操作。使用 MatchHandler 接口，开发者可以将匹配逻辑封装在 MatchHandler 的实现中，而不需要在每个规则中重复编写 onMatch 的实现。这有助于提高代码的可重用性和可维护性。
+   * 类型安全:
+   *
+   * MatchHandler<R extends RelOptRule> 中的类型参数 R 使得开发者可以创建特定于某种规则的处理程序。这样，开发者可以将具体的规则类传递给处理程序，确保类型安全。
+   * 灵活性:
+   *
+   * 由于它是一个函数式接口，MatchHandler 可以使用 Lambda 表达式或方法引用来实现，从而提供了更灵活和简洁的代码编写方式。
+   *
+   *
+   * public class MyJoinRule extends RelRule<MyJoinRule.Config> {
+   *
+   *   // 使用 MatchHandler 来定义 onMatch 的逻辑
+   *   private static final MatchHandler<MyJoinRule> HANDLER = (rule, call) -> {
+   *     // 这里可以添加逻辑处理匹配到的规则
+   *   };
+   *
+   *   // 在构造函数或其他地方使用 HANDLER
+   *   @Override
+   *   public void onMatch(RelOptRuleCall call) {
+   *     HANDLER.accept(this, call);
+   *   }
+   * }
+   * */
   public interface MatchHandler<R extends RelOptRule>
       extends BiConsumer<R, RelOptRuleCall> {
   }

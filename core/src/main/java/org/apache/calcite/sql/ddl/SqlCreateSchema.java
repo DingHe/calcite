@@ -27,8 +27,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.ImmutableNullableList;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Parse tree for {@code CREATE SCHEMA} statement.
@@ -43,7 +42,7 @@ public class SqlCreateSchema extends SqlCreate {
   SqlCreateSchema(SqlParserPos pos, boolean replace, boolean ifNotExists,
       SqlIdentifier name) {
     super(OPERATOR, pos, replace, ifNotExists);
-    this.name = requireNonNull(name, "name");
+    this.name = Objects.requireNonNull(name, "name");
   }
 
   @Override public List<SqlNode> getOperandList() {

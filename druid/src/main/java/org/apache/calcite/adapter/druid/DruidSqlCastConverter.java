@@ -26,7 +26,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 
 import com.google.common.collect.ImmutableList;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.joda.time.Period;
 
 import java.util.TimeZone;
@@ -41,8 +40,8 @@ public class DruidSqlCastConverter implements DruidSqlOperatorConverter {
     return SqlStdOperatorTable.CAST;
   }
 
-  @Override public @Nullable String toDruidExpression(RexNode rexNode,
-      RelDataType topRel, DruidQuery druidQuery) {
+  @Override public String toDruidExpression(RexNode rexNode, RelDataType topRel,
+      DruidQuery druidQuery) {
 
     final RexNode operand = ((RexCall) rexNode).getOperands().get(0);
     final String operandExpression =
@@ -56,7 +55,7 @@ public class DruidSqlCastConverter implements DruidSqlOperatorConverter {
     String fromTypeString = dateTimeFormatString(fromType);
     final SqlTypeName toType = rexNode.getType().getSqlTypeName();
     final String timeZoneConf = druidQuery.getConnectionConfig().timeZone();
-    final TimeZone timeZone = TimeZone.getTimeZone(timeZoneConf);
+    final TimeZone timeZone = TimeZone.getTimeZone(timeZoneConf == null ? "UTC" : timeZoneConf);
     final boolean nullEqualToEmpty = druidQuery.getConnectionConfig().nullEqualToEmpty();
 
     if (fromTypeString == null) {
@@ -172,7 +171,7 @@ public class DruidSqlCastConverter implements DruidSqlOperatorConverter {
             DruidExpressions.stringLiteral(timeZone.getID())));
   }
 
-  public static @Nullable String dateTimeFormatString(SqlTypeName sqlTypeName) {
+  public static String dateTimeFormatString(final SqlTypeName sqlTypeName) {
     if (sqlTypeName == SqlTypeName.DATE) {
       return "yyyy-MM-dd";
     } else if (sqlTypeName == SqlTypeName.TIMESTAMP) {

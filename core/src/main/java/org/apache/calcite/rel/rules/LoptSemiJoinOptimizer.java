@@ -74,7 +74,7 @@ public class LoptSemiJoinOptimizer {
    * Semijoins corresponding to each join factor, if they are going to be
    * filtered by semijoins. Otherwise, the entry is the original join factor.
    */
-  private final RelNode [] chosenSemiJoins;
+  private RelNode [] chosenSemiJoins;
 
   /**
    * Associates potential semijoins with each fact table factor. The first
@@ -265,7 +265,7 @@ public class LoptSemiJoinOptimizer {
     RelNode factRel = multiJoin.getJoinFactor(factIdx);
     RelNode dimRel = multiJoin.getJoinFactor(dimIdx);
     final JoinInfo joinInfo = JoinInfo.of(factRel, dimRel, semiJoinCondition);
-    assert !joinInfo.leftKeys.isEmpty();
+    assert joinInfo.leftKeys.size() > 0;
 
     // mutable copies
     final List<Integer> leftKeys = Lists.newArrayList(joinInfo.leftKeys);

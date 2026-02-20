@@ -21,7 +21,7 @@ import java.util.Map;
 /**
  * RelDataTypeField represents the definition of a field in a structured
  * {@link RelDataType}.
- *
+ * 结构化数据类型的field，继承map的entry
  * <p>Extends the {@link java.util.Map.Entry} interface to allow convenient
  * inter-operation with Java collections classes. In any implementation of this
  * interface, {@link #getKey()} must be equivalent to {@link #getName()}
@@ -42,7 +42,7 @@ public interface RelDataTypeField extends Map.Entry<String, RelDataType> {
     @Override public Integer apply(RelDataTypeField o) {
       return o.getIndex();
     }
-  }
+  } //根据field获取对应的索引
 
   /**
    * Function to transform a set of {@link RelDataTypeField} to
@@ -57,7 +57,7 @@ public interface RelDataTypeField extends Map.Entry<String, RelDataType> {
     @Override public String apply(RelDataTypeField o) {
       return o.getName();
     }
-  }
+  } //根据field获取名称
 
   //~ Methods ----------------------------------------------------------------
 

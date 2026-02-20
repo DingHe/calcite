@@ -55,7 +55,6 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.hamcrest.Matcher;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -76,12 +75,11 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.fail;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Unit tests for {@link RexProgram} and
@@ -249,7 +247,7 @@ class RexProgramTest extends RexProgramTestBase {
     RexLocalRef t4 =
         builder.addExpr(rexBuilder.makeCall(SqlStdOperatorTable.PLUS, i0, i1));
     RexLocalRef t5;
-    final @Nullable RexLocalRef t1;
+    final RexLocalRef t1;
     switch (variant) {
     case 0:
     case 2:
@@ -317,7 +315,7 @@ class RexProgramTest extends RexProgramTestBase {
       final RexLocalRef t9 =
           builder.addExpr(trueLiteral);
       // $t10 = $t1 is not null (i.e. y is not null)
-      requireNonNull(t1, "t1");
+      assert t1 != null;
       final RexLocalRef t10 =
           builder.addExpr(
               rexBuilder.makeCall(SqlStdOperatorTable.IS_NOT_NULL, t1));
@@ -1423,6 +1421,7 @@ class RexProgramTest extends RexProgramTestBase {
         "false");
   }
 
+  @SuppressWarnings("UnstableApiUsage")
   @Test void testRangeSetMinus() {
     final RangeSet<Integer> setNone = ImmutableRangeSet.of();
     final RangeSet<Integer> setAll = setNone.complement();
@@ -2265,9 +2264,8 @@ class RexProgramTest extends RexProgramTestBase {
   }
 
   @Test void fieldAccessEqualsHashCode() {
-    assertThat("vBool() instances should be equal", vBool(), is(vBool()));
-    assertThat("vBool().hashCode()", vBool().hashCode(),
-        is(vBool().hashCode()));
+    assertEquals(vBool(), vBool(), "vBool() instances should be equal");
+    assertEquals(vBool().hashCode(), vBool().hashCode(), "vBool().hashCode()");
     assertNotSame(vBool(), vBool(), "vBool() is expected to produce new RexFieldAccess");
     assertNotEquals(vBool(0), vBool(1), "vBool(0) != vBool(1)");
   }
@@ -2284,10 +2282,8 @@ class RexProgramTest extends RexProgramTestBase {
     RexCall caseNode = (RexCall) case_(condition, trueLiteral, falseLiteral);
 
     final RexCall result = (RexCall) simplify.simplifyUnknownAs(caseNode, RexUnknownAs.UNKNOWN);
-    assertThat("The case should be nonNullable",
-        caseNode.getType().isNullable(), is(false));
-    assertThat("Expected a nonNullable type",
-        result.getType().isNullable(), is(false));
+    assertThat("The case should be nonNullable", caseNode.getType().isNullable(), is(false));
+    assertThat("Expected a nonNullable type", result.getType().isNullable(), is(false));
     assertThat(result.getType().getSqlTypeName(), is(SqlTypeName.BOOLEAN));
     assertThat(result.getOperator(), is(SqlStdOperatorTable.IS_TRUE));
     assertThat(result.getOperands().get(0), is(condition));
@@ -3001,11 +2997,10 @@ class RexProgramTest extends RexProgramTestBase {
 
   private void assertTypeAndToString(
       RexNode rexNode, String representation, String type) {
-    assertThat(rexNode, hasToString(representation));
-    final String suffix =
-        rexNode.getType().isNullable() ? ""
-            : RelDataTypeImpl.NON_NULLABLE_SUFFIX;
-    assertThat("type of " + rexNode, rexNode.getType() + suffix, is(type));
+    assertEquals(representation, rexNode.toString());
+    assertEquals(type, rexNode.getType().toString()
+        + (rexNode.getType().isNullable() ? "" : RelDataTypeImpl.NON_NULLABLE_SUFFIX),
+        "type of " + rexNode);
   }
 
   @Test void testIsDeterministic() {
@@ -3014,8 +3009,8 @@ class RexProgramTest extends RexProgramTestBase {
             OperandTypes.VARIADIC).withDeterministic(false);
     RexNode n = rexBuilder.makeCall(ndc);
     assertFalse(RexUtil.isDeterministic(n));
-    assertThat(RexUtil.retainDeterministic(RelOptUtil.conjunctions(n)),
-        hasSize(0));
+    assertEquals(0,
+            RexUtil.retainDeterministic(RelOptUtil.conjunctions(n)).size());
   }
 
   @Test void testConstantMap() {
@@ -3358,6 +3353,7 @@ class RexProgramTest extends RexProgramTestBase {
   }
 
   /** Tests {@link Sarg#complexity()}. */
+  @SuppressWarnings("UnstableApiUsage")
   @Test void testSargComplexity() {
     checkSarg("complexity of 'x is not null'",
         Sarg.of(RexUnknownAs.FALSE, RangeSets.<Integer>rangeSetAll()),
@@ -3422,6 +3418,7 @@ class RexProgramTest extends RexProgramTestBase {
    * <a href="https://issues.apache.org/jira/browse/CALCITE-5722">[CALCITE-5722]
    * {@code Sarg.isComplementedPoints} fails with anti-points which are equal
    * under {@code compareTo} but not {@code equals}</a>. */
+  @SuppressWarnings("UnstableApiUsage")
   @Test void testSargAntiPoint() {
     final Sarg<BigDecimal> sarg =
         Sarg.of(RexUnknownAs.UNKNOWN,
@@ -3606,25 +3603,6 @@ class RexProgramTest extends RexProgramTestBase {
     RexNode s = simplify.simplifyUnknownAs(expr, RexUnknownAs.UNKNOWN);
 
     assertThat(s, is(falseLiteral));
-  }
-
-  @Test void testSimplifyMeasure() {
-    // m2v directly applied to v2m
-    checkSimplify(m2v(v2m(literal(1))), "1");
-    // m2v's operand contains v2m; not simplified
-    checkSimplifyUnchanged(m2v(plus(literal(2), v2m(literal(1)))));
-    // expression contains m2v directly applied to v2m; simplified
-    checkSimplify(plus(literal(2), m2v(v2m(literal(1)))), "+(2, 1)");
-    // "m2v(v2m(count(*))" -> "count(*) over (rows current row)"
-    final RelDataType bigintType = typeFactory.createSqlType(SqlTypeName.BIGINT);
-    final RexCall countCall =
-        new RexCall(bigintType, SqlStdOperatorTable.COUNT, ImmutableList.of());
-    checkSimplify(m2v(v2m(countCall)), "COUNT() OVER (ROWS CURRENT ROW)");
-    // "m2v(v2m(sum($0))" -> "sum($0) over (rows current row)"
-    final RexInputRef i0 = rexBuilder.makeInputRef(bigintType, 0);
-    final RexCall sumCall =
-        new RexCall(bigintType, SqlStdOperatorTable.SUM, ImmutableList.of(i0));
-    checkSimplify(m2v(v2m(sumCall)), "SUM($0) OVER (ROWS CURRENT ROW)");
   }
 
   @Test void testSimplifyUnaryMinus() {
@@ -3854,16 +3832,9 @@ class RexProgramTest extends RexProgramTestBase {
     checkSimplify(div(a, one), "?0.notNullInt1");
     checkSimplify(div(a, nullInt), "null:INTEGER");
 
-    checkSimplify(add(b, half), "?0.notNullDecimal2");
+    checkSimplifyUnchanged(add(b, half));
 
     checkSimplify(add(zero, sub(nullInt, nullInt)), "null:INTEGER");
   }
 
-  @Test void testSimplifyCastWithConstantReduction() {
-    RexNode dateStr = literal("2020-10-30");
-    RelDataType nullableDateType =
-        typeFactory.createTypeWithNullability(typeFactory.createSqlType(SqlTypeName.DATE), true);
-    RexNode cast = rexBuilder.makeCast(nullableDateType, dateStr);
-    checkSimplify(cast, "2020-10-30");
-  }
 }

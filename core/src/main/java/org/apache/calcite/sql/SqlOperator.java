@@ -48,11 +48,13 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
+import static org.apache.calcite.sql.type.SqlTypeUtil.isMeasure;
 import static org.apache.calcite.util.Static.RESOURCE;
 
 import static java.util.Objects.requireNonNull;
 
-/**
+/** operator包含函数、operators，例如 等值、case语句等，有操作数，例如除法有两操作数
+ * 有形参，可以通过SqlCall实例化。
  * A <code>SqlOperator</code> is a type of node in a SQL parse tree (it is NOT a
  * node in a SQL parse tree). It includes functions, operators such as '=', and
  * syntactic constructs such as 'case' statements. Operators may represent
@@ -65,7 +67,7 @@ import static java.util.Objects.requireNonNull;
  * denominator. In the context of subclass {@link SqlFunction}, formal operands
  * are referred to as <em>parameters</em>.
  *
- * <p>When an operator is instantiated via a {@link SqlCall}, it is supplied
+ * <p>When an operator is instantiated via a {@link SqlCall}, it is supp lied
  * with <em>actual operands</em>. For example, in the expression <code>3 /
  * 5</code>, the literal expression <code>3</code> is the actual operand
  * corresponding to the numerator, and <code>5</code> is the actual operand
@@ -78,7 +80,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class SqlOperator {
   //~ Static fields/initializers ---------------------------------------------
 
-  public static final String NL = System.lineSeparator();
+  public static final String NL = System.getProperty("line.separator");
 
   /**
    * Maximum precedence.
@@ -90,20 +92,20 @@ public abstract class SqlOperator {
   /**
    * The name of the operator/function. Ex. "OVERLAY" or "TRIM"
    */
-  private final String name;
+  private final String name; //operator的名称
 
   /**
    * See {@link SqlKind}. It's possible to have a name that doesn't match the
    * kind
    */
-  public final SqlKind kind;
+  public final SqlKind kind; //种类
 
   /**
    * The precedence with which this operator binds to the expression to the
    * left. This is less than the right precedence if the operator is
    * left-associative.
    */
-  private final int leftPrec;
+  private final int leftPrec; //如果是左关联，则要比rightPrec小
 
   /**
    * The precedence with which this operator binds to the expression to the
@@ -113,10 +115,10 @@ public abstract class SqlOperator {
   private final int rightPrec;
 
   /** Used to infer the return type of a call to this operator. */
-  private final @Nullable SqlReturnTypeInference returnTypeInference;
+  private final @Nullable SqlReturnTypeInference returnTypeInference; //返回值类型推断
 
   /** Used to infer types of unknown operands. */
-  private final @Nullable SqlOperandTypeInference operandTypeInference;
+  private final @Nullable SqlOperandTypeInference operandTypeInference; //对于位置的操作数，数类型推断
 
   /** Used to validate operand types. */
   private final @Nullable SqlOperandTypeChecker operandTypeChecker;
@@ -134,8 +136,9 @@ public abstract class SqlOperator {
       @Nullable SqlReturnTypeInference returnTypeInference,
       @Nullable SqlOperandTypeInference operandTypeInference,
       @Nullable SqlOperandTypeChecker operandTypeChecker) {
+    assert kind != null;
     this.name = name;
-    this.kind = requireNonNull(kind, "kind");
+    this.kind = kind;
     this.leftPrec = leftPrecedence;
     this.rightPrec = rightPrecedence;
     this.returnTypeInference = returnTypeInference;
@@ -171,9 +174,9 @@ public abstract class SqlOperator {
   //~ Methods ----------------------------------------------------------------
 
   protected static int leftPrec(int prec, boolean leftAssoc) {
-    assert (prec % 2) == 0;
+    assert (prec % 2) == 0; //偶数用于优先级
     if (!leftAssoc) {
-      ++prec;
+      ++prec; //奇数用于结合性区分
     }
     return prec;
   }
@@ -212,7 +215,7 @@ public abstract class SqlOperator {
     return name;
   }
 
-  /**
+  /** 返回Operator的全限定名
    * Returns the fully-qualified name of this operator.
    */
   public SqlIdentifier getNameAsId() {
@@ -239,7 +242,7 @@ public abstract class SqlOperator {
   /**
    * Returns the syntactic type of this operator, never null.
    */
-  public abstract SqlSyntax getSyntax();
+  public abstract SqlSyntax getSyntax(); //操作的语法
 
   /**
    * Creates a call to this operator with a list of operands.
@@ -534,6 +537,11 @@ public abstract class SqlOperator {
         throw new IllegalArgumentException("Cannot infer return type for "
             + opBinding.getOperator() + "; operand types: "
             + opBinding.collectOperandTypes());
+      }
+
+      // MEASURE wrapper should be removed, e.g. MEASURE<DOUBLE> should just be DOUBLE
+      if (isMeasure(returnType) && returnType.getMeasureElementType() != null) {
+        returnType = Objects.requireNonNull(returnType.getMeasureElementType());
       }
 
       if (operandTypeInference != null

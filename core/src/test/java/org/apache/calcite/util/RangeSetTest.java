@@ -49,6 +49,7 @@ import static java.util.Arrays.asList;
  * Unit test for {@link RangeSets} and other utilities relating to Guava
  * {@link Range} and {@link RangeSet}.
  */
+@SuppressWarnings("UnstableApiUsage")
 class RangeSetTest {
 
   /** Tests {@link org.apache.calcite.rel.externalize.RelJson#toJson(Range)}
@@ -106,6 +107,7 @@ class RangeSetTest {
   }
 
   /** Tests {@link RangeSets#minus(RangeSet, Range)}. */
+  @SuppressWarnings("UnstableApiUsage")
   @Test void testRangeSetMinus() {
     final RangeSet<Integer> setNone = ImmutableRangeSet.of();
     final RangeSet<Integer> setAll = setNone.complement();

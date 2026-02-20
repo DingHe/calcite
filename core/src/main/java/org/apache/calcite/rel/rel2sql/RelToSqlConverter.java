@@ -397,7 +397,7 @@ public class RelToSqlConverter extends SqlImplementor
   public Result visit(Correlate e) {
     final Result leftResult =
         visitInput(e, 0)
-            .resetAlias(e.getCorrelVariable(), e.getInput(0).getRowType());
+            .resetAlias(e.getCorrelVariable(), e.getRowType());
     parseCorrelTable(e, leftResult);
     final Result rightResult = visitInput(e, 1);
     final SqlNode rightLateral =
@@ -1344,14 +1344,17 @@ public class RelToSqlConverter extends SqlImplementor
   /** Stack frame. */
   private static class Frame {
     private final RelNode parent;
+    @SuppressWarnings("unused")
+    private final int ordinalInParent;
     private final RelNode r;
     private final boolean anon;
     private final boolean ignoreClauses;
     private final ImmutableSet<? extends Clause> expectedClauses;
 
-    Frame(RelNode parent, int unusedOrdinalInParent, RelNode r, boolean anon,
+    Frame(RelNode parent, int ordinalInParent, RelNode r, boolean anon,
         boolean ignoreClauses, Iterable<? extends Clause> expectedClauses) {
       this.parent = requireNonNull(parent, "parent");
+      this.ordinalInParent = ordinalInParent;
       this.r = requireNonNull(r, "r");
       this.anon = anon;
       this.ignoreClauses = ignoreClauses;

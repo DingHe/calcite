@@ -65,11 +65,11 @@ import static java.util.Objects.requireNonNull;
  *
  * @see SqlStdOperatorTable#SEARCH
  */
-@SuppressWarnings("type.argument.type.incompatible")
+@SuppressWarnings({"BetaApi", "type.argument.type.incompatible", "UnstableApiUsage"})
 public class Sarg<C extends Comparable<C>> implements Comparable<Sarg<C>> {
-  public final RangeSet<C> rangeSet;
+  public final RangeSet<C> rangeSet; //表示值范围的集合
   public final RexUnknownAs nullAs;
-  public final int pointCount;
+  public final int pointCount;   //表示Sarg中包含的具体值的个数
 
   /** Returns FALSE for all null and not-null values.
    *
@@ -293,6 +293,7 @@ public class Sarg<C extends Comparable<C>> implements Comparable<Sarg<C>> {
   private static class SpecialSarg<C extends Comparable<C>> extends Sarg<C> {
     final String name;
     final int ordinal;
+    // 每个SpecialSarg实例都有一个唯一的ordinal值，这个值是一个整数。通过这个ordinal值，我们可以快速判断一个SpecialSarg属于哪种类型，而不需要每次都去比较它的rangeSet和nullAs属性
 
     SpecialSarg(ImmutableRangeSet<C> rangeSet, RexUnknownAs nullAs, String name,
         int ordinal) {

@@ -44,12 +44,12 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-/**
+/** 代表一序列的字面量
  * Relational expression whose value is a sequence of zero or more literal row
  * values.
  */
 public abstract class Values extends AbstractRelNode implements Hintable {
-
+  //判断是否为空的谓词
   public static final Predicate<? super Values> IS_EMPTY_J = Values::isEmpty;
 
   protected final ImmutableList<RelHint> hints;
@@ -66,7 +66,7 @@ public abstract class Values extends AbstractRelNode implements Hintable {
 
   //~ Instance fields --------------------------------------------------------
 
-  public final ImmutableList<ImmutableList<RexLiteral>> tuples;
+  public final ImmutableList<ImmutableList<RexLiteral>> tuples; //实际数据存储的地方
 
   //~ Constructors -----------------------------------------------------------
 
@@ -151,7 +151,7 @@ public abstract class Values extends AbstractRelNode implements Hintable {
   public static boolean isNotEmpty(Values values) {
     return !isEmpty(values);
   }
-
+  //是否只有一个值
   public static boolean isSingleValue(Values values) {
     return values.tuples.size() == 1;
   }
@@ -190,9 +190,7 @@ public abstract class Values extends AbstractRelNode implements Hintable {
   }
 
   @Override protected RelDataType deriveRowType() {
-    if (rowType == null) {
-      throw new AssertionError("rowType must not be null for " + this);
-    }
+    assert rowType != null : "rowType must not be null for " + this;
     return rowType;
   }
 

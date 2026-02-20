@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 package org.apache.calcite.config;
-
+//null值在排序中放在开头还是结尾
 /** Strategy for how NULL values are to be sorted if NULLS FIRST or NULLS LAST
  * are not specified in an item in the ORDER BY clause. */
 public enum NullCollation {

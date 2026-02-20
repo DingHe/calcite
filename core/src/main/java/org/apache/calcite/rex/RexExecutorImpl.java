@@ -141,7 +141,7 @@ public class RexExecutorImpl implements RexExecutor {
       reducedValues.addAll(constExps);
       return;
     }
-
+    //常量表达式直接执行，这样直接的到结果，不用在数据库再执行一遍
     final RexExecutable executable = new RexExecutable(code, constExps);
     executable.setDataContext(dataContext);
     executable.reduce(rexBuilder, constExps, reducedValues);

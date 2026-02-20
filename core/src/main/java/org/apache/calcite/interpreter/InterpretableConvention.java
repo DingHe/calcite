@@ -27,7 +27,7 @@ import org.apache.calcite.plan.RelTraitSet;
 /**
  * Calling convention that returns results as an
  * {@link org.apache.calcite.linq4j.Enumerable} of object arrays.
- *
+ * 适用于动态解释执行的查询，通常用于需要灵活执行逻辑的场景
  * <p>Unlike enumerable convention, no code generation is required.
  */
 public enum InterpretableConvention implements Convention {

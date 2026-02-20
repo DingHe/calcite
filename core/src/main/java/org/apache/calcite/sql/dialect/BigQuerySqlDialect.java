@@ -55,7 +55,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-import static java.lang.Long.parseLong;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -230,7 +229,7 @@ public class BigQuerySqlDialect extends SqlDialect {
       writer.print("-");
     }
     try {
-      parseLong(interval.getIntervalLiteral());
+      Long.parseLong(interval.getIntervalLiteral());
     } catch (NumberFormatException e) {
       throw new RuntimeException("Only INT64 is supported as the interval value for BigQuery.");
     }

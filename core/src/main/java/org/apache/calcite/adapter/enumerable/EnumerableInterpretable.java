@@ -57,9 +57,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Relational expression that converts an enumerable input to interpretable
@@ -136,8 +135,7 @@ public class EnumerableInterpretable extends ConverterImpl
       InvocationTargetException, InstantiationException, IllegalAccessException {
     ICompilerFactory compilerFactory;
     ClassLoader classLoader =
-        requireNonNull(EnumerableInterpretable.class.getClassLoader(),
-            "classLoader");
+        Objects.requireNonNull(EnumerableInterpretable.class.getClassLoader(), "classLoader");
     try {
       compilerFactory = CompilerFactoryFactory.getDefaultCompilerFactory(classLoader);
     } catch (Exception e) {

@@ -22,8 +22,7 @@ import org.apache.calcite.util.ImmutableNullableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * A <code>SqlDescribeTable</code> is a node of a parse tree that represents a
@@ -49,7 +48,7 @@ public class SqlDescribeTable extends SqlCall {
       SqlIdentifier table,
       @Nullable SqlIdentifier column) {
     super(pos);
-    this.table = requireNonNull(table, "table");
+    this.table = Objects.requireNonNull(table, "table");
     this.column = column;
   }
 

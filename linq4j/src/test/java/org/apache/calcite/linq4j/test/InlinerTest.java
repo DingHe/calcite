@@ -40,6 +40,7 @@ import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests expression inlining in BlockBuilder.
@@ -57,7 +58,7 @@ class InlinerTest {
         Expressions.declare(16, "x", Expressions.add(ONE, TWO));
     b.add(decl);
     b.add(Expressions.return_(null, decl.parameter));
-    assertThat(b.toBlock(), hasToString("{\n  return 1 + 2;\n}\n"));
+    assertEquals("{\n  return 1 + 2;\n}\n", b.toBlock().toString());
   }
 
   @Test void testInlineConstant() {
@@ -66,7 +67,7 @@ class InlinerTest {
     b.add(
         Expressions.return_(null,
             Expressions.add(decl.parameter, decl.parameter)));
-    assertThat(b.toBlock(), hasToString("{\n  return 1 + 1;\n}\n"));
+    assertEquals("{\n  return 1 + 1;\n}\n", b.toBlock().toString());
   }
 
   @Test void testInlineParameter() {
@@ -76,7 +77,7 @@ class InlinerTest {
     b.add(
         Expressions.return_(null,
             Expressions.add(decl.parameter, decl.parameter)));
-    assertThat(b.toBlock(), hasToString("{\n  return p + p;\n}\n"));
+    assertEquals("{\n  return p + p;\n}\n", b.toBlock().toString());
   }
 
   @Test void testNoInlineMultipleUsage() {
@@ -88,11 +89,11 @@ class InlinerTest {
     b.add(
         Expressions.return_(null,
             Expressions.add(decl.parameter, decl.parameter)));
-    assertThat(b.toBlock(),
-        hasToString("{\n"
+    assertEquals("{\n"
             + "  final int x = p1 - p2;\n"
             + "  return x + x;\n"
-            + "}\n"));
+            + "}\n",
+        b.toBlock().toString());
   }
 
   @Test void testAssignInConditionMultipleUsage() {
@@ -112,11 +113,11 @@ class InlinerTest {
                 t,
                 Expressions.parameter(int.class, "c")));
     builder.add(Expressions.return_(null, v));
-    assertThat(
-        Expressions.toString(builder.toBlock()), is("{\n"
+    assertEquals("{\n"
             + "  int t;\n"
             + "  return (t = 1) != a ? t : c;\n"
-            + "}\n"));
+            + "}\n",
+        Expressions.toString(builder.toBlock()));
   }
 
   @Test void testAssignInConditionOptimizedOut() {
@@ -198,11 +199,11 @@ class InlinerTest {
                 t,
                 Expressions.parameter(int.class, "c")));
     builder.add(Expressions.return_(null, v));
-    assertThat(
-        Expressions.toString(builder.toBlock()), is("{\n"
+    assertEquals("{\n"
             + "  int t = 2;\n"
             + "  return (t = 1) != a ? t : c;\n"
-            + "}\n"));
+            + "}\n",
+        Expressions.toString(builder.toBlock()));
   }
 
   @Test void testMultiPassOptimization() {
@@ -219,10 +220,10 @@ class InlinerTest {
             Expressions.condition(Expressions.greaterThan(t, ONE), TRUE, TRUE));
 
     builder.add(Expressions.return_(null, Expressions.condition(b, t, TWO)));
-    assertThat(
-        Expressions.toString(builder.toBlock()), is("{\n"
+    assertEquals("{\n"
             + "  return u + v;\n"
-            + "}\n"));
+            + "}\n",
+        Expressions.toString(builder.toBlock()));
   }
 
   @Test void testInlineInTryCatchStatement() {
@@ -239,8 +240,7 @@ class InlinerTest {
     CatchBlock cb = Expressions.catch_(e, Expressions.throw_(e));
     builder.add(Expressions.tryCatch(st, cb));
     builder.add(Expressions.return_(null, u));
-    assertThat(builder.toBlock(),
-        hasToString("{\n"
+    assertEquals("{\n"
             + "  final int u;\n"
             + "  try {\n"
             + "    u = 1 + 2;\n"
@@ -248,6 +248,7 @@ class InlinerTest {
             + "    throw e;\n"
             + "  }\n"
             + "  return u;\n"
-            + "}\n"));
+            + "}\n",
+        builder.toBlock().toString());
   }
 }

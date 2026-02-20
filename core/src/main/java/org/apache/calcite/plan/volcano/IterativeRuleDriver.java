@@ -21,8 +21,6 @@ import org.apache.calcite.util.trace.CalciteTrace;
 
 import org.slf4j.Logger;
 
-import static java.util.Objects.requireNonNull;
-
 /***
  * The algorithm executes repeatedly. The exact rules
  * that may be fired varies.
@@ -48,7 +46,7 @@ class IterativeRuleDriver implements RuleDriver {
 
   @Override public void drive() {
     while (true) {
-      requireNonNull(planner.root, "RelSubset must not be null at this point");
+      assert planner.root != null : "RelSubset must not be null at this point";
       LOGGER.debug("Best cost before rule match: {}", planner.root.bestCost);
 
       VolcanoRuleMatch match = ruleQueue.popMatch();
@@ -71,7 +69,7 @@ class IterativeRuleDriver implements RuleDriver {
     }
 
   }
-
+  //当新的RelNode加入RelSet时，被调用
   @Override public void onProduce(RelNode rel, RelSubset subset) {
   }
 

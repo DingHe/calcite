@@ -298,7 +298,7 @@ public class CalciteMetaImpl extends MetaImpl {
 
   private <E> MetaResultSet createResultSet(Enumerable<E> enumerable,
       Class clazz, List<String> names) {
-    assert !names.isEmpty();
+    assert names.size() > 0;
     final List<ColumnMetaData> columns = new ArrayList<>(names.size());
     final List<Field> fields = new ArrayList<>(names.size());
     final List<String> fieldNames = new ArrayList<>(names.size());
@@ -464,7 +464,7 @@ public class CalciteMetaImpl extends MetaImpl {
   Enumerable<MetaTable> tables(final MetaSchema schema_) {
     final CalciteMetaSchema schema = (CalciteMetaSchema) schema_;
     return Linq4j.asEnumerable(schema.calciteSchema.getTableNames())
-        .select(name -> {
+        .select((Function1<String, MetaTable>) name -> {
           final Table table =
               requireNonNull(schema.calciteSchema.getTable(name, true),
                   () -> "table " + name + " is not found (case sensitive)")
@@ -517,7 +517,7 @@ public class CalciteMetaImpl extends MetaImpl {
               false,
               false,
               typeSystem.isAutoincrement(sqlTypeName),
-              (short) typeSystem.getMinScale(sqlTypeName),
+              (short) sqlTypeName.getMinScale(),
               (short) typeSystem.getMaxScale(sqlTypeName),
               typeSystem.getNumTypeRadix(sqlTypeName)));
     }
@@ -759,7 +759,7 @@ public class CalciteMetaImpl extends MetaImpl {
     final List rows =
         MetaImpl.collect(signature.cursorFactory,
             LimitIterator.of(iterator, fetchMaxRowCount),
-            new ArrayList<>());
+            new ArrayList<List<Object>>());
     boolean done = fetchMaxRowCount == 0 || rows.size() < fetchMaxRowCount;
     @SuppressWarnings("unchecked") List<Object> rows1 = (List<Object>) rows;
     return new Meta.Frame(offset, done, rows1);
@@ -832,15 +832,15 @@ public class CalciteMetaImpl extends MetaImpl {
             return statement;
           }
 
-          @Override public void clear() {}
+          @Override public void clear() throws SQLException {}
 
           @Override public void assign(Meta.Signature signature, Meta.@Nullable Frame firstFrame,
-              long updateCount) {
+              long updateCount) throws SQLException {
             this.signature = signature;
             this.updateCount = updateCount;
           }
 
-          @Override public void execute() {
+          @Override public void execute() throws SQLException {
             Signature signature = requireNonNull(this.signature, "signature");
             if (signature.statementType.canUpdate()) {
               final Iterable<Object> iterable =
@@ -873,8 +873,8 @@ public class CalciteMetaImpl extends MetaImpl {
     return DRIVER.connect(schema, typeFactory);
   }
 
-  @Override public boolean syncResults(StatementHandle h, QueryState state,
-      long offset) {
+  @Override public boolean syncResults(StatementHandle h, QueryState state, long offset)
+      throws NoSuchStatementException {
     // Doesn't have application in Calcite itself.
     throw new UnsupportedOperationException();
   }
@@ -922,7 +922,7 @@ public class CalciteMetaImpl extends MetaImpl {
    *
    * @param <E> element type */
   abstract static class MetadataTable<E> extends AbstractQueryableTable {
-    MetadataTable(Class<E> clazz) {
+     MetadataTable(Class<E> clazz) {
       super(clazz);
     }
 

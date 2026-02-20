@@ -35,8 +35,7 @@ import java.nio.file.Paths;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Test {@link RelMetadataHandlerGeneratorUtil}.
@@ -155,7 +154,7 @@ class RelMetadataHandlerGeneratorUtilTest {
     assert !expected.contains("\r") : "Expected code should not contain \\r";
     assert !nameAndGeneratedCode.getGeneratedCode().equals("\r")
         : "Generated code should not contain \\r";
-    assertThat(nameAndGeneratedCode.getGeneratedCode(), is(expected));
+    assertEquals(expected, nameAndGeneratedCode.getGeneratedCode());
   }
 
   private static String readResource(String resourceName) {

@@ -87,7 +87,7 @@ import static java.util.Objects.requireNonNull;
  * <li><code>INTERVAL '1 2:3:4' DAY TO SECOND</code></li>
  * <li><code>INTERVAL '1 2:3:4' DAY(4) TO SECOND(4)</code></li>
  * </ul>
- *
+ *  间隔限定符就是用来指定这些计算或比较所使用的单位和精度，例如INTERVAL '1 YEAR'：表示一个年的时间间隔
  * <p>An instance of this class is immutable.
  */
 public class SqlIntervalQualifier extends SqlNode {
@@ -98,12 +98,12 @@ public class SqlIntervalQualifier extends SqlNode {
   private static final BigDecimal INT_MAX_VALUE_PLUS_ONE =
       BigDecimal.valueOf(Integer.MAX_VALUE).add(BigDecimal.ONE);
 
-  private static final Set<TimeUnitRange> TIME_UNITS =
+  private static final Set<TimeUnitRange> TIME_UNITS = //时间单位，时、分、秒
       ImmutableSet.of(TimeUnitRange.HOUR,
           TimeUnitRange.MINUTE,
           TimeUnitRange.SECOND);
 
-  private static final Set<TimeUnitRange> MONTH_UNITS =
+  private static final Set<TimeUnitRange> MONTH_UNITS = //月份单位，千年、世纪、十年、年、季度、月
       ImmutableSet.of(TimeUnitRange.MILLENNIUM,
           TimeUnitRange.CENTURY,
           TimeUnitRange.DECADE,
@@ -112,13 +112,13 @@ public class SqlIntervalQualifier extends SqlNode {
           TimeUnitRange.QUARTER,
           TimeUnitRange.MONTH);
 
-  private static final Set<TimeUnitRange> DAY_UNITS =
+  private static final Set<TimeUnitRange> DAY_UNITS =  //天单位，星期、天
       ImmutableSet.of(TimeUnitRange.WEEK,
           TimeUnitRange.DAY);
 
   private static final Set<TimeUnitRange> DATE_UNITS =
       ImmutableSet.<TimeUnitRange>builder()
-          .addAll(MONTH_UNITS).addAll(DAY_UNITS).build();
+          .addAll(MONTH_UNITS).addAll(DAY_UNITS).build(); //日期单位，月份单位和天单位的合并
 
   private static final Set<String> WEEK_FRAMES =
       ImmutableSet.<String>builder()
@@ -343,7 +343,7 @@ public class SqlIntervalQualifier extends SqlNode {
 
   public int getFractionalSecondPrecision(RelDataTypeSystem typeSystem) {
     if (fractionalSecondPrecision == RelDataType.PRECISION_NOT_SPECIFIED) {
-      return typeSystem.getDefaultScale(typeName());
+      return typeName().getDefaultScale();
     } else {
       return fractionalSecondPrecision;
     }
@@ -554,7 +554,8 @@ public class SqlIntervalQualifier extends SqlNode {
 
     // YEAR and DAY can never be secondary units,
     // nor can unit be null.
-    switch (requireNonNull(unit, "unit")) {
+    assert unit != null;
+    switch (unit) {
     case YEAR:
     case DAY:
     default:
@@ -575,7 +576,7 @@ public class SqlIntervalQualifier extends SqlNode {
     return new BigDecimal("0." + secondFracStr).multiply(THOUSAND);
   }
 
-  private static int[] fillYearMonthIntervalValueArray(
+  private static int[] fillIntervalValueArray(
       int sign,
       BigDecimal year,
       BigDecimal month) {
@@ -588,7 +589,7 @@ public class SqlIntervalQualifier extends SqlNode {
     return ret;
   }
 
-  private static int[] fillDayTimeIntervalValueArray(
+  private static int[] fillIntervalValueArray(
       int sign,
       BigDecimal day,
       BigDecimal hour,
@@ -636,7 +637,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, year, TimeUnit.YEAR, pos);
 
       // package values up for return
-      return fillYearMonthIntervalValueArray(sign, year, ZERO);
+      return fillIntervalValueArray(sign, year, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -676,7 +677,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillYearMonthIntervalValueArray(sign, year, month);
+      return fillIntervalValueArray(sign, year, month);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -711,7 +712,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, month, TimeUnit.MONTH, pos);
 
       // package values up for return
-      return fillYearMonthIntervalValueArray(sign, ZERO, month);
+      return fillIntervalValueArray(sign, ZERO, month);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -746,8 +747,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, quarter, TimeUnit.QUARTER, pos);
 
       // package values up for return
-      final BigDecimal months = quarter.multiply(BigDecimal.valueOf(3));
-      return fillYearMonthIntervalValueArray(sign, ZERO, months);
+      return fillIntervalValueArray(sign, ZERO, quarter);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -782,8 +782,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, week, TimeUnit.WEEK, pos);
 
       // package values up for return
-      final BigDecimal days = week.multiply(BigDecimal.valueOf(7));
-      return fillDayTimeIntervalValueArray(sign, days, ZERO, ZERO, ZERO, ZERO);
+      return fillIntervalValueArray(sign, ZERO, week);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -818,7 +817,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, day, TimeUnit.DAY, pos);
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, day, ZERO, ZERO, ZERO, ZERO);
+      return fillIntervalValueArray(sign, day, ZERO, ZERO, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -858,7 +857,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, day, hour, ZERO, ZERO, ZERO);
+      return fillIntervalValueArray(sign, day, hour, ZERO, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -901,7 +900,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, day, hour, minute, ZERO, ZERO);
+      return fillIntervalValueArray(sign, day, hour, minute, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -971,7 +970,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(
+      return fillIntervalValueArray(
           sign,
           day,
           hour,
@@ -1012,7 +1011,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, hour, TimeUnit.HOUR, pos);
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, ZERO, hour, ZERO, ZERO, ZERO);
+      return fillIntervalValueArray(sign, ZERO, hour, ZERO, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -1053,7 +1052,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, ZERO, hour, minute, ZERO, ZERO);
+      return fillIntervalValueArray(sign, ZERO, hour, minute, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -1121,7 +1120,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(
+      return fillIntervalValueArray(
           sign,
           ZERO,
           hour,
@@ -1162,7 +1161,7 @@ public class SqlIntervalQualifier extends SqlNode {
       checkLeadFieldInRange(typeSystem, sign, minute, TimeUnit.MINUTE, pos);
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(sign, ZERO, ZERO, minute, ZERO, ZERO);
+      return fillIntervalValueArray(sign, ZERO, ZERO, minute, ZERO, ZERO);
     } else {
       throw invalidValueException(pos, originalValue);
     }
@@ -1226,7 +1225,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(
+      return fillIntervalValueArray(
           sign,
           ZERO,
           ZERO,
@@ -1293,7 +1292,7 @@ public class SqlIntervalQualifier extends SqlNode {
       }
 
       // package values up for return
-      return fillDayTimeIntervalValueArray(
+      return fillIntervalValueArray(
           sign, ZERO, ZERO, ZERO, second, secondFrac);
     } else {
       throw invalidValueException(pos, originalValue);
@@ -1391,8 +1390,8 @@ public class SqlIntervalQualifier extends SqlNode {
   private CalciteContextException invalidValueException(SqlParserPos pos,
       String value) {
     return SqlUtil.newContextException(pos,
-        RESOURCE.unsupportedIntervalLiteral("'" + value + "'",
-            "INTERVAL " + this));
+        RESOURCE.unsupportedIntervalLiteral(
+            "'" + value + "'", "INTERVAL " + toString()));
   }
 
   private static CalciteContextException fieldExceedsPrecisionException(

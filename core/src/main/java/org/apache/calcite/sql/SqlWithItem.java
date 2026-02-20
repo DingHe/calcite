@@ -28,10 +28,10 @@ import java.util.List;
  * It has a name, an optional column list, and a query.
  */
 public class SqlWithItem extends SqlCall {
-  public SqlIdentifier name;
-  public @Nullable SqlNodeList columnList; // may be null
-  public SqlLiteral recursive;
-  public SqlNode query;
+  public SqlIdentifier name; //with语句的名称
+  public @Nullable SqlNodeList columnList; // may be null，字段列表，可能为空
+  public SqlLiteral recursive; //是否递归
+  public SqlNode query; //查询语句
 
   @Deprecated // to be removed before 2.0
   public SqlWithItem(SqlParserPos pos, SqlIdentifier name,

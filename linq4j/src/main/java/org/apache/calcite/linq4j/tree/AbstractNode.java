@@ -21,18 +21,16 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Abstract implementation of {@link Node}.
  */
 public abstract class AbstractNode implements Node {
-  public final ExpressionType nodeType;
-  public final Type type;
+  public final ExpressionType nodeType; //节点类型
+  public final Type type;   //表达式类型
 
   AbstractNode(ExpressionType nodeType, Type type) {
-    this.type = requireNonNull(type, "type");
-    this.nodeType = requireNonNull(nodeType, "nodeType");
+    this.type = type;
+    this.nodeType = nodeType;
   }
 
   /**
@@ -88,8 +86,15 @@ public abstract class AbstractNode implements Node {
     }
 
     AbstractNode that = (AbstractNode) o;
-    return nodeType == that.nodeType
-        && type.equals(that.type);
+
+    if (nodeType != that.nodeType) {
+      return false;
+    }
+    if (type != null ? !type.equals(that.type) : that.type != null) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

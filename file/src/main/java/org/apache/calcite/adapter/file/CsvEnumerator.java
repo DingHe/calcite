@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -52,15 +53,6 @@ import java.util.regex.Pattern;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
-
-import static java.lang.Boolean.parseBoolean;
-import static java.lang.Byte.parseByte;
-import static java.lang.Double.parseDouble;
-import static java.lang.Float.parseFloat;
-import static java.lang.Integer.parseInt;
-import static java.lang.Long.parseLong;
-import static java.lang.Short.parseShort;
-import static java.util.Objects.requireNonNull;
 
 /** Enumerator that reads from a CSV file.
  *
@@ -155,8 +147,8 @@ public class CsvEnumerator<E> implements Enumerator<E> {
           String typeString = string.substring(colon + 1);
           Matcher decimalMatcher = DECIMAL_TYPE_PATTERN.matcher(typeString);
           if (decimalMatcher.matches()) {
-            int precision = parseInt(decimalMatcher.group(1));
-            int scale = parseInt(decimalMatcher.group(2));
+            int precision = Integer.parseInt(decimalMatcher.group(1));
+            int scale = Integer.parseInt(decimalMatcher.group(2));
             fieldType = parseDecimalSqlType(typeFactory, precision, scale);
           } else {
             switch (typeString) {
@@ -226,7 +218,7 @@ public class CsvEnumerator<E> implements Enumerator<E> {
   }
 
   static CSVReader openCsv(Source source) throws IOException {
-    requireNonNull(source, "source");
+    Objects.requireNonNull(source, "source");
     return new CSVReader(source.reader());
   }
 
@@ -315,38 +307,38 @@ public class CsvEnumerator<E> implements Enumerator<E> {
         if (string.length() == 0) {
           return null;
         }
-        return parseBoolean(string);
+        return Boolean.parseBoolean(string);
       case TINYINT:
         if (string.length() == 0) {
           return null;
         }
-        return parseByte(string);
+        return Byte.parseByte(string);
       case SMALLINT:
         if (string.length() == 0) {
           return null;
         }
-        return parseShort(string);
+        return Short.parseShort(string);
       case INTEGER:
         if (string.length() == 0) {
           return null;
         }
-        return parseInt(string);
+        return Integer.parseInt(string);
       case BIGINT:
         if (string.length() == 0) {
           return null;
         }
-        return parseLong(string);
+        return Long.parseLong(string);
       case REAL:
         if (string.length() == 0) {
           return null;
         }
-        return parseFloat(string);
+        return Float.parseFloat(string);
       case FLOAT:
       case DOUBLE:
         if (string.length() == 0) {
           return null;
         }
-        return parseDouble(string);
+        return Double.parseDouble(string);
       case DECIMAL:
         if (string.length() == 0) {
           return null;

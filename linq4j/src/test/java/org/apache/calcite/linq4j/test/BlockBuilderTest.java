@@ -25,7 +25,6 @@ import org.apache.calcite.linq4j.tree.OptimizeShuttle;
 import org.apache.calcite.linq4j.tree.ParameterExpression;
 import org.apache.calcite.linq4j.tree.Shuttle;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,9 +35,7 @@ import static org.apache.calcite.linq4j.test.BlockBuilderBase.FOUR;
 import static org.apache.calcite.linq4j.test.BlockBuilderBase.ONE;
 import static org.apache.calcite.linq4j.test.BlockBuilderBase.TWO;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests BlockBuilder.
@@ -57,13 +54,14 @@ class BlockBuilderTest {
     Expression y = nested.append("y", Expressions.add(ONE, TWO));
     nested.add(Expressions.return_(null, Expressions.add(y, y)));
     b.add(nested.toBlock());
-    assertThat(b.toBlock(),
-        hasToString("{\n"
+    assertEquals(
+        "{\n"
             + "  final int x = 1 + 2;\n"
             + "  {\n"
             + "    return x + x;\n"
             + "  }\n"
-            + "}\n"));
+            + "}\n",
+        b.toBlock().toString());
   }
 
   @Test void testTestCustomOptimizer() {
@@ -82,11 +80,11 @@ class BlockBuilderTest {
       }
     };
     b.add(Expressions.return_(null, Expressions.add(ONE, TWO)));
-    assertThat(b.toBlock(), hasToString("{\n  return 4;\n}\n"));
+    assertEquals("{\n  return 4;\n}\n", b.toBlock().toString());
   }
 
   private BlockBuilder appendBlockWithSameVariable(
-      @Nullable Expression initializer1, @Nullable Expression initializer2) {
+      Expression initializer1, Expression initializer2) {
     BlockBuilder outer = new BlockBuilder();
     ParameterExpression outerX = Expressions.parameter(int.class, "x");
     outer.add(Expressions.declare(0, outerX, initializer1));
@@ -104,14 +102,13 @@ class BlockBuilderTest {
   @Test void testRenameVariablesWithEmptyInitializer() {
     BlockBuilder outer = appendBlockWithSameVariable(null, null);
 
-    assertThat("x in the second block should be renamed to avoid name clash",
-        Expressions.toString(outer.toBlock()),
-        is("{\n"
+    assertEquals("{\n"
             + "  int x;\n"
             + "  x = 1;\n"
             + "  int x0;\n"
             + "  x0 = 42;\n"
-            + "}\n"));
+            + "}\n", Expressions.toString(outer.toBlock()),
+        "x in the second block should be renamed to avoid name clash");
   }
 
   @Test void testRenameVariablesWithInitializer() {
@@ -119,14 +116,13 @@ class BlockBuilderTest {
         appendBlockWithSameVariable(Expressions.constant(7),
             Expressions.constant(8));
 
-    assertThat("x in the second block should be renamed to avoid name clash",
-        Expressions.toString(outer.toBlock()),
-        is("{\n"
+    assertEquals("{\n"
             + "  int x = 7;\n"
             + "  x = 1;\n"
             + "  int x0 = 8;\n"
             + "  x0 = 42;\n"
-            + "}\n"));
+            + "}\n", Expressions.toString(outer.toBlock()),
+        "x in the second block should be renamed to avoid name clash");
   }
 
   /** Test case for
@@ -141,11 +137,12 @@ class BlockBuilderTest {
             Identity.class.getMethod("apply", Object.class),
             Expressions.constant("test")));
 
-    assertThat(
-        Expressions.toString(bb.toBlock()), is("{\n"
+    assertEquals(
+        "{\n"
             + "  final Object _i = new org.apache.calcite.linq4j.test.BlockBuilderTest.Identity()"
             + ".apply(\"test\");\n"
-            + "}\n"));
+            + "}\n",
+        Expressions.toString(bb.toBlock()));
 
   }
 
@@ -160,11 +157,10 @@ class BlockBuilderTest {
             OptimizeShuttle.BOXED_FALSE_EXPR,
             Expressions.constant(null)));
 
-    assertThat("Expected to optimize Boolean.FALSE = null to false",
-        Expressions.toString(outer.toBlock()),
-        is("{\n"
+    assertEquals("{\n"
             + "  return false;\n"
-            + "}\n"));
+            + "}\n", Expressions.toString(outer.toBlock()),
+        "Expected to optimize Boolean.FALSE = null to false");
   }
 
   /**

@@ -45,23 +45,23 @@ public interface ModifiableView extends Table {
   /** Returns a constraint that each candidate row must satisfy.
    *
    * <p>Never null; if there is no constraint, returns "true".
-   *
+   *  返回每个行都要满足的约束
    * @param rexBuilder Rex builder
    * @param tableRowType Row type of the table that this view maps onto
    */
   RexNode getConstraint(RexBuilder rexBuilder, RelDataType tableRowType);
 
   /** Returns the column mapping onto another table.
-   *
+   * 返回到另一个表的列映射
    * <p>{@code mapping[i]} contains the column of the underlying table that the
    * {@code i}th column of the view comes from, or -1 if it is based on an
    * expression.
    */
   ImmutableIntList getColumnMapping();
-
+  //返回底层表
   /** Returns the underlying table. */
   Table getTable();
-
+  //返回表的全路径
   /** Returns the full path of the underlying table. */
   Path getTablePath();
 }

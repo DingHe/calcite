@@ -55,9 +55,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 import java.util.AbstractList;
 import java.util.Collections;
 import java.util.List;
-
-import static java.util.Objects.hash;
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * A relational expression representing a set of window aggregates.
@@ -93,7 +91,8 @@ public abstract class Window extends SingleRel implements Hintable {
       RelNode input, List<RexLiteral> constants, RelDataType rowType, List<Group> groups) {
     super(cluster, traitSet, input);
     this.constants = ImmutableList.copyOf(constants);
-    this.rowType = requireNonNull(rowType, "rowType");
+    assert rowType != null;
+    this.rowType = rowType;
     this.groups = ImmutableList.copyOf(groups);
     this.hints = ImmutableList.copyOf(hints);
   }
@@ -268,12 +267,12 @@ public abstract class Window extends SingleRel implements Hintable {
         RexWindowExclusion exclude,
         RelCollation orderKeys,
         List<RexWinAggCall> aggCalls) {
-      this.keys = requireNonNull(keys, "keys");
+      this.keys = Objects.requireNonNull(keys, "keys");
       this.isRows = isRows;
-      this.lowerBound = requireNonNull(lowerBound, "lowerBound");
-      this.upperBound = requireNonNull(upperBound, "upperBound");
+      this.lowerBound = Objects.requireNonNull(lowerBound, "lowerBound");
+      this.upperBound = Objects.requireNonNull(upperBound, "upperBound");
       this.exclude = exclude;
-      this.orderKeys = requireNonNull(orderKeys, "orderKeys");
+      this.orderKeys = Objects.requireNonNull(orderKeys, "orderKeys");
       this.aggCalls = ImmutableList.copyOf(aggCalls);
       this.digest = computeString();
     }
@@ -298,14 +297,17 @@ public abstract class Window extends SingleRel implements Hintable {
         buf.append(orderKeys);
       }
       if (orderKeys.getFieldCollations().isEmpty()
-          && lowerBound.isUnboundedPreceding()
-          && upperBound.isUnboundedFollowing()) {
+          && lowerBound.isUnbounded()
+          && lowerBound.isPreceding()
+          && upperBound.isUnbounded()
+          && upperBound.isFollowing()) {
         // skip bracket if no ORDER BY, and if bracket is the default,
         // "RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING",
         // which is equivalent to
         // "ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING"
       } else if (!orderKeys.getFieldCollations().isEmpty()
-          && lowerBound.isUnboundedPreceding()
+          && lowerBound.isUnbounded()
+          && lowerBound.isPreceding()
           && upperBound.isCurrentRow()
           && !isRows) {
         // skip bracket if there is ORDER BY, and if bracket is the default,
@@ -384,7 +386,7 @@ public abstract class Window extends SingleRel implements Hintable {
         @Override public AggregateCall get(int index) {
           final RexWinAggCall aggCall = aggCalls.get(index);
           final SqlAggFunction op = (SqlAggFunction) aggCall.getOperator();
-          return AggregateCall.create(aggCall.getParserPosition(), op, aggCall.distinct, false,
+          return AggregateCall.create(op, aggCall.distinct, false,
               aggCall.ignoreNulls, ImmutableList.of(),
               getProjectOrdinals(aggCall.getOperands()),
               -1, null, RelCollations.EMPTY,
@@ -465,7 +467,7 @@ public abstract class Window extends SingleRel implements Hintable {
 
     @Override public int hashCode() {
       if (hash == 0) {
-        hash = hash(super.hashCode(), ordinal, distinct, ignoreNulls);
+        hash = Objects.hash(super.hashCode(), ordinal, distinct, ignoreNulls);
       }
       return hash;
     }

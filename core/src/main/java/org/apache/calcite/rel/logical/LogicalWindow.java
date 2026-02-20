@@ -57,8 +57,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Sub-class of {@link org.apache.calcite.rel.core.Window}
  * not targeted at any particular engine or calling convention.
@@ -247,7 +245,8 @@ public final class LogicalWindow extends Window {
           @Override public RexNode visitOver(RexOver over) {
             // Look up the aggCall which this expr was translated to.
             final Window.RexWinAggCall aggCall =
-                requireNonNull(aggMap.get(origToNewOver.get(over)));
+                aggMap.get(origToNewOver.get(over));
+            assert aggCall != null;
             assert RelOptUtil.eq(
                 "over",
                 over.getType(),

@@ -57,6 +57,13 @@ public abstract class Bug {
   public static final boolean DT785_FIXED = false;
 
   /**
+   * Whether <a href="http://issues.eigenbase.org/browse/FRG-327">issue
+   * FRG-327: AssertionError while translating IN list that contains null</a>
+   * is fixed.
+   */
+  public static final boolean FRG327_FIXED = false;
+
+  /**
    * Whether <a href="http://issues.eigenbase.org/browse/FRG-377">issue
    * FRG-377: Regular character set identifiers defined in SQL:2008 spec like
    * :ALPHA:, * :UPPER:, :LOWER:, ... etc. are not yet implemented in
@@ -146,6 +153,11 @@ public abstract class Bug {
   public static final boolean CALCITE_2401_FIXED = false;
 
   /** Whether
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-2539">[CALCITE-2539]
+   * Several test case not passed in CalciteSqlOperatorTest.java</a> is fixed. */
+  public static final boolean CALCITE_2539_FIXED = false;
+
+  /** Whether
    * <a href="https://issues.apache.org/jira/browse/CALCITE-2869">[CALCITE-2869]
    * JSON data type support</a> is fixed. */
   public static final boolean CALCITE_2869_FIXED = false;
@@ -199,6 +211,11 @@ public abstract class Bug {
   public static final boolean CALCITE_6367_FIXED = false;
 
   /** Whether
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-6375">[CALCITE-6375]
+   * Fix failing quidem tests for FORMAT in CAST</a> is fixed. */
+  public static final boolean CALCITE_6375_FIXED = false;
+
+  /** Whether
    * <a href="https://issues.apache.org/jira/browse/CALCITE/issues/CALCITE-6391">
    * [CALCITE-6391] Apply mapping to RelCompositeTrait does not apply it to wrapped traits</a>
    * is fixed. */
@@ -215,10 +232,14 @@ public abstract class Bug {
   public static final boolean CALCITE_6294_FIXED = false;
 
   /** Whether
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6328">[CALCITE-6328]
-   * The BigQuery functions SAFE_* do not match the BigQuery specification</a>
-   * is fixed. */
-  public static final boolean CALCITE_6328_FIXED = false;
+   * <a href="https://issues.apache.org/jira/browse/CALCITE/issues/CALCITE-6295">
+   * [CALCITE-6295] Support IS NOT NULL in Arrow adapter</a> is fixed. */
+  public static final boolean CALCITE_6295_FIXED = false;
+
+  /** Whether
+   * <a href="https://issues.apache.org/jira/browse/CALCITE/issues/CALCITE-6296">
+   * [CALCITE-6296] Support IS NULL in Arrow adapter</a> is fixed. */
+  public static final boolean CALCITE_6296_FIXED = false;
 
   /**
    * Use this to flag temporary code.

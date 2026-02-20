@@ -65,7 +65,7 @@ import static org.apache.calcite.jdbc.CalciteSchema.LatticeEntry;
 
 import static java.util.Objects.requireNonNull;
 
-/**
+/** schema的工具类
  * Utility functions for schemas.
  */
 public final class Schemas {
@@ -147,7 +147,7 @@ public final class Schemas {
             Expressions.constant(type)),
         type);
   }
-
+  //根据表，生成对应的表达式
   /** Returns the expression to access a table within a schema. */
   public static Expression tableExpression(SchemaPlus schema, Type elementType,
       String tableName, Class clazz) {

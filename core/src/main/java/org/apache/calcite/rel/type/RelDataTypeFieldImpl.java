@@ -31,9 +31,9 @@ import static java.util.Objects.requireNonNull;
 public class RelDataTypeFieldImpl implements RelDataTypeField, Serializable {
   //~ Instance fields --------------------------------------------------------
 
-  private final RelDataType type;
-  private final String name;
-  private final int index;
+  private final RelDataType type; //字段类型
+  private final String name; //字段名称
+  private final int index; //对应的索引
 
   //~ Constructors -----------------------------------------------------------
 
@@ -104,7 +104,7 @@ public class RelDataTypeFieldImpl implements RelDataTypeField, Serializable {
   }
 
   @Override public boolean isDynamicStar() {
-    return type.getSqlTypeName() == SqlTypeName.DYNAMIC_STAR;
+    return type.getSqlTypeName() == SqlTypeName.DYNAMIC_STAR; //判断sql类型是否为*
   }
 
 }

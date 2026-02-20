@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 package org.apache.calcite.plan;
-
 import org.apache.calcite.adapter.java.ReflectiveSchema;
 import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
@@ -115,7 +114,6 @@ import static java.util.Objects.requireNonNull;
 /**
  * Unit test for {@link org.apache.calcite.rel.externalize.RelJson}.
  */
-@SuppressWarnings("ConcatenationWithEmptyString")
 class RelWriterTest {
   public static final String XX = "{\n"
       + "  \"rels\": [\n"
@@ -523,11 +521,11 @@ class RelWriterTest {
         Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
           rootSchema.add("hr",
               new ReflectiveSchema(new HrSchema()));
-          final RelOptTable table =
-              requireNonNull(
-                  relOptSchema.getTableForMember(Arrays.asList("hr", "emps")));
           LogicalTableScan scan =
-              LogicalTableScan.create(cluster, table, ImmutableList.of());
+              LogicalTableScan.create(cluster,
+                  relOptSchema.getTableForMember(
+                      Arrays.asList("hr", "emps")),
+                  ImmutableList.of());
           final RexBuilder rexBuilder = cluster.getRexBuilder();
           LogicalFilter filter =
               LogicalFilter.create(scan,
@@ -570,11 +568,11 @@ class RelWriterTest {
         Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
           rootSchema.add("hr",
               new ReflectiveSchema(new HrSchema()));
-          final RelOptTable table =
-              requireNonNull(
-                  relOptSchema.getTableForMember(Arrays.asList("hr", "emps")));
           LogicalTableScan scan =
-              LogicalTableScan.create(cluster, table, ImmutableList.of());
+              LogicalTableScan.create(cluster,
+                  relOptSchema.getTableForMember(
+                      Arrays.asList("hr", "emps")),
+                  ImmutableList.of());
           final RexBuilder rexBuilder = cluster.getRexBuilder();
           final RelDataType bigIntType =
               cluster.getTypeFactory().createSqlType(SqlTypeName.BIGINT);
@@ -958,7 +956,7 @@ class RelWriterTest {
     rel.explain(jsonWriter);
     final String relJson = jsonWriter.asString();
     String s = deserializeAndDump(getSchema(rel), relJson, format);
-    final String expected;
+    String expected = null;
     switch (format) {
     case TEXT:
       expected = ""
@@ -977,8 +975,6 @@ class RelWriterTest {
           + "$5\\n\" [label=\"0\"]\n"
           + "}\n";
       break;
-    default:
-      throw new AssertionError();
     }
     assertThat(s, isLinux(expected));
   }
@@ -1220,7 +1216,8 @@ class RelWriterTest {
     final Function<RelBuilder, RelNode> relFn = b ->
         mockCountOver(b, "EMP", ImmutableList.of(), ImmutableList.of("DEPTNO"));
     final String expected = ""
-        + "LogicalProject($f0=[COUNT() OVER (ORDER BY $7 NULLS LAST)])\n"
+        + "LogicalProject($f0=[COUNT() OVER (ORDER BY $7 NULLS LAST "
+        + "ROWS UNBOUNDED PRECEDING)])\n"
         + "  LogicalTableScan(table=[[scott, EMP]])\n";
     relFn(relFn)
         .assertThatPlan(isLinux(expected));
@@ -1358,7 +1355,7 @@ class RelWriterTest {
             return super.visit(scan);
           }
         });
-    return requireNonNull(schemaHolder.get());
+    return schemaHolder.get();
   }
 
   /**
@@ -1430,7 +1427,7 @@ class RelWriterTest {
     for (String orderKeyName : orderKeyNames) {
       orderKeys.add(new RexFieldCollation(builder.field(orderKeyName), ImmutableSet.of()));
     }
-    return builder
+    final RelNode rel = builder
         .project(
             rexBuilder.makeOver(
                 type,
@@ -1440,8 +1437,9 @@ class RelWriterTest {
                 ImmutableList.copyOf(orderKeys),
                 RexWindowBounds.UNBOUNDED_PRECEDING,
                 RexWindowBounds.CURRENT_ROW,
-                false, true, false, false, false))
+                true, true, false, false, false))
         .build();
+    return rel;
   }
 
   @Test void testHashDistributionWithoutKeys() {
@@ -1464,10 +1462,11 @@ class RelWriterTest {
       final RelDataTypeFactory typeFactory = relBuilder.getTypeFactory();
       final RelDataType intType = typeFactory.createSqlType(SqlTypeName.INTEGER);
       final RexDynamicParam dynamicParam = rexBuilder.makeDynamicParam(intType, 0);
-      return relBuilder
+      final RelNode relNode = relBuilder
           .scan("EMP")
           .sortLimit(null, dynamicParam, relBuilder.fields(RelCollations.EMPTY))
           .build();
+      return relNode;
     };
 
     final String expectedJson = "{\n"
@@ -1529,14 +1528,10 @@ class RelWriterTest {
         .project(b.fields(), ImmutableList.of(), true)
             .let(b2 -> {
               final RelNode input = b2.build();
-              final RelOptTable table =
-                  requireNonNull(input.getInput(0).getTable());
-              final Prepare.CatalogReader schema =
-                  (Prepare.CatalogReader)
-                      requireNonNull(table.getRelOptSchema());
+              final RelOptTable table = input.getInput(0).getTable();
               final LogicalTableModify modify =
                   LogicalTableModify.create(table,
-                      schema,
+                      (Prepare.CatalogReader) table.getRelOptSchema(),
                       input,
                       TableModify.Operation.INSERT,
                       null,
@@ -1561,14 +1556,10 @@ class RelWriterTest {
                 b.equals(b.field("JOB"), b.literal("c")))
             .let(b2 -> {
               final RelNode filter = b2.build();
-              final RelOptTable table =
-                  requireNonNull(filter.getInput(0).getTable());
-              final Prepare.CatalogReader schema =
-                  (Prepare.CatalogReader)
-                      requireNonNull(table.getRelOptSchema());
+              final RelOptTable table = filter.getInput(0).getTable();
               final LogicalTableModify modify =
                   LogicalTableModify.create(table,
-                      schema,
+                      (Prepare.CatalogReader) table.getRelOptSchema(),
                       filter,
                       TableModify.Operation.UPDATE,
                       ImmutableList.of("ENAME"),
@@ -1592,14 +1583,10 @@ class RelWriterTest {
             .filter(b.equals(b.field("JOB"), b.literal("c")))
             .let(b2 -> {
               final RelNode filter = b2.build();
-              final RelOptTable table =
-                  requireNonNull(filter.getInput(0).getTable());
-              final Prepare.CatalogReader schema =
-                  (Prepare.CatalogReader)
-                      requireNonNull(table.getRelOptSchema());
+              final RelOptTable table = filter.getInput(0).getTable();
               LogicalTableModify modify =
                   LogicalTableModify.create(table,
-                      schema,
+                      (Prepare.CatalogReader) table.getRelOptSchema(),
                       filter,
                       TableModify.Operation.DELETE,
                       null,
@@ -1660,12 +1647,9 @@ class RelWriterTest {
               //     INSERT VALUES (0, 'x', 'x', 0, '20200501 10:00:00',
               //         0, 0, 0, 0)
               final RelNode project = b.build();
-              final Prepare.CatalogReader schema =
-                  (Prepare.CatalogReader)
-                      requireNonNull(emp.get().getRelOptSchema());
               LogicalTableModify modify =
                   LogicalTableModify.create(emp.get(),
-                      schema,
+                      (Prepare.CatalogReader) emp.get().getRelOptSchema(),
                       project,
                       TableModify.Operation.MERGE,
                       ImmutableList.of("ENAME"),
@@ -1732,7 +1716,6 @@ class RelWriterTest {
       return this;
     }
 
-    @SuppressWarnings("UnusedReturnValue")
     Fixture assertThatPlan(Matcher<String> matcher) {
       final FrameworkConfig config = RelBuilderTest.config().build();
       final RelBuilder b = RelBuilder.create(config);

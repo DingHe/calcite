@@ -35,7 +35,7 @@ import java.util.List;
 public abstract class SingleRel extends AbstractRelNode {
   //~ Instance fields --------------------------------------------------------
 
-  protected RelNode input;
+  protected RelNode input; //只有一个输入节点
 
   //~ Constructors -----------------------------------------------------------
 

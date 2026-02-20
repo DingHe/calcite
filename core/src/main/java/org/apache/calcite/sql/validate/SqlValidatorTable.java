@@ -26,7 +26,7 @@ import java.util.List;
 
 /**
  * Supplies a {@link SqlValidator} with the metadata for a table.
- *
+ *  这个接口是给SqlValidator提供元数据
  * @see SqlValidatorCatalogReader
  */
 public interface SqlValidatorTable extends Wrapper {
@@ -37,24 +37,24 @@ public interface SqlValidatorTable extends Wrapper {
 
   List<String> getQualifiedName();
 
-  /**
+  /**给定列是否单调
    * Returns whether a given column is monotonic.
    */
   SqlMonotonicity getMonotonicity(String columnName);
 
-  /**
+  /** 访问类型，就是只读、可写或者读写
    * Returns the access type of the table.
    */
   SqlAccessType getAllowedAccess();
-
+  //支持关系或者流（stream）
   boolean supportsModality(SqlModality modality);
 
-  /**
+  /**是否临时表
    * Returns whether the table is temporal.
    */
   boolean isTemporal();
 
-  /**
+  /** 指定列是否有默认值
    * Returns whether the ordinal column has a default value.
    */
   @Deprecated // to be removed before 2.0

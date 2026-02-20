@@ -25,11 +25,6 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for using Calcite with Spark as an internal engine, as implemented by
  * the {@link org.apache.calcite.adapter.spark} package.
- *
- * <p>Under JDK 23 and higher, this test requires
- * "{@code -Djava.security.manager=allow}" command-line arguments due to
- * Hadoop's use of deprecated methods in {@link javax.security.auth.Subject}.
- * These arguments are set automatically if you run via Gradle.
  */
 class SparkAdapterTest {
   private static final String VALUES0 = "(values (1, 'a'), (2, 'b'))";

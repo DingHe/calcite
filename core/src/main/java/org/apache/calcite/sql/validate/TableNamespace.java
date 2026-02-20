@@ -136,8 +136,8 @@ class TableNamespace extends AbstractNamespace {
             () -> "can't unwrap Table from " + table);
     if (schemaTable instanceof ModifiableViewTable) {
       final Table underlying =
-          requireNonNull(
-              ((ModifiableViewTable) schemaTable).unwrap(Table.class));
+          ((ModifiableViewTable) schemaTable).unwrap(Table.class);
+      assert underlying != null;
       return underlying.getRowType(validator.typeFactory);
     }
     return schemaTable.getRowType(validator.typeFactory);

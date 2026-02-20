@@ -169,7 +169,9 @@ public class InnodbRules {
       InnodbTableScan scan = call.rel(1);
       if (filter.getTraitSet().contains(Convention.NONE)) {
         final RelNode converted = convert(filter, scan);
-        call.transformTo(converted);
+        if (converted != null) {
+          call.transformTo(converted);
+        }
       }
     }
 
@@ -251,7 +253,7 @@ public class InnodbRules {
       if (sortFieldCollations.size() > implicitFieldCollations.size()) {
         return false;
       }
-      if (sortFieldCollations.isEmpty()) {
+      if (sortFieldCollations.size() == 0) {
         return true;
       }
 
@@ -285,7 +287,9 @@ public class InnodbRules {
     @Override public void onMatch(RelOptRuleCall call) {
       final Sort sort = call.rel(0);
       final RelNode converted = convert(sort);
-      call.transformTo(converted);
+      if (converted != null) {
+        call.transformTo(converted);
+      }
     }
   }
 

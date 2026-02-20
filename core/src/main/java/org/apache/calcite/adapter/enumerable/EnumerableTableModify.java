@@ -40,10 +40,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
-
 /** Implementation of {@link org.apache.calcite.rel.core.TableModify} in
  * {@link org.apache.calcite.adapter.enumerable.EnumerableConvention enumerable calling convention}. */
 public class EnumerableTableModify extends TableModify
@@ -87,11 +83,9 @@ public class EnumerableTableModify extends TableModify
         Expressions.parameter(Collection.class,
             builder.newName("collection"));
     final Expression expression = table.getExpression(ModifiableTable.class);
-    requireNonNull(expression, "expression"); // TODO: user error in validator
-    checkArgument(
-        ModifiableTable.class.isAssignableFrom(
-            Types.toClass(expression.getType())),
-        "not assignable from type %s", expression.getType());
+    assert expression != null; // TODO: user error in validator
+    assert ModifiableTable.class.isAssignableFrom(
+        Types.toClass(expression.getType())) : expression.getType();
     builder.add(
         Expressions.declare(
             Modifier.FINAL,

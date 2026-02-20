@@ -43,9 +43,7 @@ import static org.apache.calcite.sql.type.SqlTypeName.TINYINT;
 import static org.apache.calcite.sql.type.SqlTypeName.VARBINARY;
 import static org.apache.calcite.sql.type.SqlTypeName.VARCHAR;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests types supported by {@link SqlTypeName}.
@@ -54,181 +52,181 @@ class SqlTypeNameTest {
   @Test void testBit() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.BIT);
-    assertThat("BIT did not map to BOOLEAN", tn, is(BOOLEAN));
+    assertEquals(BOOLEAN, tn, "BIT did not map to BOOLEAN");
   }
 
   @Test void testTinyint() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.TINYINT);
-    assertThat("TINYINT did not map to TINYINT", tn, is(TINYINT));
+    assertEquals(TINYINT, tn, "TINYINT did not map to TINYINT");
   }
 
   @Test void testSmallint() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.SMALLINT);
-    assertThat("SMALLINT did not map to SMALLINT", tn, is(SMALLINT));
+    assertEquals(SMALLINT, tn, "SMALLINT did not map to SMALLINT");
   }
 
   @Test void testInteger() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.INTEGER);
-    assertThat("INTEGER did not map to INTEGER", tn, is(INTEGER));
+    assertEquals(INTEGER, tn, "INTEGER did not map to INTEGER");
   }
 
   @Test void testBigint() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.BIGINT);
-    assertThat("BIGINT did not map to BIGINT", tn, is(BIGINT));
+    assertEquals(BIGINT, tn, "BIGINT did not map to BIGINT");
   }
 
   @Test void testFloat() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.FLOAT);
-    assertThat("FLOAT did not map to FLOAT", tn, is(FLOAT));
+    assertEquals(FLOAT, tn, "FLOAT did not map to FLOAT");
   }
 
   @Test void testReal() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.REAL);
-    assertThat("REAL did not map to REAL", tn, is(REAL));
+    assertEquals(REAL, tn, "REAL did not map to REAL");
   }
 
   @Test void testDouble() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.DOUBLE);
-    assertThat("DOUBLE did not map to DOUBLE", tn, is(DOUBLE));
+    assertEquals(DOUBLE, tn, "DOUBLE did not map to DOUBLE");
   }
 
   @Test void testNumeric() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.NUMERIC);
-    assertThat("NUMERIC did not map to DECIMAL", tn, is(DECIMAL));
+    assertEquals(DECIMAL, tn, "NUMERIC did not map to DECIMAL");
   }
 
   @Test void testDecimal() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.DECIMAL);
-    assertThat("DECIMAL did not map to DECIMAL", tn, is(DECIMAL));
+    assertEquals(DECIMAL, tn, "DECIMAL did not map to DECIMAL");
   }
 
   @Test void testChar() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.CHAR);
-    assertThat("CHAR did not map to CHAR", tn, is(CHAR));
+    assertEquals(CHAR, tn, "CHAR did not map to CHAR");
   }
 
   @Test void testVarchar() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.VARCHAR);
-    assertThat("VARCHAR did not map to VARCHAR", tn, is(VARCHAR));
+    assertEquals(VARCHAR, tn, "VARCHAR did not map to VARCHAR");
   }
 
   @Test void testLongvarchar() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.LONGVARCHAR);
-    assertThat("LONGVARCHAR did not map to null", tn, nullValue());
+    assertEquals(null, tn, "LONGVARCHAR did not map to null");
   }
 
   @Test void testDate() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.DATE);
-    assertThat("DATE did not map to DATE", tn, is(DATE));
+    assertEquals(DATE, tn, "DATE did not map to DATE");
   }
 
   @Test void testTime() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.TIME);
-    assertThat("TIME did not map to TIME", tn, is(TIME));
+    assertEquals(TIME, tn, "TIME did not map to TIME");
   }
 
   @Test void testTimestamp() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.TIMESTAMP);
-    assertThat("TIMESTAMP did not map to TIMESTAMP", tn, is(TIMESTAMP));
+    assertEquals(TIMESTAMP, tn, "TIMESTAMP did not map to TIMESTAMP");
   }
 
   @Test void testBinary() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.BINARY);
-    assertThat("BINARY did not map to BINARY", tn, is(BINARY));
+    assertEquals(BINARY, tn, "BINARY did not map to BINARY");
   }
 
   @Test void testVarbinary() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.VARBINARY);
-    assertThat("VARBINARY did not map to VARBINARY", tn, is(VARBINARY));
+    assertEquals(VARBINARY, tn, "VARBINARY did not map to VARBINARY");
   }
 
   @Test void testLongvarbinary() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.LONGVARBINARY);
-    assertThat("LONGVARBINARY did not map to null", tn, nullValue());
+    assertEquals(null, tn, "LONGVARBINARY did not map to null");
   }
 
   @Test void testNull() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.NULL);
-    assertThat("NULL did not map to null", tn, nullValue());
+    assertEquals(null, tn, "NULL did not map to null");
   }
 
   @Test void testOther() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.OTHER);
-    assertThat("OTHER did not map to null", tn, nullValue());
+    assertEquals(null, tn, "OTHER did not map to null");
   }
 
   @Test void testJavaobject() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.JAVA_OBJECT);
-    assertThat("JAVA_OBJECT did not map to null", tn, nullValue());
+    assertEquals(null, tn, "JAVA_OBJECT did not map to null");
   }
 
   @Test void testDistinct() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.DISTINCT);
-    assertThat("DISTINCT did not map to DISTINCT", tn, is(DISTINCT));
+    assertEquals(DISTINCT, tn, "DISTINCT did not map to DISTINCT");
   }
 
   @Test void testStruct() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.STRUCT);
-    assertThat("STRUCT did not map to null", tn, is(STRUCTURED));
+    assertEquals(STRUCTURED, tn, "STRUCT did not map to null");
   }
 
   @Test void testArray() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.ARRAY);
-    assertThat("ARRAY did not map to ARRAY", tn, is(ARRAY));
+    assertEquals(ARRAY, tn, "ARRAY did not map to ARRAY");
   }
 
   @Test void testBlob() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.BLOB);
-    assertThat("BLOB did not map to null", tn, nullValue());
+    assertEquals(null, tn, "BLOB did not map to null");
   }
 
   @Test void testClob() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.CLOB);
-    assertThat("CLOB did not map to null", tn, nullValue());
+    assertEquals(null, tn, "CLOB did not map to null");
   }
 
   @Test void testRef() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.REF);
-    assertThat("REF did not map to null", tn, nullValue());
+    assertEquals(null, tn, "REF did not map to null");
   }
 
   @Test void testDatalink() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.DATALINK);
-    assertThat("DATALINK did not map to null", tn, nullValue());
+    assertEquals(null, tn, "DATALINK did not map to null");
   }
 
   @Test void testBoolean() {
     SqlTypeName tn =
         SqlTypeName.getNameForJdbcType(Types.BOOLEAN);
-    assertThat("BOOLEAN did not map to BOOLEAN", tn, is(BOOLEAN));
+    assertEquals(BOOLEAN, tn, "BOOLEAN did not map to BOOLEAN");
   }
 
   @Test void testRowid() {
@@ -236,7 +234,7 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.ROWID);
 
     // ROWID not supported yet
-    assertThat("ROWID maps to non-null type", tn, nullValue());
+    assertEquals(null, tn, "ROWID maps to non-null type");
   }
 
   @Test void testNchar() {
@@ -244,7 +242,7 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.NCHAR);
 
     // NCHAR not supported yet, currently maps to CHAR
-    assertThat("NCHAR did not map to CHAR", tn, is(CHAR));
+    assertEquals(CHAR, tn, "NCHAR did not map to CHAR");
   }
 
   @Test void testNvarchar() {
@@ -252,7 +250,7 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.NVARCHAR);
 
     // NVARCHAR not supported yet, currently maps to VARCHAR
-    assertThat("NVARCHAR did not map to VARCHAR", tn, is(VARCHAR));
+    assertEquals(VARCHAR, tn, "NVARCHAR did not map to VARCHAR");
   }
 
   @Test void testLongnvarchar() {
@@ -260,7 +258,7 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.LONGNVARCHAR);
 
     // LONGNVARCHAR not supported yet
-    assertThat("LONGNVARCHAR maps to non-null type", tn, nullValue());
+    assertEquals(null, tn, "LONGNVARCHAR maps to non-null type");
   }
 
   @Test void testNclob() {
@@ -268,7 +266,7 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.NCLOB);
 
     // NCLOB not supported yet
-    assertThat("NCLOB maps to non-null type", tn, nullValue());
+    assertEquals(null, tn, "NCLOB maps to non-null type");
   }
 
   @Test void testSqlxml() {
@@ -276,6 +274,6 @@ class SqlTypeNameTest {
         SqlTypeName.getNameForJdbcType(ExtraSqlTypes.SQLXML);
 
     // SQLXML not supported yet
-    assertThat("SQLXML maps to non-null type", tn, nullValue());
+    assertEquals(null, tn, "SQLXML maps to non-null type");
   }
 }

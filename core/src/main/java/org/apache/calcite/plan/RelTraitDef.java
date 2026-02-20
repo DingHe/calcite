@@ -27,7 +27,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 /**
  * RelTraitDef represents a class of {@link RelTrait}s. Implementations of
  * RelTraitDef may be singletons under the following conditions:
- *
+ * 特定定义代表一类特征
  * <ol>
  * <li>if the set of all possible associated RelTraits is finite and fixed (e.g.
  * all RelTraits for this RelTraitDef are known at compile time). For example,
@@ -59,6 +59,7 @@ public abstract class RelTraitDef<T extends RelTrait> {
    *
    * <p>Uses weak interner to allow GC.
    */
+  @SuppressWarnings("BetaApi")
   private final Interner<T> interner = Interners.newWeakInterner();
 
   //~ Constructors -----------------------------------------------------------
@@ -71,7 +72,7 @@ public abstract class RelTraitDef<T extends RelTrait> {
   /**
    * Whether a relational expression may possess more than one instance of
    * this trait simultaneously.
-   *
+   * 关系表达式是否可以同时拥有此特征的多个实例
    * <p>A subset has only one instance of a trait.
    */
   public boolean multiple() {
@@ -97,6 +98,7 @@ public abstract class RelTraitDef<T extends RelTrait> {
    * @param trait a possibly non-canonical RelTrait
    * @return a canonical RelTrait.
    */
+  @SuppressWarnings("BetaApi")
   public final T canonize(T trait) {
     if (!(trait instanceof RelCompositeTrait)) {
       assert getTraitClass().isInstance(trait)
@@ -109,7 +111,7 @@ public abstract class RelTraitDef<T extends RelTrait> {
 
   /**
    * Converts the given RelNode to the given RelTrait.
-   *
+   * 把给定的关系节点按照给定的特征转换
    * @param planner                     the planner requesting the conversion
    * @param rel                         RelNode to convert
    * @param toTrait                     RelTrait to convert to

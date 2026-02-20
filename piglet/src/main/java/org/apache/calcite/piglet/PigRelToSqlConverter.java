@@ -105,21 +105,14 @@ public class PigRelToSqlConverter extends RelToSqlConverter {
         orderList.add(builder.context.toSql(orderKey));
       }
 
-      SqlNode lowerBound = builder.context.toSql(winGroup.lowerBound);
-      SqlNode upperBound = builder.context.toSql(winGroup.upperBound);
-      if (orderList.isEmpty() && !winGroup.isRows) {
-        // With no ORDER BY, all RANGE windows are equivalent to OVER (),
-        // so simplify.
-        lowerBound = upperBound = null;
-      }
       final SqlNode sqlWindow =
           SqlWindow.create(null, // Window declaration name
               null, // Window reference name
               new SqlNodeList(partitionList, POS),
               new SqlNodeList(orderList, POS),
               SqlLiteral.createBoolean(winGroup.isRows, POS),
-              lowerBound,
-              upperBound,
+              builder.context.toSql(winGroup.lowerBound),
+              builder.context.toSql(winGroup.upperBound),
               null, // allowPartial
               builder.context.toSql(winGroup.exclude),
               POS);

@@ -22,7 +22,7 @@ import org.apache.calcite.jdbc.CalciteConnection;
 
 /**
  * Server.
- *
+ * 代表连接之间的共享状态
  * <p>Represents shared state among connections, and will have monitoring and
  * management facilities.
  */

@@ -106,7 +106,7 @@ public class JdbcCatalogSchema extends AbstractSchema implements Wrapper {
   private SubSchemaMap computeSubSchemaMap() {
     final ImmutableMap.Builder<String, Schema> builder =
         ImmutableMap.builder();
-    @Nullable String defaultSchemaName;
+    String defaultSchemaName;
     try (Connection connection = dataSource.getConnection();
          ResultSet resultSet =
              connection.getMetaData().getSchemas(catalog, null)) {
@@ -129,7 +129,7 @@ public class JdbcCatalogSchema extends AbstractSchema implements Wrapper {
   }
 
   /** Returns the name of the default sub-schema. */
-  public @Nullable String getDefaultSubSchemaName() {
+  public String getDefaultSubSchemaName() {
     return subSchemaMapSupplier.get().defaultSchemaName;
   }
 
@@ -151,10 +151,10 @@ public class JdbcCatalogSchema extends AbstractSchema implements Wrapper {
 
   /** Contains sub-schemas by name, and the name of the default schema. */
   private static class SubSchemaMap {
-    final @Nullable String defaultSchemaName;
+    final String defaultSchemaName;
     final ImmutableMap<String, Schema> map;
 
-    private SubSchemaMap(@Nullable String defaultSchemaName,
+    private SubSchemaMap(String defaultSchemaName,
         ImmutableMap<String, Schema> map) {
       this.defaultSchemaName = defaultSchemaName;
       this.map = map;

@@ -31,7 +31,7 @@ public abstract class Statement extends AbstractNode {
     assert rprec == 0;
     accept0(writer);
   }
-
+  //语句只能是语句，不能变成表达式
   // Make return type more specific. A statement can only become a different
   // kind of statement; it can't become an expression.
   @Override public abstract Statement accept(Shuttle shuttle);

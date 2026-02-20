@@ -111,9 +111,7 @@ public class TableFunctionReturnTypeInference
                 paramOrdinal,
                 fieldName,
                 columnNames);
-        if (parentCursorName == null) {
-          throw new AssertionError();
-        }
+        assert parentCursorName != null;
         paramOrdinal = -1;
         iCursor = 0;
         for (int i = 0; i < paramNames.size(); ++i) {
@@ -127,9 +125,7 @@ public class TableFunctionReturnTypeInference
           }
         }
         cursorType = opBinding.getCursorOperand(paramOrdinal);
-        if (cursorType == null) {
-          throw new AssertionError();
-        }
+        assert cursorType != null;
       }
 
       // And expand. Function output is always nullable... except system

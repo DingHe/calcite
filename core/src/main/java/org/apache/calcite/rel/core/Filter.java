@@ -60,7 +60,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class Filter extends SingleRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  protected final RexNode condition;
+  protected final RexNode condition; //过滤条件
 
   protected final ImmutableList<RelHint> hints;
 

@@ -20,7 +20,6 @@ import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlExplain;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlJoin;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLambda;
 import org.apache.calcite.sql.SqlLiteral;
@@ -76,18 +75,16 @@ import static org.apache.calcite.util.Util.toLinux;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * A <code>SqlParserTest</code> is a unit-test for
@@ -135,7 +132,6 @@ public class SqlParserTest {
       "AS",                            "92", "99", "2003", "2011", "2014", "c",
       "ASC",                           "92", "99",
       "ASENSITIVE",                          "99", "2003", "2011", "2014", "c",
-      "ASOF",                                                              "c",
       "ASSERTION",                     "92", "99",
       "ASYMMETRIC",                          "99", "2003", "2011", "2014", "c",
       "AT",                            "92", "99", "2003", "2011", "2014", "c",
@@ -356,12 +352,10 @@ public class SqlParserTest {
       "MAP",                                 "99",
       "MATCH",                         "92", "99", "2003", "2011", "2014", "c",
       "MATCHES",                                                   "2014", "c",
-      "MATCH_CONDITION",                                                   "c",
       "MATCH_NUMBER",                                              "2014", "c",
       "MATCH_RECOGNIZE",                                           "2014", "c",
       "MAX",                           "92",               "2011", "2014", "c",
       "MAX_CARDINALITY",                                   "2011",
-      "MEASURE",                                                           "c",
       "MEASURES",                                                          "c",
       "MEMBER",                                    "2003", "2011", "2014", "c",
       "MERGE",                                     "2003", "2011", "2014", "c",
@@ -681,19 +675,6 @@ public class SqlParserTest {
     };
   }
 
-  /** Returns a {@link Matcher} that calls a consumer and then succeeds.
-   * The consumer should contain custom code, and should fail if it doesn't
-   * like what it sees. */
-  public static Matcher<SqlNode> customMatches(String description,
-      Consumer<SqlNode> consumer) {
-    return new CustomTypeSafeMatcher<SqlNode>(description) {
-      @Override protected boolean matchesSafely(SqlNode sqlNode) {
-        consumer.accept(sqlNode);
-        return true;
-      }
-    };
-  }
-
   protected SortedSet<String> getReservedKeywords() {
     return keywords("c");
   }
@@ -718,17 +699,13 @@ public class SqlParserTest {
       case "2011":
       case "2014":
       case "c":
-        if (r == null) {
-          throw new AssertionError("word should come before year: " + w);
-        }
+        assert r != null;
         if (dialect == null || dialect.equals(w)) {
           builder.add(r);
         }
         break;
       default:
-        if (r != null && r.compareTo(w) >= 0) {
-          throw new AssertionError("table should be sorted: " + w);
-        }
+        assert r == null || r.compareTo(w) < 0 : "table should be sorted: " + w;
         r = w;
       }
     }
@@ -1012,30 +989,6 @@ public class SqlParserTest {
     sql("select DECIMAL \"999\"")
         .withDialect(BIG_QUERY)
         .ok("SELECT 999");
-  }
-
-  @Test void testDecimalWithScale() {
-    sql("select cast(15 as decimal(3, 1))")
-        .ok("SELECT CAST(15 AS DECIMAL(3, 1))");
-    sql("select cast(15 as decimal(3, -1))")
-        .ok("SELECT CAST(15 AS DECIMAL(3, -1))");
-    sql("select cast(15 as decimal(3, 0))")
-        .ok("SELECT CAST(15 AS DECIMAL(3, 0))");
-  }
-
-  @Test void testDecimalWithPrecision() {
-    // the precision greater than the max precision
-    sql("select cast(15 as decimal(1000, 1))")
-        .ok("SELECT CAST(15 AS DECIMAL(1000, 1))");
-    sql("select cast(15 as decimal(3, 1))")
-        .ok("SELECT CAST(15 AS DECIMAL(3, 1))");
-    sql("select cast(15 as decimal(^-^3, 1))")
-        .fails("Encountered \"-\" at line 1, column 27\\.\n"
-            + "Was expecting:\n"
-            + "    <UNSIGNED_INTEGER_LITERAL> \\.\\.\\.\n"
-            + "    ");
-    sql("select cast(15 as decimal(0, 0))")
-        .ok("SELECT CAST(15 AS DECIMAL(0, 0))");
   }
 
   @Test void testDerivedColumnList() {
@@ -3249,28 +3202,6 @@ public class SqlParserTest {
             + "CROSS JOIN `B`");
   }
 
-  @Test void testJoinCrossComma() {
-    sql("select * from a as a2, b cross join c")
-        .node(
-            customMatches("custom", node -> {
-              // Parsed as left-deep:
-              //   select * from (a as a2, b) cross join c
-              // (This is not valid SQL, but illustrates operator
-              // associativity.)
-              assertThat(node, instanceOf(SqlSelect.class));
-              final SqlSelect select = (SqlSelect) node;
-              assertThat(select.getFrom(), instanceOf(SqlJoin.class));
-              final SqlJoin from = requireNonNull((SqlJoin) select.getFrom());
-              assertThat(from.getLeft(), instanceOf(SqlJoin.class));
-              assertThat(from.getRight(), instanceOf(SqlIdentifier.class));
-            }));
-  }
-
-  @Test void testInternalComma() {
-    sql("select * from (a^,^ b) cross join c")
-        .fails("(?s)Encountered \",\" at .*");
-  }
-
   @Test void testJoinOn() {
     sql("select * from a left join b on 1 = 1 and 2 = 2 where 3 = 3")
         .ok("SELECT *\n"
@@ -4430,6 +4361,7 @@ public class SqlParserTest {
             + "Was expecting one of:\n"
             + "    \"LATERAL\" \\.\\.\\.\n"
             + "    \"TABLE\" \\.\\.\\.\n"
+            + "    \"UNNEST\" \\.\\.\\.\n"
             + "    <IDENTIFIER> \\.\\.\\.\n"
             + "    <HYPHENATED_IDENTIFIER> \\.\\.\\.\n"
             + "    <QUOTED_IDENTIFIER> \\.\\.\\.\n"
@@ -4437,8 +4369,7 @@ public class SqlParserTest {
             + "    <BIG_QUERY_BACK_QUOTED_IDENTIFIER> \\.\\.\\.\n"
             + "    <BRACKET_QUOTED_IDENTIFIER> \\.\\.\\.\n"
             + "    <UNICODE_QUOTED_IDENTIFIER> \\.\\.\\.\n"
-            + "    \"\\(\" \\.\\.\\.\n.*"
-            + "    \"UNNEST\" \\.\\.\\.\n.*");
+            + "    \"\\(\" \\.\\.\\.\n.*");
   }
 
   @Test void testEmptyValues() {
@@ -4627,35 +4558,6 @@ public class SqlParserTest {
         + "FOR SYSTEM_TIME AS OF (`ORDERS`.`ROWTIME` - INTERVAL '3' DAY) "
         + "ON (`ORDERS`.`PRODUCTID` = `PRODUCTS_TEMPORAL`.`PRODUCTID`)";
     sql(sql4).ok(expected4);
-  }
-
-  @Test void testAsofJoinTable() {
-    final String sql0 = "select * from orders asof join products\n"
-        + "match_condition orders.ts <= products.expiry\n"
-        + "on orders.productid = products.productid";
-    final String expected0 = "SELECT *\n"
-        + "FROM (`ORDERS` "
-        + "ASOF JOIN `PRODUCTS` "
-        + "MATCH_CONDITION (`ORDERS`.`TS` <= `PRODUCTS`.`EXPIRY`) "
-        + "ON (`ORDERS`.`PRODUCTID` = `PRODUCTS`.`PRODUCTID`))";
-    sql(sql0).ok(expected0);
-    final String sql1 = "select * from orders left asof join products\n"
-        + "match_condition orders.ts <= products.expiry\n"
-        + "on orders.productid = products.productid";
-    final String expected1 = "SELECT *\n"
-        + "FROM (`ORDERS` "
-        + "LEFT ASOF JOIN `PRODUCTS` "
-        + "MATCH_CONDITION (`ORDERS`.`TS` <= `PRODUCTS`.`EXPIRY`) "
-        + "ON (`ORDERS`.`PRODUCTID` = `PRODUCTS`.`PRODUCTID`))";
-    sql(sql1).ok(expected1);
-
-    sql("select * from orders asof join products\n"
-        + "on orders.productid = products.^productid^")
-        .fails("ASOF JOIN missing MATCH_CONDITION");
-    sql("select * from orders join products\n"
-        + "match_condition orders.ts <= products.expiry\n"
-        + "on orders.productid = products_temporal.^productid^")
-        .fails("MATCH_CONDITION only allowed with ASOF JOIN");
   }
 
   @Test void testCollectionTableWithLateral() {
@@ -5123,21 +5025,6 @@ public class SqlParserTest {
         .ok("UPDATE `EMPS` SET `EMPNO` = (`EMPNO` + 1)"
             + ", `SAL` = (`SAL` - 1)\n"
             + "WHERE (`EMPNO` = 12)");
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6576">[CALCITE-6576]
-   * In SET clause of UPDATE statement, allow column identifiers to be prefixed
-   * with table alias</a>. */
-  @Test void testUpdateTableAlias() {
-    final String sql = "UPDATE mytable AS t SET t.ID=1";
-    final String expected = "UPDATE `MYTABLE` AS `T` SET `T`.`ID` = 1";
-    sql(sql).ok(expected);
-
-    final String sql2 = "UPDATE scott.mytable SET scott.mytable.ID=1";
-    final String expected2 =
-        "UPDATE `SCOTT`.`MYTABLE` SET `SCOTT`.`MYTABLE`.`ID` = 1";
-    sql(sql2).ok(expected2);
   }
 
   @Test void testMergeSelectSource() {
@@ -6173,8 +6060,8 @@ public class SqlParserTest {
             + "FROM (VALUES (ROW(1))) AS `X`)))");
     sql("SELECT multiset(SELECT x FROM (VALUES(1)) x ^ORDER^ BY x)")
         .fails("(?s)Encountered \"ORDER\" at.*");
-    sql("SELECT multiset(SELECT x FROM (VALUES(1)) x^,^ SELECT x FROM (VALUES(1)) x)")
-        .fails("(?s)Encountered \", SELECT\" at.*");
+    sql("SELECT multiset(SELECT x FROM (VALUES(1)) x, ^SELECT^ x FROM (VALUES(1)) x)")
+        .fails("(?s)Incorrect syntax near the keyword 'SELECT' at.*");
     sql("SELECT multiset(^1^, SELECT x FROM (VALUES(1)) x)")
         .fails("(?s)Non-query expression encountered in illegal context");
   }
@@ -6266,10 +6153,6 @@ public class SqlParserTest {
         .ok("(ARRAY[])");
     expr("array[(1, 'a'), (2, 'b')]")
         .ok("(ARRAY[(ROW(1, 'a')), (ROW(2, 'b'))])");
-
-    expr("array[(select 1)]").ok("(ARRAY[(SELECT 1)])");
-    expr("array[(select 1), 2]").ok("(ARRAY[(SELECT 1), 2])");
-    expr("array[^select^ 1]").fails("(?s)Encountered \"select\".*");
   }
 
   @Test void testArrayFunction() {
@@ -6285,8 +6168,8 @@ public class SqlParserTest {
         .ok("SELECT (ARRAY (SELECT `X`\n"
             + "FROM (VALUES (ROW(1))) AS `X`\n"
             + "ORDER BY `X`))");
-    sql("SELECT array(SELECT x FROM (VALUES(1)) x^,^ SELECT x FROM (VALUES(1)) x)")
-      .fails("(?s)Encountered \", SELECT\" at.*");
+    sql("SELECT array(SELECT x FROM (VALUES(1)) x, ^SELECT^ x FROM (VALUES(1)) x)")
+      .fails("(?s)Incorrect syntax near the keyword 'SELECT' at.*");
     sql("SELECT array(1, ^SELECT^ x FROM (VALUES(1)) x)")
       .fails("(?s)Incorrect syntax near the keyword 'SELECT'.*");
   }
@@ -6425,8 +6308,8 @@ public class SqlParserTest {
 
     sql("SELECT map(1, ^SELECT^ x FROM (VALUES(1)) x)")
         .fails("(?s)Incorrect syntax near the keyword 'SELECT'.*");
-    sql("SELECT map(SELECT x FROM (VALUES(1)) x^,^ SELECT x FROM (VALUES(1)) x)")
-        .fails("(?s)Encountered \", SELECT\" at.*");
+    sql("SELECT map(SELECT x FROM (VALUES(1)) x, ^SELECT^ x FROM (VALUES(1)) x)")
+        .fails("(?s)Incorrect syntax near the keyword 'SELECT' at.*");
   }
 
   @Test void testVisitSqlInsertWithSqlShuttle() {
@@ -7297,16 +7180,9 @@ public class SqlParserTest {
         + "UNNEST(`DEPT`.`EMPLOYEES`, `DEPT`.`MANAGERS`)";
     sql(sql).ok(expected);
 
-    // LATERAL UNNEST is the same as UNNEST
-    // (LATERAL is implicit for UNNEST, so the parser just ignores it)
-    sql("select * from dept, lateral unnest(dept.employees)")
-        .ok("SELECT *\n"
-            + "FROM `DEPT`,\n"
-            + "UNNEST(`DEPT`.`EMPLOYEES`)");
-    sql("select * from dept, unnest(dept.employees)")
-        .ok("SELECT *\n"
-            + "FROM `DEPT`,\n"
-            + "UNNEST(`DEPT`.`EMPLOYEES`)");
+    // LATERAL UNNEST is not valid
+    sql("select * from dept, lateral ^unnest^(dept.employees)")
+        .fails("(?s)Encountered \"unnest\" at .*");
 
     // Does not generate extra parentheses around UNNEST because UNNEST is
     // a table expression.
@@ -7590,10 +7466,15 @@ public class SqlParserTest {
   }
 
   @Test void testAddCarets() {
-    assertThat(SqlParserUtil.addCarets("values (foo)", 1, 9, 1, 12),
-        is("values (^foo^)"));
-    assertThat(SqlParserUtil.addCarets("abcdef", 1, 4, 1, 4), is("abc^def"));
-    assertThat(SqlParserUtil.addCarets("abcdef", 1, 7, 1, 7), is("abcdef^"));
+    assertEquals(
+        "values (^foo^)",
+        SqlParserUtil.addCarets("values (foo)", 1, 9, 1, 12));
+    assertEquals(
+        "abc^def",
+        SqlParserUtil.addCarets("abcdef", 1, 4, 1, 4));
+    assertEquals(
+        "abcdef^",
+        SqlParserUtil.addCarets("abcdef", 1, 7, 1, 7));
   }
 
   @Test void testSnapshotForSystemTimeWithAlias() {
@@ -8876,17 +8757,6 @@ public class SqlParserTest {
     sql(sql).ok(expected);
   }
 
-  @Test void testMeasure() {
-    final String sql = "select deptno,\n"
-        + "  job as myJob,\n"
-        + "  sum(comm) / sum(sal) as measure commRatio\n"
-        + "from emp";
-    final String expected = "SELECT `DEPTNO`, `JOB` AS `MYJOB`,"
-        + " (SUM(`COMM`) / SUM(`SAL`)) AS MEASURE `COMMRATIO`\n"
-        + "FROM `EMP`";
-    sql(sql).ok(expected);
-  }
-
   @Test void testJsonValueExpressionOperator() {
     expr("foo format json")
         .ok("`FOO` FORMAT JSON");
@@ -9164,7 +9034,7 @@ public class SqlParserTest {
     SqlParser sqlParserReader = sqlParser(new StringReader(query), b -> b);
     SqlNode node1 = sqlParserReader.parseQuery();
     SqlNode node2 = sql(query).node();
-    assertThat(node1, hasToString(node2.toString()));
+    assertEquals(node2.toString(), node1.toString());
   }
 
   @Test void testConfigureFromDialect() {
@@ -9737,7 +9607,7 @@ public class SqlParserTest {
         final String actual =
             sqlNode.toSqlString(UnparsingTesterImpl::simpleWithParensAnsi)
                 .getSql();
-        assertThat(converter.apply(actual), is(expected.get(i)));
+        assertEquals(expected.get(i), converter.apply(actual));
       }
     }
 
@@ -9760,7 +9630,7 @@ public class SqlParserTest {
       final String sql2 = toSqlString(sqlNodeList2, simple());
 
       // Should be the same as we started with.
-      assertThat(sql2, is(sql1));
+      assertEquals(sql1, sql2);
 
       // Now unparse again in the null dialect.
       // If the unparser is not including sufficient parens to override
@@ -9783,7 +9653,7 @@ public class SqlParserTest {
           c -> simpleWithParens(c)
               .withDialect(dialect2);
       final String actual = sqlNode.toSqlString(writerTransform).getSql();
-      assertThat(converter.apply(actual), is(expected));
+      assertEquals(expected, converter.apply(actual));
 
       // Unparse again in Calcite dialect (which we can parse), and
       // minimal parentheses.
@@ -9797,13 +9667,13 @@ public class SqlParserTest {
       final String sql2 = sqlNode2.toSqlString(simple()).getSql();
 
       // Should be the same as we started with.
-      assertThat(sql2, is(sql1));
+      assertEquals(sql1, sql2);
 
       // Now unparse again in the given dialect.
       // If the unparser is not including sufficient parens to override
       // precedence, the problem will show up here.
       final String actual2 = sqlNode.toSqlString(writerTransform).getSql();
-      assertThat(converter.apply(actual2), is(expected));
+      assertEquals(expected, converter.apply(actual2));
 
       // Now unparse with a randomly configured SqlPrettyWriter.
       // (This is a much a test for SqlPrettyWriter as for the parser.)
@@ -9813,7 +9683,7 @@ public class SqlParserTest {
       SqlNode sqlNode4 =
           parseStmtAndHandleEx(factory2, sql1, parser -> { });
       final String sql4 = sqlNode4.toSqlString(simple()).getSql();
-      assertThat(sql4, is(sql1));
+      assertEquals(sql1, sql4);
     }
 
     @Override public void checkExp(SqlTestFactory factory, StringAndPos sap,
@@ -9827,7 +9697,7 @@ public class SqlParserTest {
           c -> simpleWithParens(c)
               .withDialect(AnsiSqlDialect.DEFAULT);
       final String actual = sqlNode.toSqlString(writerTransform).getSql();
-      assertThat(converter.apply(actual), is(expected));
+      assertEquals(expected, converter.apply(actual));
 
       // Unparse again in Calcite dialect (which we can parse), and
       // minimal parentheses.
@@ -9845,13 +9715,13 @@ public class SqlParserTest {
           sqlNode2.toSqlString(UnaryOperator.identity()).getSql();
 
       // Should be the same as we started with.
-      assertThat(sql2, is(sql1));
+      assertEquals(sql1, sql2);
 
       // Now unparse again in the null dialect.
       // If the unparser is not including sufficient parens to override
       // precedence, the problem will show up here.
       final String actual2 = sqlNode2.toSqlString(null, true).getSql();
-      assertThat(converter.apply(actual2), is(expected));
+      assertEquals(expected, converter.apply(actual2));
     }
 
     @Override public void checkFails(SqlTestFactory factory,

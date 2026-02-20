@@ -112,7 +112,7 @@ public class SqlOperatorTables {
     protected IndexedSqlOperatorTable(Iterable<? extends SqlOperator> list) {
       operators = buildIndex(list);
     }
-
+    //返回Operator列表
     @Override public List<SqlOperator> getOperatorList() {
       return operators.values().asList();
     }
@@ -120,7 +120,7 @@ public class SqlOperatorTables {
     protected void setOperators(Multimap<String, SqlOperator> operators) {
       this.operators = ImmutableMultimap.copyOf(operators);
     }
-
+    //把给定的operators添加到operators
     /** Derives a value to be assigned to {@link #operators} from a given list
      * of operators. */
     protected static ImmutableMultimap<String, SqlOperator> buildIndex(

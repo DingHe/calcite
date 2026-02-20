@@ -46,27 +46,26 @@ import java.util.Objects;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Records that a particular query is materialized by a particular table.
  */
 public class RelOptMaterialization {
-  public final RelNode tableRel;
-  public final @Nullable RelOptTable starRelOptTable;
-  public final @Nullable StarTable starTable;
-  public final List<String> qualifiedTableName;
-  public final RelNode queryRel;
+  public final RelNode tableRel; //表示物化表的关系表达式
+  public final @Nullable RelOptTable starRelOptTable; //表示物化表的某种特殊类型——星形表（StarTable）。如果查询的物化是通过星形表进行优化，则这个属性为非 null，否则为 null
+  public final @Nullable StarTable starTable; //如果 starRelOptTable 非空，那么 starTable 就会解包成一个 StarTable 对象，表示物化表的星形结构
+  public final List<String> qualifiedTableName; //该属性包含物化表的完整限定名。它通常用于标识一个物化表的来源或位置
+  public final RelNode queryRel; //表示需要物化的查询的关系表达式。即通过此查询的结果来填充物化表
 
   /**
    * Creates a RelOptMaterialization.
    */
   public RelOptMaterialization(RelNode tableRel, RelNode queryRel,
       @Nullable RelOptTable starRelOptTable, List<String> qualifiedTableName) {
-    this.queryRel = requireNonNull(queryRel, "queryRel");
     this.tableRel =
-        RelOptUtil.createCastRel(requireNonNull(tableRel, "tableRel"),
-            queryRel.getRowType(), false);
+        RelOptUtil.createCastRel(
+            Objects.requireNonNull(tableRel, "tableRel"),
+            Objects.requireNonNull(queryRel, "queryRel").getRowType(),
+            false);
     this.starRelOptTable = starRelOptTable;
     if (starRelOptTable == null) {
       this.starTable = null;
@@ -74,6 +73,7 @@ public class RelOptMaterialization {
       this.starTable = starRelOptTable.unwrapOrThrow(StarTable.class);
     }
     this.qualifiedTableName = qualifiedTableName;
+    this.queryRel = queryRel;
   }
 
   /**
@@ -125,8 +125,7 @@ public class RelOptMaterialization {
                   try {
                     match(left, right, join.getCluster());
                   } catch (Util.FoundOne e) {
-                    return (RelNode) requireNonNull(e.getNode(),
-                        "FoundOne.getNode");
+                    return (RelNode) Objects.requireNonNull(e.getNode(), "FoundOne.getNode");
                   }
                 }
               }
@@ -226,7 +225,7 @@ public class RelOptMaterialization {
         Mappings.@Nullable TargetMapping mapping, TableScan scan) {
       this.condition = condition;
       this.mapping = mapping;
-      this.scan = requireNonNull(scan, "scan");
+      this.scan = Objects.requireNonNull(scan, "scan");
     }
 
     static @Nullable ProjectFilterTable of(RelNode node) {

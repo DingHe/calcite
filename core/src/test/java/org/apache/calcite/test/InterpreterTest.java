@@ -67,7 +67,6 @@ import java.util.function.UnaryOperator;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 import static java.util.Objects.requireNonNull;
@@ -76,7 +75,7 @@ import static java.util.Objects.requireNonNull;
  * Unit tests for {@link org.apache.calcite.interpreter.Interpreter}.
  */
 class InterpreterTest {
-  private @Nullable SchemaPlus rootSchema;
+  private SchemaPlus rootSchema;
 
   /** Implementation of {@link DataContext} for executing queries without a
    * connection. */
@@ -204,11 +203,7 @@ class InterpreterTest {
 
   /** Creates a {@link Sql}. */
   private Sql fixture() {
-    return new Sql("?", rootSchema(), false, null, UnaryOperator.identity());
-  }
-
-  private SchemaPlus rootSchema() {
-    return requireNonNull(rootSchema, "rootSchema");
+    return new Sql("?", rootSchema, false, null, UnaryOperator.identity());
   }
 
   private Sql sql(String sql) {
@@ -295,7 +290,7 @@ class InterpreterTest {
   /** Tests executing a plan on a
    * {@link org.apache.calcite.schema.ScannableTable} using an interpreter. */
   @Test void testInterpretScannableTable() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     sql("select * from \"beatles\" order by \"i\"")
         .returnsRows("[4, John, 1940]", "[4, Paul, 1942]", "[5, Ringo, 1940]",
             "[6, George, 1943]");
@@ -307,7 +302,7 @@ class InterpreterTest {
     final AtomicInteger scanCount = new AtomicInteger();
     final AtomicInteger enumerateCount = new AtomicInteger();
     final AtomicInteger closeCount = new AtomicInteger();
-    rootSchema().add("counting",
+    rootSchema.add("counting",
         ScannableTableTest.countingTable(scanCount, enumerateCount,
             closeCount));
     sql("select * from \"counting\" order by \"i\"")
@@ -319,32 +314,32 @@ class InterpreterTest {
   }
 
   @Test void testAggregateCount() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     sql("select count(*) from \"beatles\"")
         .returnsRows("[4]");
   }
 
   @Test void testAggregateMax() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     sql("select max(\"i\") from \"beatles\"")
         .returnsRows("[6]");
   }
 
   @Test void testAggregateMin() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     sql("select min(\"i\") from \"beatles\"")
         .returnsRows("[4]");
   }
 
   @Test void testAggregateGroup() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     sql("select \"j\", count(*) from \"beatles\" group by \"j\"")
         .returnsRowsUnordered("[George, 1]", "[Paul, 1]", "[John, 1]",
             "[Ringo, 1]");
   }
 
   @Test void testAggregateGroupFilter() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     final String sql = "select \"j\",\n"
         + "  count(*) filter (where char_length(\"j\") > 4)\n"
         + "from \"beatles\" group by \"j\"";
@@ -358,7 +353,7 @@ class InterpreterTest {
   /** Tests a GROUP BY query that uses
    * {@link org.apache.calcite.sql.fun.SqlInternalOperators#LITERAL_AGG}. */
   @Test void testAggregateLiteralAgg() {
-    rootSchema().add("beatles", new ScannableTableTest.BeatlesTable());
+    rootSchema.add("beatles", new ScannableTableTest.BeatlesTable());
     final Function<RelBuilder, RelNode> relFn =
         b -> b.scan("beatles")
             .aggregate(b.groupKey("k"),
@@ -374,14 +369,14 @@ class InterpreterTest {
   /** Tests executing a plan on a single-column
    * {@link org.apache.calcite.schema.ScannableTable} using an interpreter. */
   @Test void testInterpretSimpleScannableTable() {
-    rootSchema().add("simple", new ScannableTableTest.SimpleTable());
+    rootSchema.add("simple", new ScannableTableTest.SimpleTable());
     sql("select * from \"simple\" limit 2")
         .returnsRows("[0]", "[10]");
   }
 
   /** Tests executing a UNION ALL query using an interpreter. */
   @Test void testInterpretUnionAll() {
-    rootSchema().add("simple", new ScannableTableTest.SimpleTable());
+    rootSchema.add("simple", new ScannableTableTest.SimpleTable());
     final String sql = "select * from \"simple\"\n"
         + "union all\n"
         + "select * from \"simple\"";
@@ -391,7 +386,7 @@ class InterpreterTest {
 
   /** Tests executing a UNION query using an interpreter. */
   @Test void testInterpretUnion() {
-    rootSchema().add("simple", new ScannableTableTest.SimpleTable());
+    rootSchema.add("simple", new ScannableTableTest.SimpleTable());
     final String sql = "select * from \"simple\"\n"
         + "union\n"
         + "select * from \"simple\"";
@@ -550,7 +545,7 @@ class InterpreterTest {
       hepPlanner.setRoot(convert);
       final RelNode relNode = hepPlanner.findBestExp();
       final MyDataContext dataContext =
-          new MyDataContext(rootSchema(), relNode);
+          new MyDataContext(rootSchema, relNode);
       assertInterpret(relNode, dataContext, true, "[1, a]", "[3, c]");
     } catch (ValidationException
         | SqlParseException
@@ -584,7 +579,7 @@ class InterpreterTest {
     final String sql = "select x, min(y), max(y), sum(y), avg(y)\n"
         + "from (values ('a', -1.2), ('a', 2.3), ('a', 15)) as t(x, y)\n"
         + "group by x";
-    sql(sql).returnsRows("[a, -1.2, 15.0, 16.1, 5.3]");
+    sql(sql).returnsRows("[a, -1.2, 15.0, 16.1, 5.366666666666667]");
   }
 
   @Test void testInterpretUnnest() {
@@ -643,7 +638,7 @@ class InterpreterTest {
 
   /** Tests a user-defined scalar function that is non-static. */
   @Test void testInterpretFunction() {
-    SchemaPlus schema = rootSchema().add("s", new AbstractSchema());
+    SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final ScalarFunction f =
         ScalarFunctionImpl.create(Smalls.MY_PLUS_EVAL_METHOD);
     schema.add("myPlus", f);
@@ -660,7 +655,7 @@ class InterpreterTest {
    * constructor that uses
    * {@link org.apache.calcite.schema.FunctionContext}. */
   @Test void testInterpretFunctionWithInitializer() {
-    SchemaPlus schema = rootSchema().add("s", new AbstractSchema());
+    SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final ScalarFunction f =
         ScalarFunctionImpl.create(Smalls.MY_PLUS_INIT_EVAL_METHOD);
     schema.add("myPlusInit", f);
@@ -693,10 +688,8 @@ class InterpreterTest {
 
   /** Tests a table function. */
   @Test void testInterpretTableFunction() {
-    assertThat(rootSchema, notNullValue());
     SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final TableFunction table1 = TableFunctionImpl.create(Smalls.MAZE_METHOD);
-    assertThat(table1, notNullValue());
     schema.add("Maze", table1);
     final String sql = "select *\n"
         + "from table(\"s\".\"Maze\"(5, 3, 1))";
@@ -712,10 +705,9 @@ class InterpreterTest {
    * <a href="https://issues.apache.org/jira/browse/CALCITE-4478">[CALCITE-4478]
    * In interpreter, support infinite relations</a>. */
   @Test void testInterpretNilaryTableFunction() {
-    SchemaPlus schema = rootSchema().add("s", new AbstractSchema());
+    SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final TableFunction table1 =
         TableFunctionImpl.create(Smalls.FIBONACCI_LIMIT_100_TABLE_METHOD);
-    assertThat(table1, notNullValue());
     schema.add("fibonacciLimit100", table1);
     final String sql = "select *\n"
         + "from table(\"s\".\"fibonacciLimit100\"())\n"
@@ -727,10 +719,9 @@ class InterpreterTest {
   /** Tests a table function whose row type is determined by parsing a JSON
    * argument. */
   @Test void testInterpretTableFunctionWithDynamicType() {
-    SchemaPlus schema = rootSchema().add("s", new AbstractSchema());
+    SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final TableFunction table1 =
         TableFunctionImpl.create(Smalls.DYNAMIC_ROW_TYPE_TABLE_METHOD);
-    assertThat(table1, notNullValue());
     schema.add("dynamicRowTypeTable", table1);
     final String sql = "select *\n"
         + "from table(\"s\".\"dynamicRowTypeTable\"('"
@@ -744,7 +735,7 @@ class InterpreterTest {
 
   /** Tests a table function that is a non-static class. */
   @Test void testInterpretNonStaticTableFunction() {
-    SchemaPlus schema = rootSchema().add("s", new AbstractSchema());
+    SchemaPlus schema = rootSchema.add("s", new AbstractSchema());
     final TableFunction tableFunction =
         requireNonNull(TableFunctionImpl.create(Smalls.MyTableFunction.class));
     schema.add("t", tableFunction);

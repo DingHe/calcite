@@ -39,9 +39,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Command that executes its arguments as a SQL query
@@ -60,9 +59,9 @@ public class SqlShell {
   SqlShell(InputStreamReader in, PrintWriter out,
       PrintWriter err, String... args) {
     this.args = ImmutableList.copyOf(args);
-    this.in = requireNonNull(in, "in");
-    this.out = requireNonNull(out, "out");
-    this.err = requireNonNull(err, "err");
+    this.in = Objects.requireNonNull(in, "in");
+    this.out = Objects.requireNonNull(out, "out");
+    this.err = Objects.requireNonNull(err, "err");
   }
 
   private static String model() {

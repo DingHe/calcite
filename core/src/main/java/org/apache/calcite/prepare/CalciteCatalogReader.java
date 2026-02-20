@@ -73,12 +73,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Implementation of {@link org.apache.calcite.prepare.Prepare.CatalogReader}
@@ -93,10 +92,9 @@ public class CalciteCatalogReader implements Prepare.CatalogReader {
   protected final CalciteConnectionConfig config;
 
   public CalciteCatalogReader(CalciteSchema rootSchema,
-      List<String> defaultSchema, RelDataTypeFactory typeFactory,
-      CalciteConnectionConfig config) {
-    this(rootSchema, SqlNameMatchers.withCaseSensitive(config.caseSensitive()),
-        ImmutableList.of(ImmutableList.copyOf(defaultSchema),
+      List<String> defaultSchema, RelDataTypeFactory typeFactory, CalciteConnectionConfig config) {
+    this(rootSchema, SqlNameMatchers.withCaseSensitive(config != null && config.caseSensitive()),
+        ImmutableList.of(Objects.requireNonNull(defaultSchema, "defaultSchema"),
             ImmutableList.of()),
         typeFactory, config);
   }
@@ -104,7 +102,7 @@ public class CalciteCatalogReader implements Prepare.CatalogReader {
   protected CalciteCatalogReader(CalciteSchema rootSchema,
       SqlNameMatcher nameMatcher, List<List<String>> schemaPaths,
       RelDataTypeFactory typeFactory, CalciteConnectionConfig config) {
-    this.rootSchema = requireNonNull(rootSchema, "rootSchema");
+    this.rootSchema = Objects.requireNonNull(rootSchema, "rootSchema");
     this.nameMatcher = nameMatcher;
     this.schemaPaths =
         Util.immutableCopy(Util.isDistinct(schemaPaths)

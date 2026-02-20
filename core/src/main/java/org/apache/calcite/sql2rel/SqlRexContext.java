@@ -35,7 +35,7 @@ public interface SqlRexContext {
 
   /**
    * Converts an expression from {@link SqlNode} to {@link RexNode} format.
-   *
+   * 把SqlNode表达式转为RexNode表达式
    * @param expr Expression to translate
    * @return Converted expression
    */
@@ -53,7 +53,7 @@ public interface SqlRexContext {
    * aggregate expression. For example, "SELECT sum(sal) FROM emp".
    *
    * <p>Returns -1 if the query is not an aggregate query.
-   *
+   * 如果是聚合查询，返回group by子句中列的个数，如果是window聚合，如果窗口保证非空，则为1，否则为0，-1表示非聚合查询。
    * @return 0 if the query is implicitly GROUP BY (), -1 if the query is not
    * and aggregate query
    *

@@ -21,8 +21,6 @@ import org.apache.calcite.util.Util;
 
 import com.google.common.collect.ImmutableList;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -40,8 +38,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * ConcurrentTestCommandGenerator creates instances of
@@ -76,15 +72,15 @@ public class ConcurrentTestCommandGenerator {
 
 
   /**
-   * Maps Integer thread IDs to a TreeMap. The TreeMap values map an Integer
+   * Maps Integer thread IDs to a TreeMap. The TreeMap vaules map an Integer
    * execution order to a {@link ConcurrentTestCommand}.
    */
-  private final Map<Integer, TreeMap<Integer, ConcurrentTestCommand>> threadMap;
+  private TreeMap<Integer, TreeMap<Integer, ConcurrentTestCommand>> threadMap;
 
   /**
    * Maps Integer thread IDs to thread names.
    */
-  private final Map<Integer, String> threadNameMap;
+  private TreeMap<Integer, String> threadNameMap;
 
   /**
    * Describes a thread that failed.
@@ -106,7 +102,7 @@ public class ConcurrentTestCommandGenerator {
    * execution has ended. Only failed threads appear in the list, so after a
    * successful test the list is empty.
    */
-  private final List<FailedThread> failedThreads;
+  private List<FailedThread> failedThreads;
 
   /**
    * Constructs a new ConcurrentTestCommandGenerator.
@@ -175,7 +171,7 @@ public class ConcurrentTestCommandGenerator {
       int threadId,
       int order,
       String sql) {
-    requireNonNull(sql, "sql");
+    assert sql != null;
 
     ConcurrentTestCommand command = new ExplainCommand(sql);
 
@@ -197,7 +193,7 @@ public class ConcurrentTestCommandGenerator {
       int threadId,
       int order,
       String sql) {
-    requireNonNull(sql, "sql");
+    assert sql != null;
 
     ConcurrentTestCommand command = new PrepareCommand(sql);
 
@@ -438,7 +434,8 @@ public class ConcurrentTestCommandGenerator {
     return threads;
   }
 
-  protected void postExecute(ConcurrentTestCommandExecutor[] threads) {
+  protected void postExecute(ConcurrentTestCommandExecutor[] threads)
+      throws Exception {
     // check for failures
     if (requiresCustomErrorHandling()) {
       for (ConcurrentTestCommandExecutor executor : threads) {
@@ -632,8 +629,8 @@ public class ConcurrentTestCommandGenerator {
   protected abstract static class AbstractCommand
       implements ConcurrentTestCommand {
     private boolean shouldFail = false;
-    private @Nullable String failComment = null; // describes an expected error
-    private @Nullable Pattern failPattern = null; // an expected error message
+    private String failComment = null; // describes an expected error
+    private Pattern failPattern = null; // an expected error message
     private boolean failureExpected = false; // failure expected, no pattern
 
     // implement ConcurrentTestCommand
@@ -726,7 +723,7 @@ public class ConcurrentTestCommandGenerator {
    * the test before continuing.
    */
   private static class SleepCommand extends AbstractCommand {
-    private final long millis;
+    private long millis;
 
     private SleepCommand(long millis) {
       this.millis = millis;
@@ -744,7 +741,7 @@ public class ConcurrentTestCommandGenerator {
    * {@link #execute(ConcurrentTestCommandExecutor)}.
    */
   private static class ExplainCommand extends AbstractCommand {
-    private final String sql;
+    private String sql;
 
     private ExplainCommand(String sql) {
       this.sql = sql;
@@ -780,7 +777,7 @@ public class ConcurrentTestCommandGenerator {
    * statement in the ConcurrentTestCommandExecutor.
    */
   private static class PrepareCommand extends AbstractCommand {
-    private final String sql;
+    private String sql;
 
     private PrepareCommand(String sql) {
       this.sql = sql;
@@ -814,7 +811,7 @@ public class ConcurrentTestCommandGenerator {
 
   /** Command that executes statements with a given timeout. */
   private abstract static class CommandWithTimeout extends AbstractCommand {
-    private final int timeout;
+    private int timeout;
 
     private CommandWithTimeout(int timeout) {
       this.timeout = timeout;
@@ -1051,7 +1048,7 @@ public class ConcurrentTestCommandGenerator {
 
       int colNum = 1;
       while (expectedIter.hasNext() && resultIter.hasNext()) {
-        @Nullable Object expectedValue = expectedIter.next();
+        Object expectedValue = expectedIter.next();
         Object resultValue = resultIter.next();
 
         if ((expectedValue == null)
@@ -1115,8 +1112,8 @@ public class ConcurrentTestCommandGenerator {
     }
 
     private void test(
-        @Nullable Object expected,
-        @Nullable Object got,
+        Object expected,
+        Object got,
         int rowNum,
         int colNum) {
       if ((expected == null) && (got == null)) {
@@ -1273,8 +1270,8 @@ public class ConcurrentTestCommandGenerator {
         expectedOut.append(" |");
         resultOut.append(" |");
 
-        fullMessage.append('\n').append(expectedOut)
-            .append('\n').append(resultOut);
+        fullMessage.append('\n').append(expectedOut.toString()).append(
+            '\n').append(resultOut.toString());
 
         rowNum++;
       }
@@ -1288,7 +1285,7 @@ public class ConcurrentTestCommandGenerator {
    * {@link Statement#executeUpdate(String)}.
    */
   private static class InsertCommand extends CommandWithTimeout {
-    private final String sql;
+    private String sql;
 
     private InsertCommand(
         int timeout,
@@ -1336,7 +1333,7 @@ public class ConcurrentTestCommandGenerator {
    * {@link #doExecute(ConcurrentTestCommandExecutor)}.
    */
   private static class DdlCommand extends AbstractCommand {
-    private final String sql;
+    private String sql;
 
     private DdlCommand(String sql) {
       this.sql = sql;

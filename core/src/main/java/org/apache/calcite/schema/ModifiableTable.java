@@ -30,7 +30,7 @@ import java.util.List;
 
 /**
  * A table that can be modified.
- *
+ * 把表转为可修改的关系表达式
  * <p>NOTE: The current API is inefficient and experimental. It will change
  * without notice.
  *

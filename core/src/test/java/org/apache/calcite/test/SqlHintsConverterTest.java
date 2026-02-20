@@ -850,77 +850,77 @@ class SqlHintsConverterTest {
       }
 
       @Override public RelNode visit(TableScan scan) {
-        if (!scan.getHints().isEmpty()) {
+        if (scan.getHints().size() > 0) {
           this.hintsCollect.add("TableScan:" + scan.getHints());
         }
         return super.visit(scan);
       }
 
       @Override public RelNode visit(LogicalJoin join) {
-        if (!join.getHints().isEmpty()) {
+        if (join.getHints().size() > 0) {
           this.hintsCollect.add("LogicalJoin:" + join.getHints());
         }
         return super.visit(join);
       }
 
       @Override public RelNode visit(LogicalProject project) {
-        if (!project.getHints().isEmpty()) {
+        if (project.getHints().size() > 0) {
           this.hintsCollect.add("Project:" + project.getHints());
         }
         return super.visit(project);
       }
 
       @Override public RelNode visit(LogicalAggregate aggregate) {
-        if (!aggregate.getHints().isEmpty()) {
+        if (aggregate.getHints().size() > 0) {
           this.hintsCollect.add("Aggregate:" + aggregate.getHints());
         }
         return super.visit(aggregate);
       }
 
       @Override public RelNode visit(LogicalCorrelate correlate) {
-        if (!correlate.getHints().isEmpty()) {
+        if (correlate.getHints().size() > 0) {
           this.hintsCollect.add("Correlate:" + correlate.getHints());
         }
         return super.visit(correlate);
       }
 
       @Override public RelNode visit(LogicalFilter filter) {
-        if (!filter.getHints().isEmpty()) {
+        if (filter.getHints().size() > 0) {
           this.hintsCollect.add("Filter:" + filter.getHints());
         }
         return super.visit(filter);
       }
 
       @Override public RelNode visit(LogicalUnion union) {
-        if (!union.getHints().isEmpty()) {
+        if (union.getHints().size() > 0) {
           this.hintsCollect.add("Union:" + union.getHints());
         }
         return super.visit(union);
       }
 
       @Override public RelNode visit(LogicalIntersect intersect) {
-        if (!intersect.getHints().isEmpty()) {
+        if (intersect.getHints().size() > 0) {
           this.hintsCollect.add("Intersect:" + intersect.getHints());
         }
         return super.visit(intersect);
       }
 
       @Override public RelNode visit(LogicalMinus minus) {
-        if (!minus.getHints().isEmpty()) {
+        if (minus.getHints().size() > 0) {
           this.hintsCollect.add("Minus:" + minus.getHints());
         }
         return super.visit(minus);
       }
 
       @Override public RelNode visit(LogicalSort sort) {
-        if (!sort.getHints().isEmpty()) {
+        if (sort.getHints().size() > 0) {
           this.hintsCollect.add("Sort:" + sort.getHints());
         }
         return super.visit(sort);
       }
 
       @Override public RelNode visit(LogicalValues values) {
-        if (!values.getHints().isEmpty()) {
+        if (values.getHints().size() > 0) {
           this.hintsCollect.add("Values:" + values.getHints());
         }
         return super.visit(values);
@@ -929,17 +929,17 @@ class SqlHintsConverterTest {
       @Override public RelNode visit(RelNode other) {
         if (other instanceof Window) {
           Window window = (Window) other;
-          if (!window.getHints().isEmpty()) {
+          if (window.getHints().size() > 0) {
             this.hintsCollect.add("Window:" + window.getHints());
           }
         } else if (other instanceof Snapshot) {
           Snapshot snapshot = (Snapshot) other;
-          if (!snapshot.getHints().isEmpty()) {
+          if (snapshot.getHints().size() > 0) {
             this.hintsCollect.add("Snapshot:" + snapshot.getHints());
           }
         } else if (other instanceof TableFunctionScan) {
           TableFunctionScan scan = (TableFunctionScan) other;
-          if (!scan.getHints().isEmpty()) {
+          if (scan.getHints().size() > 0) {
             this.hintsCollect.add("TableFunctionScan:" + scan.getHints());
           }
         }

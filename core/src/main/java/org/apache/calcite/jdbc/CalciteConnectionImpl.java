@@ -104,12 +104,12 @@ abstract class CalciteConnectionImpl
     implements CalciteConnection, QueryProvider {
   public final JavaTypeFactory typeFactory;
 
-  final CalciteSchema rootSchema;
+  final CalciteSchema rootSchema; //CalciteSchema内部封装了用户定义的schema。
   final Supplier<CalcitePrepare> prepareFactory;
-  final CalciteServer server = new CalciteServerImpl();
+  final CalciteServer server = new CalciteServerImpl(); //代表连接之间的共享状态
 
   // must be package-protected
-  static final Trojan TROJAN = createTrojan();
+  static final Trojan TROJAN = createTrojan(); //通过Trojan访问此类的内部状态
 
   /**
    * Creates a CalciteConnectionImpl.
@@ -155,7 +155,7 @@ abstract class CalciteConnectionImpl
     this.properties.put(InternalProperty.QUOTED_CASING, cfg.quotedCasing());
     this.properties.put(InternalProperty.QUOTING, cfg.quoting());
   }
-
+  //默认使用CalciteMetaImpl
   CalciteMetaImpl meta() {
     return (CalciteMetaImpl) meta;
   }
@@ -190,7 +190,7 @@ abstract class CalciteConnectionImpl
     }
     return super.unwrap(iface);
   }
-
+  //通过AvaticaFactory创建语句
   @Override public CalciteStatement createStatement(int resultSetType,
       int resultSetConcurrency, int resultSetHoldability) throws SQLException {
     return (CalciteStatement) super.createStatement(resultSetType,
@@ -227,7 +227,7 @@ abstract class CalciteConnectionImpl
       throw Helper.INSTANCE.createException(message, e);
     }
   }
-
+   //通过CalcitePrepare解析sql语句，实际执行的地方
   <T> CalcitePrepare.CalciteSignature<T> parseQuery(
       CalcitePrepare.Query<T> query,
       CalcitePrepare.Context prepareContext, long maxRowCount) {
@@ -240,7 +240,7 @@ abstract class CalciteConnectionImpl
       CalcitePrepare.Dummy.pop(prepareContext);
     }
   }
-
+ //server会缓存Statement，所以可以直接从server获取状态
   @Override public AtomicBoolean getCancelFlag(Meta.StatementHandle handle)
       throws NoSuchStatementException {
     final CalciteServerStatement serverStatement = server.getStatement(handle);
@@ -248,7 +248,7 @@ abstract class CalciteConnectionImpl
   }
 
   // CalciteConnection methods
-
+  //通过CalciteSchema获取用户定义的Schema
   @Override public SchemaPlus getRootSchema() {
     return rootSchema.plus();
   }
@@ -262,7 +262,7 @@ abstract class CalciteConnectionImpl
   }
 
   // QueryProvider methods
-
+  //其实CalciteConnectionImpl也是一种QueryProvider
   @Override public <T> Queryable<T> createQuery(
       Expression expression, Class<T> rowType) {
     return new CalciteQueryable<>(this, rowType, expression);
@@ -279,7 +279,7 @@ abstract class CalciteConnectionImpl
   @Override public <T> T execute(Expression expression, Class<T> type) {
     return castNonNull(null); // TODO:
   }
-
+  //通过CalcitePrepare的接口来解析语句，最后返回迭代对象
   @Override public <T> Enumerator<T> executeQuery(Queryable<T> queryable) {
     try {
       CalciteStatement statement = (CalciteStatement) createStatement();
@@ -358,7 +358,7 @@ abstract class CalciteConnectionImpl
     }
   }
 
-  /** Implementation of Server. */
+  /** Implementation of Server. 代表连接之间的共享状态*/
   private static class CalciteServerImpl implements CalciteServer {
     final Map<Integer, CalciteServerStatement> statementMap = new HashMap<>();
 
@@ -416,7 +416,7 @@ abstract class CalciteConnectionImpl
       // Store the time at which the query started executing. The SQL
       // standard says that functions such as CURRENT_TIMESTAMP return the
       // same value throughout the query.
-      final Holder<Long> timeHolder = Holder.of(System.currentTimeMillis());
+      final Holder<Long> timeHolder = Holder.of(System.currentTimeMillis()); //sql执行的开始时间
 
       // Give a hook chance to alter the clock.
       Hook.CURRENT_TIME.run(timeHolder);
@@ -512,7 +512,7 @@ abstract class CalciteConnectionImpl
     }
   }
 
-  /** Implementation of Context. */
+  /** Implementation of Context. 实现了CalcitePrepare中定义的接口Context，主要是通过CalciteConnectionImpl来获得各种属性*/
   static class ContextImpl implements CalcitePrepare.Context {
     private final CalciteConnectionImpl connection;
     private final CalciteSchema mutableRootSchema;

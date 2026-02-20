@@ -99,7 +99,6 @@ import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.parser.SqlParserImplFactory;
 import org.apache.calcite.sql.parser.impl.SqlParserImpl;
 import org.apache.calcite.sql.type.ExtraSqlTypes;
-import org.apache.calcite.sql.type.MeasureSqlType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlOperatorTables;
 import org.apache.calcite.sql.validate.SqlConformance;
@@ -131,7 +130,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 import static org.apache.calcite.util.Static.RESOURCE;
@@ -158,7 +156,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
   @Deprecated // to be removed before 2.0
   public static final List<RelOptRule> ENUMERABLE_RULES =
       EnumerableRules.ENUMERABLE_RULES;
-
+  //如果没有Hook没有设置别的处理函数，则默认就是false
   /** Whether the bindable convention should be the root convention of any
    * plan. If not, enumerable convention is the default. */
   public final boolean enableBindable = Hook.ENABLE_BINDABLE.get(false);
@@ -177,41 +175,38 @@ public class CalcitePrepareImpl implements CalcitePrepare {
 
   @Override public ParseResult parse(
       Context context, String sql) {
-    return parse_(context, sql, false, false, false, false);
+    return parse_(context, sql, false, false, false);
   }
 
   @Override public ConvertResult convert(Context context, String sql) {
-    return (ConvertResult) parse_(context, sql, true, false, false, false);
+    return (ConvertResult) parse_(context, sql, true, false, false);
   }
 
-  @Override public AnalyzeViewResult analyzeView(Context context, String sql,
-      boolean fail) {
-    return (AnalyzeViewResult) parse_(context, sql, true, true, fail, true);
+  @Override public AnalyzeViewResult analyzeView(Context context, String sql, boolean fail) {
+    return (AnalyzeViewResult) parse_(context, sql, true, true, fail);
   }
 
   /** Shared implementation for {@link #parse}, {@link #convert} and
    * {@link #analyzeView}. */
   private ParseResult parse_(Context context, String sql, boolean convert,
-      boolean analyze, boolean fail, boolean embeddedQuery) {
+      boolean analyze, boolean fail) {
     final JavaTypeFactory typeFactory = context.getTypeFactory();
     CalciteCatalogReader catalogReader =
         new CalciteCatalogReader(
             context.getRootSchema(),
             context.getDefaultSchemaPath(),
             typeFactory,
-            context.config());
-    SqlParser parser = createParser(sql);
+            context.config());  //创建catalogReader
+    SqlParser parser = createParser(sql); //获取默认的解析器
     SqlNode sqlNode;
     try {
-      sqlNode = parser.parseStmt();
+      sqlNode = parser.parseStmt(); //解析出SqlNode节点
     } catch (SqlParseException e) {
       throw new RuntimeException("parse failed", e);
     }
-    final SqlValidator validator =
-        createSqlValidator(context, catalogReader,
-            c -> c.withEmbeddedQuery(embeddedQuery));
-    SqlNode sqlNode1 = validator.validate(sqlNode);
-    if (convert) {
+    final SqlValidator validator = createSqlValidator(context, catalogReader);
+    SqlNode sqlNode1 = validator.validate(sqlNode);  //对SqlNode校验
+    if (convert) {   //是否需要转为RelNode节点
       return convert_(
           context, sql, analyze, fail, catalogReader, validator, sqlNode1);
     }
@@ -240,9 +235,9 @@ public class CalcitePrepareImpl implements CalcitePrepare {
             resultConvention, createConvertletTable());
     final SqlToRelConverter converter =
         preparingStmt.getSqlToRelConverter(validator, catalogReader, config);
-
+    //执行sqlNode到RelNode的转换
     final RelRoot root = converter.convertQuery(sqlNode1, false, true);
-    if (analyze) {
+    if (analyze) {  //是否要分析视图
       return analyze_(validator, sql, sqlNode1, root, fail);
     }
     return new ConvertResult(this, validator, sql, sqlNode1,
@@ -341,7 +336,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
     for (RelDataTypeField field : targetRowType.getFieldList()) {
       final int x = columnMapping.indexOf(field.getIndex());
       if (x >= 0) {
-        assert !Util.skip(columnMapping, x + 1).contains(field.getIndex())
+        assert Util.skip(columnMapping, x + 1).indexOf(field.getIndex()) < 0
             : "column projected more than once; should have checked above";
         continue; // target column is projected
       }
@@ -665,9 +660,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
             Meta.StatementType.OTHER_DDL);
       }
 
-      final SqlValidator validator =
-          preparingStmt.createSqlValidator(catalogReader,
-              UnaryOperator.identity());
+      final SqlValidator validator = preparingStmt.createSqlValidator(catalogReader);
 
       preparedResult =
           preparingStmt.prepareSql(sqlNode, Object.class, validator, true);
@@ -689,7 +682,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
           preparingStmt.prepareQueryable(query.queryable, x);
       statementType = getStatementType(preparedResult);
     } else {
-      requireNonNull(query.rel);
+      assert query.rel != null;
       x = query.rel.getRowType();
       preparedResult = preparingStmt.prepareRel(query.rel);
       statementType = getStatementType(preparedResult);
@@ -741,8 +734,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
   }
 
   private static SqlValidator createSqlValidator(Context context,
-      CalciteCatalogReader catalogReader,
-      UnaryOperator<SqlValidator.Config> configTransform) {
+      CalciteCatalogReader catalogReader) {
     final SqlOperatorTable opTab0 =
         context.config().fun(SqlOperatorTable.class,
             SqlStdOperatorTable.instance());
@@ -752,13 +744,11 @@ public class CalcitePrepareImpl implements CalcitePrepare {
     final SqlOperatorTable opTab = SqlOperatorTables.chain(list);
     final JavaTypeFactory typeFactory = context.getTypeFactory();
     final CalciteConnectionConfig connectionConfig = context.config();
-    final SqlValidator.Config config =
-        configTransform.apply(
-            SqlValidator.Config.DEFAULT
-                .withLenientOperatorLookup(connectionConfig.lenientOperatorLookup())
-                .withConformance(connectionConfig.conformance())
-                .withDefaultNullCollation(connectionConfig.defaultNullCollation())
-                .withIdentifierExpansion(true));
+    final SqlValidator.Config config = SqlValidator.Config.DEFAULT
+        .withLenientOperatorLookup(connectionConfig.lenientOperatorLookup())
+        .withConformance(connectionConfig.conformance())
+        .withDefaultNullCollation(connectionConfig.defaultNullCollation())
+        .withIdentifierExpansion(true);
     return new CalciteSqlValidator(opTab, catalogReader, typeFactory,
         config);
   }
@@ -811,19 +801,13 @@ public class CalcitePrepareImpl implements CalcitePrepare {
 
   private static ColumnMetaData.AvaticaType avaticaType(JavaTypeFactory typeFactory,
       RelDataType type, @Nullable RelDataType fieldType) {
-    final String typeName;
-    if (type instanceof MeasureSqlType) {
-      type = requireNonNull(type.getMeasureElementType(), "measure type");
-      typeName = "MEASURE<" + getTypeName(type) + ">";
-    } else {
-      typeName = getTypeName(type);
-    }
+    final String typeName = getTypeName(type);
     if (type.getComponentType() != null) {
       final ColumnMetaData.AvaticaType componentType =
           avaticaType(typeFactory, type.getComponentType(), null);
       final Type clazz = typeFactory.getJavaClass(type.getComponentType());
-      final ColumnMetaData.Rep rep =
-          requireNonNull(ColumnMetaData.Rep.of(clazz));
+      final ColumnMetaData.Rep rep = ColumnMetaData.Rep.of(clazz);
+      assert rep != null;
       return ColumnMetaData.array(componentType, typeName, rep);
     } else {
       int typeOrdinal = getTypeOrdinal(type);
@@ -842,8 +826,8 @@ public class CalcitePrepareImpl implements CalcitePrepare {
       default:
         final Type clazz =
             typeFactory.getJavaClass(Util.first(fieldType, type));
-        final ColumnMetaData.Rep rep =
-            requireNonNull(ColumnMetaData.Rep.of(clazz));
+        final ColumnMetaData.Rep rep = ColumnMetaData.Rep.of(clazz);
+        assert rep != null;
         return ColumnMetaData.scalar(typeOrdinal, typeName, rep);
       }
     }
@@ -956,7 +940,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
   public <R> R perform(CalciteServerStatement statement,
       FrameworkConfig config, Frameworks.BasePrepareAction<R> action) {
     final CalcitePrepare.Context prepareContext =
-        statement.createPrepareContext();
+        statement.createPrepareContext();  //准备prepare语句的上下文
     final JavaTypeFactory typeFactory = prepareContext.getTypeFactory();
     SchemaPlus defaultSchema = config.getDefaultSchema();
     final CalciteSchema schema =
@@ -1124,8 +1108,7 @@ public class CalcitePrepareImpl implements CalcitePrepare {
       // View may have different schema path than current connection.
       final CatalogReader catalogReader =
           this.catalogReader.withSchemaPath(schemaPath);
-      SqlValidator validator =
-          createSqlValidator(catalogReader, c -> c.withEmbeddedQuery(true));
+      SqlValidator validator = createSqlValidator(catalogReader);
       final SqlToRelConverter.Config config =
           SqlToRelConverter.config().withTrimUnusedFields(true);
       SqlToRelConverter sqlToRelConverter =
@@ -1137,16 +1120,14 @@ public class CalcitePrepareImpl implements CalcitePrepare {
       return root;
     }
 
-    protected SqlValidator createSqlValidator(CatalogReader catalogReader,
-        UnaryOperator<SqlValidator.Config> configTransform) {
+    protected SqlValidator createSqlValidator(CatalogReader catalogReader) {
       return CalcitePrepareImpl.createSqlValidator(context,
-          (CalciteCatalogReader) catalogReader, configTransform);
+          (CalciteCatalogReader) catalogReader);
     }
 
     @Override protected SqlValidator getSqlValidator() {
       if (sqlValidator == null) {
-        sqlValidator =
-            createSqlValidator(catalogReader, UnaryOperator.identity());
+        sqlValidator = createSqlValidator(catalogReader);
       }
       return sqlValidator;
     }

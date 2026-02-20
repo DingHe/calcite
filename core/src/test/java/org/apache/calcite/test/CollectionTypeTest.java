@@ -314,7 +314,7 @@ class CollectionTypeTest {
     return new Enumerator<Object[]>() {
       int row = -1;
       int returnCount = 0;
-      Object @Nullable [] current;
+      Object[] current;
 
       @Override public Object[] current() {
         return current;

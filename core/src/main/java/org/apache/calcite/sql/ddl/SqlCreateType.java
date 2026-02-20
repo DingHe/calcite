@@ -31,8 +31,7 @@ import org.apache.calcite.util.ImmutableNullableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Parse tree for {@code CREATE TYPE} statement.
@@ -49,7 +48,7 @@ public class SqlCreateType extends SqlCreate {
   SqlCreateType(SqlParserPos pos, boolean replace, SqlIdentifier name,
       @Nullable SqlNodeList attributeDefs, @Nullable SqlDataTypeSpec dataType) {
     super(OPERATOR, pos, replace, false);
-    this.name = requireNonNull(name, "name");
+    this.name = Objects.requireNonNull(name, "name");
     this.attributeDefs = attributeDefs; // may be null
     this.dataType = dataType; // may be null
   }

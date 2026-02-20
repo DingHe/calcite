@@ -47,7 +47,11 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-/**
+/** Calc 类代表了 Calcite 查询优化框架中的计算节点，用于在查询中执行投影、表达式计算和过滤操作，
+ * 例如SELECT quantity * price AS total_price
+ * FROM orders
+ * WHERE total_price > 100;
+ * Calc 会将 quantity * price 作为新的计算字段，并将结果放到输出的 total_price 列中
  * <code>Calc</code> is an abstract base class for implementations of
  * {@link org.apache.calcite.rel.logical.LogicalCalc}.
  */
@@ -55,7 +59,7 @@ public abstract class Calc extends SingleRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
   protected final ImmutableList<RelHint> hints;
-
+//RexProgram 对象，描述如何对输入数据进行计算，包括输入输出类型、计算表达式、投影和条件等
   protected final RexProgram program;
 
   //~ Constructors -----------------------------------------------------------
@@ -133,7 +137,7 @@ public abstract class Calc extends SingleRel implements Hintable {
     Util.discard(collationList);
     return copy(traitSet, child, program);
   }
-
+  //检查计算程序中是否包含窗口聚合函数。这对于优化和查询计划生成非常重要
   /** Returns whether this Calc contains any windowed-aggregate functions. */
   public final boolean containsOver() {
     return RexOver.containsOver(program);
@@ -153,9 +157,6 @@ public abstract class Calc extends SingleRel implements Hintable {
     if (!program.isNormalized(litmus, getCluster().getRexBuilder())) {
       return litmus.fail(null);
     }
-    if (RexUtil.M2V_FINDER.inProgram(program)) {
-      return litmus.fail("program contains M2V");
-    }
     return litmus.succeed();
   }
 
@@ -166,7 +167,7 @@ public abstract class Calc extends SingleRel implements Hintable {
   @Override public ImmutableList<RelHint> getHints() {
     return hints;
   }
-
+  //估算该计算操作的行数，通常在优化器中用于成本估算
   @Override public double estimateRowCount(RelMetadataQuery mq) {
     return RelMdUtil.estimateFilteredRows(getInput(), program, mq);
   }
@@ -183,7 +184,7 @@ public abstract class Calc extends SingleRel implements Hintable {
   @Override public RelWriter explainTerms(RelWriter pw) {
     return program.explainCalc(super.explainTerms(pw));
   }
-
+ //允许访问和修改计算程序中的表达式，适用于树遍历和重写操作
   @Override public RelNode accept(RexShuttle shuttle) {
     List<RexNode> oldExprs = program.getExprList();
     List<RexNode> exprs = shuttle.apply(oldExprs);

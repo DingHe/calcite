@@ -26,16 +26,13 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Schema mapped onto a Druid instance.
@@ -44,7 +41,7 @@ public class DruidSchema extends AbstractSchema {
   final String url;
   final String coordinatorUrl;
   private final boolean discoverTables;
-  private @Nullable Map<String, Table> tableMap;
+  private Map<String, Table> tableMap = null;
 
   /**
    * Creates a Druid schema.
@@ -57,8 +54,8 @@ public class DruidSchema extends AbstractSchema {
    */
   public DruidSchema(String url, String coordinatorUrl,
       boolean discoverTables) {
-    this.url = requireNonNull(url, "url");
-    this.coordinatorUrl = requireNonNull(coordinatorUrl, "coordinatorUrl");
+    this.url = Objects.requireNonNull(url, "url");
+    this.coordinatorUrl = Objects.requireNonNull(coordinatorUrl, "coordinatorUrl");
     this.discoverTables = discoverTables;
   }
 

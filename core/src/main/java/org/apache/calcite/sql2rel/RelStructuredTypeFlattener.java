@@ -33,7 +33,6 @@ import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.core.Uncollect;
 import org.apache.calcite.rel.logical.LogicalAggregate;
-import org.apache.calcite.rel.logical.LogicalAsofJoin;
 import org.apache.calcite.rel.logical.LogicalCalc;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalExchange;
@@ -150,6 +149,8 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
   private final Map<RelNode, RelNode> oldToNewRelMap = new HashMap<>();
   private @Nullable RelNode currentRel;
   private int iRestructureInput;
+  @SuppressWarnings("unused")
+  private @Nullable RelDataType flattenedRootType;
   boolean restructured;
   private final RelOptTable.ToRelContext toRelContext;
 
@@ -210,6 +211,7 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
     final RewriteRelVisitor visitor = new RewriteRelVisitor();
     visitor.visit(root, 0, null);
     RelNode flattened = getNewForOldRel(root);
+    flattenedRootType = flattened.getRowType();
     if (restructure) {
       return tryRestructure(root, flattened);
     }
@@ -470,17 +472,6 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
     setNewForOldRel(rel, newRel);
   }
 
-  public void rewriteRel(LogicalAsofJoin rel) {
-    final LogicalAsofJoin newRel =
-        LogicalAsofJoin.create(getNewForOldRel(rel.getLeft()),
-            getNewForOldRel(rel.getRight()),
-            rel.getHints(),
-            rel.getCondition().accept(new RewriteRexShuttle()),
-            rel.getMatchCondition().accept(new RewriteRexShuttle()),
-            rel.getJoinType(), rel.getSystemFieldList());
-    setNewForOldRel(rel, newRel);
-  }
-
   public void rewriteRel(LogicalJoin rel) {
     final LogicalJoin newRel =
         LogicalJoin.create(getNewForOldRel(rel.getLeft()),
@@ -652,16 +643,10 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
 
   private static String extractName(@Nullable List<? extends @Nullable String> fieldNames,
       String prefix, int i) {
-    String fieldName;
-    if (fieldNames != null) {
-      fieldName = fieldNames.get(i);
-      if (fieldName == null) {
-        fieldName = "$" + i;
-      }
-    } else {
-      fieldName = "$" + i;
-    }
-    if (!prefix.isEmpty()) {
+    String fieldName = (fieldNames == null || fieldNames.get(i) == null)
+        ? ("$" + i)
+        : fieldNames.get(i);
+    if (!prefix.equals("")) {
       fieldName = prefix + "$" + fieldName;
     }
     return fieldName;
@@ -700,9 +685,8 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
         // NOTE jvs 10-Feb-2005:  This is a lame hack to keep special
         // functions which return row types working.
         RexNode newExp = exp;
-        RexCall expCall = (RexCall) exp;
-        List<RexNode> operands = expCall.getOperands();
-        SqlOperator operator = expCall.getOperator();
+        List<RexNode> operands = ((RexCall) exp).getOperands();
+        SqlOperator operator = ((RexCall) exp).getOperator();
 
         if (operator == SqlStdOperatorTable.ITEM
             && operands.get(0).getType().isStruct()
@@ -748,7 +732,7 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
           }
         } else {
           newExp =
-              rexBuilder.makeCall(expCall.getParserPosition(), exp.getType(), operator,
+              rexBuilder.makeCall(exp.getType(), operator,
                   shuttle.visitList(operands));
           // flatten call result type
           flattenResultTypeOfRexCall(newExp, fieldName, flattenedExps);
@@ -883,7 +867,7 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
               visitMethodName);
       currentRel = null;
       if (!found) {
-        if (p.getInputs().isEmpty()) {
+        if (p.getInputs().size() == 0) {
           // for leaves, it's usually safe to assume that
           // no transformation is required
           rewriteGeneric(p);
@@ -984,7 +968,6 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
         RexNode input = rexCall.getOperands().get(0).accept(this);
         RelDataType targetType = removeDistinct(rexCall.getType());
         return rexBuilder.makeCast(
-            rexCall.getParserPosition(),
             targetType,
             input);
       }
@@ -1062,9 +1045,9 @@ public class RelStructuredTypeFlattener implements ReflectiveVisitor {
       }
       RexNode conjunction = null;
       for (int i = 0; i < n; ++i) {
+        final List<RexNode> leftList = flattenedExps.leftList();
         RexNode comparison =
-            rexBuilder.makeCall(op, flattenedExps.left(i),
-                flattenedExps.left(i + n));
+            rexBuilder.makeCall(op, leftList.get(i), leftList.get(i + n));
         if (conjunction == null) {
           conjunction = comparison;
         } else {

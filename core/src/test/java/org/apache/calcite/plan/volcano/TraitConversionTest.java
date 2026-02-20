@@ -41,8 +41,6 @@ import static org.apache.calcite.plan.volcano.PlannerTests.TestLeafRel;
 import static org.apache.calcite.plan.volcano.PlannerTests.TestSingleRel;
 import static org.apache.calcite.plan.volcano.PlannerTests.newCluster;
 
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -78,17 +76,17 @@ class TraitConversionTest {
     planner.setRoot(convertedRel);
     final RelNode result = planner.chooseDelegate().findBestExp();
 
-    assertThat(result, instanceOf(RandomSingleRel.class));
+    assertTrue(result instanceof RandomSingleRel);
     assertTrue(result.getTraitSet().contains(PHYS_CALLING_CONVENTION));
     assertTrue(result.getTraitSet().contains(SIMPLE_DISTRIBUTION_RANDOM));
 
     final RelNode input = result.getInput(0);
-    assertThat(input, instanceOf(BridgeRel.class));
+    assertTrue(input instanceof BridgeRel);
     assertTrue(input.getTraitSet().contains(PHYS_CALLING_CONVENTION));
     assertTrue(input.getTraitSet().contains(SIMPLE_DISTRIBUTION_RANDOM));
 
     final RelNode input2 = input.getInput(0);
-    assertThat(input2, instanceOf(SingletonLeafRel.class));
+    assertTrue(input2 instanceof SingletonLeafRel);
     assertTrue(input2.getTraitSet().contains(PHYS_CALLING_CONVENTION));
     assertTrue(input2.getTraitSet().contains(SIMPLE_DISTRIBUTION_SINGLETON));
   }

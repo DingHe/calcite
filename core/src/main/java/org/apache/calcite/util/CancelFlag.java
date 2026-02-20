@@ -19,9 +19,8 @@ package org.apache.calcite.util;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.RelOptPlanner;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * CancelFlag is used to post and check cancellation requests.
@@ -36,7 +35,7 @@ public class CancelFlag {
   public final AtomicBoolean atomicBoolean;
 
   public CancelFlag(AtomicBoolean atomicBoolean) {
-    this.atomicBoolean = requireNonNull(atomicBoolean, "atomicBoolean");
+    this.atomicBoolean = Objects.requireNonNull(atomicBoolean, "atomicBoolean");
   }
 
   //~ Methods ----------------------------------------------------------------

@@ -33,11 +33,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collector;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * A <code>SqlNode</code> is a SQL parse tree.
@@ -53,7 +52,7 @@ public abstract class SqlNode implements Cloneable {
 
   //~ Instance fields --------------------------------------------------------
 
-  protected final SqlParserPos pos;
+  protected final SqlParserPos pos;  //sql语句的位置
 
   //~ Constructors -----------------------------------------------------------
 
@@ -63,7 +62,7 @@ public abstract class SqlNode implements Cloneable {
    * @param pos Parser position, must not be null.
    */
   SqlNode(SqlParserPos pos) {
-    this.pos = requireNonNull(pos, "pos");
+    this.pos = Objects.requireNonNull(pos, "pos");
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -96,7 +95,7 @@ public abstract class SqlNode implements Cloneable {
    * @return a {@link SqlKind} value, never null
    * @see #isA
    */
-  public SqlKind getKind() {
+  public SqlKind getKind() {   //节点的类型，默认OTHER
     return SqlKind.OTHER;
   }
 
@@ -112,7 +111,7 @@ public abstract class SqlNode implements Cloneable {
    * @param category Category
    * @return Whether this node belongs to the given category.
    */
-  public final boolean isA(Set<SqlKind> category) {
+  public final boolean isA(Set<SqlKind> category) {  //判断该节点是否是某一类别
     return getKind().belongsTo(category);
   }
 
@@ -204,7 +203,7 @@ public abstract class SqlNode implements Cloneable {
    * parentheses even when they are not required by the precedence rules.
    *
    * <p>For the details of this algorithm, see {@link SqlCall#unparse}.
-   *
+   * 把SqlNode转回Sql语句
    * @param writer    Target writer
    * @param leftPrec  The precedence of the {@link SqlNode} immediately
    *                  preceding this node in a depth-first scan of the parse
@@ -233,7 +232,7 @@ public abstract class SqlNode implements Cloneable {
 
   /**
    * Validates this node.
-   *
+   * 利用Validator校验SqlNode
    * <p>The typical implementation of this method will make a callback to the
    * validator appropriate to the node type and context. The validator has
    * methods such as {@link SqlValidator#validateLiteral} for these purposes.

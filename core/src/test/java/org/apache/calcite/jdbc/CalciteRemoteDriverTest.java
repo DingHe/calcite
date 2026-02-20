@@ -37,7 +37,6 @@ import com.google.common.collect.ImmutableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
@@ -75,8 +74,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static org.apache.calcite.test.Matchers.primitiveArrayWithSize;
-
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
@@ -95,11 +92,6 @@ import static java.util.Objects.requireNonNull;
  * <a href="https://issues.apache.org/jira/browse/CALCITE-2853">
  * [CALCITE-2853] avatica.MetaImpl and calcite.jdbc.CalciteMetaImpl are not
  * thread-safe</a>.
- *
- * <p>Under JDK 23 and higher, this test requires
- * "{@code -Djava.security.manager=allow}" command-line arguments due to
- * Avatica's use of deprecated methods in {@link javax.security.auth.Subject}.
- * These arguments are set automatically if you run via Gradle.
  */
 @Execution(ExecutionMode.SAME_THREAD)
 class CalciteRemoteDriverTest {
@@ -622,7 +614,6 @@ class CalciteRemoteDriverTest {
     assertThat(count, is(101));
   }
 
-  @Disabled("Cannot yet execute query with virtual measures")
   @Test void testLocalStatementResultSetMeasureMetadata() throws Exception {
     Connection conn = makeConnectionWithMeasures();
     String sql = "select * from \"foo\".\"bar\"";
@@ -925,7 +916,7 @@ class CalciteRemoteDriverTest {
     statement.addBatch(sql);
     statement.addBatch(sql);
     int[] updateCounts = statement.executeBatch();
-    assertThat(updateCounts, primitiveArrayWithSize(2));
+    assertThat(updateCounts.length, is(2));
     assertThat(updateCounts[0], is(1));
     assertThat(updateCounts[1], is(1));
     ResultSet resultSet = statement.getResultSet();
@@ -934,7 +925,7 @@ class CalciteRemoteDriverTest {
     // Now empty batch
     statement.clearBatch();
     updateCounts = statement.executeBatch();
-    assertThat(updateCounts, primitiveArrayWithSize(0));
+    assertThat(updateCounts.length, is(0));
     resultSet = statement.getResultSet();
     assertThat(resultSet, nullValue());
 
@@ -982,7 +973,7 @@ class CalciteRemoteDriverTest {
     pst.addBatch();
 
     int[] updateCounts = pst.executeBatch();
-    assertThat(updateCounts, primitiveArrayWithSize(2));
+    assertThat(updateCounts.length, is(2));
     assertThat(updateCounts[0], is(1));
     assertThat(updateCounts[1], is(1));
     ResultSet resultSet = pst.getResultSet();

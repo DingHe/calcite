@@ -77,7 +77,7 @@ public class HepProgram extends HepInstruction {
     int matchLimit = MATCH_UNTIL_FIXPOINT;
     HepMatchOrder matchOrder = HepMatchOrder.DEPTH_FIRST;
     HepInstruction.EndGroup.@Nullable State group;
-
+    //instructions 是HepProgram程序中的规则（HepInstruction）
     State(PrepareContext px, List<HepInstruction> instructions) {
       super(px);
       final PrepareContext px2 = px.withProgramState(castToInitialized(this));
@@ -92,6 +92,8 @@ public class HepProgram extends HepInstruction {
           // action to replace that State. The action will be invoked when we
           // reach the EndGroup.
           final int i = states.size();
+          //endGroup表示BeginGroup对应的endGroup指令
+          //参数state2表示传入的endGroup的状态,lanmda表达式执行的结果就是把指令的状态存入states里面
           actions.put(((BeginGroup) instruction).endGroup, state2 ->
               states.set(i,
                   instruction.prepare(

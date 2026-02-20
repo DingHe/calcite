@@ -196,7 +196,7 @@ public class SqlLiteralChainOperator extends SqlSpecialOperator {
    */
   public static SqlLiteral concatenateOperands(SqlCall call) {
     final List<SqlNode> operandList = call.getOperandList();
-    assert !operandList.isEmpty();
+    assert operandList.size() > 0;
     assert operandList.get(0) instanceof SqlLiteral
         : operandList.get(0).getClass();
     return SqlUtil.concatenateLiterals(

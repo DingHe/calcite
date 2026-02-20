@@ -48,7 +48,10 @@ class InputExcludedRelWriter implements RelWriter {
 
 
   @Override public void explain(RelNode rel, List<Pair<String, @Nullable Object>> valueList) {
-    valueList.forEach(pair -> values.put(pair.left, pair.right));
+    valueList.forEach(pair -> {
+      assert pair.left != null;
+      this.values.put(pair.left, pair.right);
+    });
   }
 
   @Override public SqlExplainLevel getDetailLevel() {

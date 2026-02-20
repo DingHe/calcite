@@ -131,10 +131,7 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
     for (Map.Entry<RelNode, NodeInfo> entry : nodes.entrySet()) {
       final NodeInfo nodeInfo = entry.getValue();
       try {
-        if (nodeInfo.node == null) {
-          throw new AssertionError("node must not be null for nodeInfo, rel="
-              + nodeInfo.rel);
-        }
+        assert nodeInfo.node != null : "node must not be null for nodeInfo, rel=" + nodeInfo.rel;
         nodeInfo.node.run();
       } catch (InterruptedException e) {
         e.printStackTrace();
@@ -167,7 +164,7 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
     }
   }
 
-  /**
+  /** 从给定的Enumerator中读取下一个Row数据
    * A {@link Source} that is just backed by an {@link Enumerator}. The {@link Enumerator} is closed
    * when it is finished or by calling {@link #close()}.
    */
@@ -191,7 +188,7 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
       enumerator.close();
     }
   }
-
+  //数据写入单个队列
   /** Implementation of {@link Sink} using a {@link java.util.ArrayDeque}. */
   private static class ListSink implements Sink {
     final ArrayDeque<Row> list;
@@ -200,11 +197,11 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
       this.list = list;
     }
 
-    @Override public void send(Row row) {
+    @Override public void send(Row row) throws InterruptedException {
       list.add(row);
     }
 
-    @Override public void end() {
+    @Override public void end() throws InterruptedException {
     }
 
     @SuppressWarnings("deprecation")
@@ -218,7 +215,7 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
       enumerator.close();
     }
   }
-
+  //从给定列表读取Row数据
   /** Implementation of {@link Source} using a {@link java.util.ArrayDeque}. */
   private static class ListSource implements Source {
     private final ArrayDeque<Row> list;
@@ -244,26 +241,27 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
       // noop
     }
   }
-
+  //数据写重复写入多个队列
   /** Implementation of {@link Sink} using a {@link java.util.ArrayDeque}. */
   private static class DuplicatingSink implements Sink {
-    private final List<ArrayDeque<Row>> queues;
+    private List<ArrayDeque<Row>> queues;
 
     private DuplicatingSink(List<ArrayDeque<Row>> queues) {
       this.queues = ImmutableList.copyOf(queues);
     }
 
-    @Override public void send(Row row) {
+    @Override public void send(Row row) throws InterruptedException {
       for (ArrayDeque<Row> queue : queues) {
         queue.add(row);
       }
     }
 
-    @Override public void end() {
+    @Override public void end() throws InterruptedException {
     }
 
     @SuppressWarnings("deprecation")
-    @Override public void setSourceEnumerable(Enumerable<Row> enumerable) {
+    @Override public void setSourceEnumerable(Enumerable<Row> enumerable)
+        throws InterruptedException {
       // just copy over the source into the local list
       final Enumerator<Row> enumerator = enumerable.enumerator();
       while (enumerator.moveNext()) {
@@ -371,7 +369,8 @@ public class Interpreter extends AbstractEnumerable<@Nullable Object[]>
               + p.getClass());
         }
       }
-      final NodeInfo nodeInfo = requireNonNull(nodes.get(p));
+      final NodeInfo nodeInfo = nodes.get(p);
+      assert nodeInfo != null;
       nodeInfo.node = node;
       if (inputs != null) {
         for (int i = 0; i < inputs.size(); i++) {

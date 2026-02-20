@@ -26,24 +26,24 @@ public enum SqlConformanceEnum implements SqlConformance {
   DEFAULT,
 
   /** Conformance value that allows just about everything supported by
-   * Calcite. */
+   * Calcite. 一种宽松的 SQL 兼容性模式，允许几乎所有 Calcite 支持的 SQL 特性*/
   LENIENT,
 
   /** Conformance value that allows anything supported by any dialect.
-   * Even more liberal than {@link #LENIENT}. */
+   * Even more liberal than {@link #LENIENT}. 比 LENIENT 更宽松的一种模式。允许所有 Calcite 支持的 SQL 特性，并且进一步放宽了 SQL 语法的规则 */
   BABEL,
 
   /** Conformance value that instructs Calcite to use SQL semantics strictly
-   * consistent with the SQL:92 standard. */
+   * consistent with the SQL:92 standard. SQL:92 是 SQL 的一个标准版本，这个模式要求 SQL 的语法和行为严格按照这个版本来执行，不容忍任何扩展或不符合标准的语法*/
   STRICT_92,
 
   /** Conformance value that instructs Calcite to use SQL semantics strictly
-   * consistent with the SQL:99 standard. */
+   * consistent with the SQL:99 standard. SQL:99 是 SQL 标准的另一个版本，类似于 STRICT_92，但它定义了一些更新的特性和改进的语法 */
   STRICT_99,
 
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with the SQL:99 standard, but ignoring its more
-   * inconvenient or controversial dicta. */
+   * inconvenient or controversial dicta. 与 SQL:99 标准兼容，但忽略一些更繁琐或有争议的规定。这种模式是 STRICT_99 的放宽版本，允许一些 SQL:99 标准中不太受欢迎或执行上不太方便的部分可以被忽略 */
   PRAGMATIC_99,
 
   /** Conformance value that instructs Calcite to use SQL semantics
@@ -65,12 +65,12 @@ public enum SqlConformanceEnum implements SqlConformance {
   ORACLE_12,
 
   /** Conformance value that instructs Calcite to use SQL semantics strictly
-   * consistent with the SQL:2003 standard. */
+   * consistent with the SQL:2003 standard. 。SQL:2003 是 SQL 标准的另一个版本，类似于 STRICT_92 和 STRICT_99，但它定义了不同的 SQL 特性和改进*/
   STRICT_2003,
 
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with the SQL:2003 standard, but ignoring its more
-   * inconvenient or controversial dicta. */
+   * inconvenient or controversial dicta. 与 SQL:2003 标准兼容，但忽略一些不太方便或有争议的规定。类似于 PRAGMATIC_99，这是对 SQL:2003 标准的一种宽松实现，忽略了部分不实用或有争议的规定*/
   PRAGMATIC_2003,
 
   /** Conformance value that instructs Calcite to use SQL semantics
@@ -80,7 +80,7 @@ public enum SqlConformanceEnum implements SqlConformance {
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with Microsoft SQL Server version 2008. */
   SQL_SERVER_2008;
-
+  //表示当前枚举常量是否是“宽松模式”
   @Override public boolean isLiberal() {
     switch (this) {
     case BABEL:
@@ -89,7 +89,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-
+  //字符文字别名（Char Literal Alias），例如SELECT 'hello' AS greeting;
   @Override public boolean allowCharLiteralAlias() {
     switch (this) {
     case BABEL:
@@ -237,6 +237,15 @@ public enum SqlConformanceEnum implements SqlConformance {
       return true;
     default:
       return false;
+    }
+  }
+
+  @Override public boolean isRegexReplaceCaptureGroupDollarIndexed() {
+    switch (this) {
+    case BIG_QUERY:
+      return false;
+    default:
+      return true;
     }
   }
 

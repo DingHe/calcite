@@ -56,11 +56,11 @@ import java.util.TreeSet;
 import static org.apache.calcite.util.Static.RESOURCE;
 
 /**
- * Abstract base for parsers.
+ * Abstract base for parsers generated from CommonParser.jj.
  */
 public abstract class SqlAbstractParserImpl {
   //~ Static fields/initializers ---------------------------------------------
-
+  //包含了 SQL-92 标准定义的所有保留字。SQL 92 保留字是不能作为标识符使用的关键词，例如 WHERE、WITH 等
   private static final ImmutableSet<String> SQL_92_RESERVED_WORD_SET =
       ImmutableSet.of(
           "ABSOLUTE",
@@ -314,19 +314,19 @@ public abstract class SqlAbstractParserImpl {
    * Type-safe enum for context of acceptable expressions.
    */
   protected enum ExprContext {
-    /**
+    /**接受任何类型的表达式
      * Accept any kind of expression in this context.
      */
     ACCEPT_ALL,
 
-    /**
+    /** 接受所有表达式，但不包括 CURSOR 构造
      * Accept any kind of expression in this context, with the exception of
      * CURSOR constructors.
      */
     ACCEPT_NONCURSOR,
 
-    /**
-     * Accept only query expressions in this context.
+    /** 只接受查询表达式
+     * Accept  only query expressions in this context.
      *
      * <p>Valid: "SELECT x FROM a",
      * "SELECT x FROM a UNION SELECT y FROM b",
@@ -339,7 +339,7 @@ public abstract class SqlAbstractParserImpl {
      */
     ACCEPT_QUERY,
 
-    /**
+    /** 接受查询表达式或连接表达式
      * Accept only query expressions or joins in this context.
      *
      * <p>Valid: "(SELECT x FROM a)",
@@ -352,18 +352,18 @@ public abstract class SqlAbstractParserImpl {
      */
     ACCEPT_QUERY_OR_JOIN,
 
-    /**
+    /** 只接受非查询表达式
      * Accept only non-query expressions in this context.
      */
     ACCEPT_NON_QUERY,
 
-    /**
+    /** 只接受子查询或非查询表达式
      * Accept only parenthesized queries or non-query expressions in this
      * context.
      */
     ACCEPT_SUB_QUERY,
 
-    /**
+    /** 只接受游标构造、子查询或非查询表达式
      * Accept only CURSOR constructors, parenthesized queries, or non-query
      * expressions in this context.
      */
@@ -405,9 +405,9 @@ public abstract class SqlAbstractParserImpl {
 
   //~ Instance fields --------------------------------------------------------
 
-  protected int nDynamicParams;
+  protected int nDynamicParams; //表示 SQL 查询中动态参数的数量
 
-  protected @Nullable String originalSql;
+  protected @Nullable String originalSql; //存储原始的 SQL 字符串，用于后续的解析和错误处理
 
   protected final List<CalciteContextException> warnings = new ArrayList<>();
 
@@ -415,7 +415,7 @@ public abstract class SqlAbstractParserImpl {
 
   /**
    * Returns immutable set of all reserved words defined by SQL-92.
-   *
+   * 返回SQL-92的保留字
    * @see Glossary#SQL92 SQL-92 Section 5.2
    */
   public static Set<String> getSql92ReservedWords() {
@@ -485,7 +485,7 @@ public abstract class SqlAbstractParserImpl {
 
   /**
    * Reinitializes parser with new input.
-   *
+   * ReInit 方法重新初始化解析器，将输入流设置为字符串 "1"。这个字符串是为了触发 SQL 解析器解析，并收集所有的标识符和关键字
    * @param reader provides new input
    */
   // CHECKSTYLE: IGNORE 1
@@ -494,7 +494,7 @@ public abstract class SqlAbstractParserImpl {
   /**
    * Parses a SQL expression ending with EOF and constructs a
    * parse tree.
-   *
+   * 表达式是一个可以计算出值的 SQL 代码片段。它通常由常量、列、操作符、函数等组成，并且返回一个单一的值
    * @return constructed parse tree.
    */
   public abstract SqlNode parseSqlExpressionEof() throws Exception;
@@ -502,7 +502,7 @@ public abstract class SqlAbstractParserImpl {
   /**
    * Parses a SQL statement ending with EOF and constructs a
    * parse tree.
-   *
+   * 语句是一个完整的 SQL 指令，它由一个或多个表达式、关键字和子句组成，用于执行数据库操作，语句通常代表一个数据库操作（例如查询、插入、更新或删除数据等），并可能包含多个表达式、子查询等
    * @return constructed parse tree.
    */
   public abstract SqlNode parseSqlStmtEof() throws Exception;
@@ -511,7 +511,7 @@ public abstract class SqlAbstractParserImpl {
    * Parses a list of SQL statements separated by semicolon and constructs a
    * parse tree. The semicolon is required between statements, but is
    * optional at the end.
-   *
+   * 解析用分号分割的sql语句列表，分号在语句之间必须有，在末尾可以忽略
    * @return constructed list of SQL statements.
    */
   public abstract SqlNodeList parseSqlStmtList() throws Exception;
@@ -525,14 +525,14 @@ public abstract class SqlAbstractParserImpl {
 
   /**
    * Sets the casing policy for quoted identifiers.
-   *
+   * 标识符存储的策略，保留原样、转为大写、转为小写等策略
    * @param quotedCasing Casing to set.
    */
   public abstract void setQuotedCasing(Casing quotedCasing);
 
   /**
    * Sets the casing policy for unquoted identifiers.
-   *
+   * 标识符存储的策略，保留原样、转为大写、转为小写等策略
    * @param unquotedCasing Casing to set.
    */
   public abstract void setUnquotedCasing(Casing unquotedCasing);
@@ -554,7 +554,7 @@ public abstract class SqlAbstractParserImpl {
    */
   public abstract void setConformance(SqlConformance conformance);
 
-  /**
+  /**数组字面量的解析
    * Parses string to array literal.
    */
   public abstract SqlNode parseArray() throws SqlParseException;
@@ -591,21 +591,23 @@ public abstract class SqlAbstractParserImpl {
    * identifiers. */
   public enum LexicalState {
     /** Starting state where quoted identifiers use brackets, like Microsoft SQL
-     * Server. */
+     * Server. 这是默认的词法状态，通常会使用方括号 [] 来表示引用标识符。
+     * 这种状态下，SQL 标识符（如表名、列名）用方括号括起来，如 SELECT [column] FROM [table]。
+     * 类似的 SQL 方言有 Microsoft SQL Server*/
     DEFAULT,
 
     /** Starting state where quoted identifiers use double-quotes, like
-     * Oracle and PostgreSQL. */
+     * Oracle and PostgreSQL.Double Quote Identifiers， 在该状态下，标识符使用双引号 " 来包围。例如，SELECT "column" FROM "table"。这是常见的 SQL 方言（如 Oracle 和 PostgreSQL）中的标识符语法 */
     DQID,
 
-    /** Starting state where quoted identifiers use back-ticks, like MySQL. */
+    /** Starting state where quoted identifiers use back-ticks, like MySQL.Backtick Identifiers，在该状态下，标识符使用反引号 ` 来包围。例如，SELECT columnFROMtable``。这种语法常见于 MySQL 中 */
     BTID,
 
     /** Starting state where quoted identifiers use back-ticks,
      * unquoted identifiers that are part of table names may contain hyphens,
      * and character literals may be enclosed in single- or double-quotes,
      * like BigQuery. */
-    BQID;
+    BQID; //这种语法是 Google BigQuery 中使用的标识符语法
 
     /** Returns the corresponding parser state with the given configuration
      * (in particular, quoting style). */
@@ -652,31 +654,31 @@ public abstract class SqlAbstractParserImpl {
    * </ul>
    */
   public interface Metadata {
-    /**
+    /** 是否是非保留关键字
      * Returns true if token is a keyword but not a reserved word. For
      * example, "KEY".
      */
     boolean isNonReservedKeyword(String token);
 
-    /**
+    /** 是否是上下文变量，例如CURRENT_USER
      * Returns whether token is the name of a context variable such as
      * "CURRENT_USER".
      */
     boolean isContextVariableName(String token);
 
-    /**
+    /**是否是保留的函数名
      * Returns whether token is a reserved function name such as
      * "CURRENT_USER".
      */
     boolean isReservedFunctionName(String token);
 
-    /**
+    /**是否是关键字，在 SQL 标准中具有特定语法作用的词汇，通常是命令、操作符等。SELECT、FROM、WHERE、INSERT、UPDATE
      * Returns whether token is a keyword. (That is, a non-reserved keyword,
      * a context variable, or a reserved function name.)
      */
     boolean isKeyword(String token);
 
-    /**
+    /** 是否是保留字，在 SQL 中被保留以供将来可能使用的词汇，当前不一定有语法作用，CURRENT_TIME、USER、CONSTRAINT、PRIMARY
      * Returns whether token is a reserved word.
      */
     boolean isReservedWord(String token);
@@ -704,20 +706,20 @@ public abstract class SqlAbstractParserImpl {
    * Default implementation of the {@link Metadata} interface.
    */
   public static class MetadataImpl implements Metadata {
-    private final Set<String> reservedFunctionNames = new HashSet<>();
-    private final Set<String> contextVariableNames = new HashSet<>();
-    private final Set<String> nonReservedKeyWordSet = new HashSet<>();
+    private final Set<String> reservedFunctionNames = new HashSet<>(); //存储 SQL 中的保留函数名的集合
+    private final Set<String> contextVariableNames = new HashSet<>(); //存储 SQL 中的上下文变量名集合。上下文变量是 SQL 语句中的特殊标识符（例如 CURRENT_USER），它们在查询执行时会根据当前的上下文返回不同的值
+    private final Set<String> nonReservedKeyWordSet = new HashSet<>(); //存储 SQL 中的非保留关键字集合。非保留关键字在特定上下文中可能有特殊含义，但在其他地方可以作为普通标识符使用。例如，KEY 是关键字，但在某些 SQL 方言中可以作为表的列名
 
     /**
      * Set of all tokens.
      */
-    private final NavigableSet<String> tokenSet = new TreeSet<>();
+    private final NavigableSet<String> tokenSet = new TreeSet<>(); //存储 SQL 解析器识别的所有符号（包括关键字、标识符、函数名等），用于构建整个解析器的符号库
 
     /**
      * Immutable list of all tokens, in alphabetical order.
      */
-    private final List<String> tokenList;
-    private final Set<String> reservedWords = new HashSet<>();
+    private final List<String> tokenList;//包含所有 SQL 解析器识别的符号。这个列表是从 tokenSet 中生成的，确保符号按顺序排列
+    private final Set<String> reservedWords = new HashSet<>(); //存储SQL中所有的保留字。保留字是不能作为标识符使用的关键字。比如 SQL-92 标准定义的保留字，如 SELECT, FROM, WHERE 等
     private final String sql92ReservedWords;
 
     /**
@@ -747,7 +749,7 @@ public abstract class SqlAbstractParserImpl {
         String name) {
       parserImpl.ReInit(new StringReader("1"));
       try {
-        Object o = virtualCall(parserImpl, name);
+        Object o = virtualCall(parserImpl, name); //希望这里的调用一定抛出SqlParseException，否则不符合逻辑，下面接着抛出异常
         throw new AssertionError("expected call to fail, got " + o);
       } catch (SqlParseException parseException) {
         // First time through, build the list of all tokens.
@@ -782,7 +784,7 @@ public abstract class SqlAbstractParserImpl {
     /**
      * Uses reflection to invoke a method on this parser. The method must be
      * public and have no parameters.
-     *
+     * 通过反射调用以name为名字的方法
      * @param parserImpl Parser
      * @param name       Name of method. For example "ReservedFunctionName".
      * @return Result of calling method

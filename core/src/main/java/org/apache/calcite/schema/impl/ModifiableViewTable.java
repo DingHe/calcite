@@ -115,8 +115,8 @@ public class ModifiableViewTable extends ViewTable
    */
   public final ModifiableViewTable extend(
       List<RelDataTypeField> extendedColumns, RelDataTypeFactory typeFactory) {
-    final ExtensibleTable underlying =
-        requireNonNull(unwrap(ExtensibleTable.class));
+    final ExtensibleTable underlying = unwrap(ExtensibleTable.class);
+    assert underlying != null;
 
     final RelDataTypeFactory.Builder builder = typeFactory.builder();
     final RelDataType rowType = getRowType(typeFactory);

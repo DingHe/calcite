@@ -27,8 +27,6 @@ import java.util.Map;
 
 import redis.clients.jedis.Jedis;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Implementation of {@link RedisEnumerator}.
  */
@@ -55,8 +53,8 @@ class RedisEnumerator implements Enumerator<Object[]> {
   static Map<String, Object> deduceRowType(RedisTableFieldInfo tableFieldInfo) {
     final Map<String, Object> fieldBuilder = new LinkedHashMap<>();
     String dataFormat = tableFieldInfo.getDataFormat();
-    RedisDataFormat redisDataFormat =
-        requireNonNull(RedisDataFormat.fromTypeName(dataFormat));
+    RedisDataFormat redisDataFormat = RedisDataFormat.fromTypeName(dataFormat);
+    assert redisDataFormat != null;
     if (redisDataFormat == RedisDataFormat.RAW) {
       fieldBuilder.put("key", "key");
     } else {

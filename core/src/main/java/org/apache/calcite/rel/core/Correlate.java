@@ -67,15 +67,24 @@ import static java.util.Objects.requireNonNull;
  *   <tr><td>HashJoinSemi</td><td>SemiJoin(A, B, semi)</td></tr>
  *   <tr><td>HashJoinAnti</td><td>SemiJoin(A, B, anti)</td></tr>
  * </table>
+ * Correlate 运算符用来描述一个查询中的 关联子查询（correlated subquery）。关联子查询是指在查询的外部查询（父查询）中引用了内部查询（子查询）中的某些变量的子查询
+ * SELECT A.id, A.name
+ * FROM A
+ * WHERE A.salary > (SELECT AVG(B.salary)
+ *                   FROM B
+ *                   WHERE A.department_id = B.department_id);
  *
+ * 在这个查询中，A.salary 和 A.department_id 会在子查询中被引用。
+ * 这个子查询就是一个 关联子查询，因为它依赖于外部查询 A 的列。
+ * 它实现了一个 嵌套循环连接（nested-loop join）操作
  * @see CorrelationId
  */
 public abstract class Correlate extends BiRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  protected final CorrelationId correlationId;
-  protected final ImmutableBitSet requiredColumns;
-  protected final JoinRelType joinType;
+  protected final CorrelationId correlationId; //表示外部查询中的变量名，代表了外部查询中的一行数据
+  protected final ImmutableBitSet requiredColumns; //表示需要在右输入（子查询）中使用的左输入（外部查询）的列
+  protected final JoinRelType joinType; //连接的类型
   protected final ImmutableList<RelHint> hints;
 
   //~ Constructors -----------------------------------------------------------

@@ -45,11 +45,11 @@ import static org.apache.calcite.rel.metadata.janino.CodeGeneratorUtil.paramList
  */
 class DispatchGenerator {
   private final Map<MetadataHandler<?>, String> metadataHandlerToName;
-
+  //metadataHandlerToName是以RelMd开头的元数据实现类和对应名称的map
   DispatchGenerator(Map<MetadataHandler<?>, String> metadataHandlerToName) {
     this.metadataHandlerToName = metadataHandlerToName;
   }
-
+  //metadataHandlers元数据接口的实现类，method是元数据接口中定义的handler接口中的方法
   void dispatchMethod(StringBuilder buff, Method method,
       Collection<? extends MetadataHandler<?>> metadataHandlers) {
     Map<MetadataHandler<?>, Set<Class<? extends RelNode>>> handlersToClasses =
@@ -109,7 +109,7 @@ class DispatchGenerator {
 
     return buff;
   }
-
+  //metadataHandlers元数据的实现类，handlerToClasses元数据实现类设计到关系节点类型的映射
   private String findProvider(Collection<? extends MetadataHandler<?>> metadataHandlers,
       Map<MetadataHandler<?>, Set<Class<? extends RelNode>>> handlerToClasses,
       Class<? extends RelNode> clazz) {
@@ -138,7 +138,7 @@ class DispatchGenerator {
     argList(buff, method);
     buff.append(");\n");
   }
-
+  //method是元数据接口中handler接口定义的方法，handler是元数据handler的实现类
   private static Set<Class<? extends RelNode>> methodAndInstanceToImplementingClass(
       Method method, MetadataHandler<?> handler) {
     Set<Class<? extends RelNode>> set = new HashSet<>();
@@ -150,7 +150,7 @@ class DispatchGenerator {
     }
     return set;
   }
-
+  //查找元数据接口中handler接口中定义的方法是否跟实现类的方法一致，如果一致，则返回第一个参数，也就是关系节点的类型
   private static @Nullable Class<? extends RelNode> toRelClass(Method superMethod,
       Method candidate) {
     if (!superMethod.getName().equals(candidate.getName())) {
@@ -173,7 +173,7 @@ class DispatchGenerator {
       return (Class<? extends RelNode>) cpt[0];
     }
   }
-
+  //把关系节点按照子类到父类排序
   private static List<Class<? extends RelNode>> topologicalSort(
       Collection<Class<? extends RelNode>> list) {
     List<Class<? extends RelNode>> l = new ArrayList<>();

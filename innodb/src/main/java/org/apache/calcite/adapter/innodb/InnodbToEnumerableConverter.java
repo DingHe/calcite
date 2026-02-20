@@ -51,8 +51,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression representing a scan of a table
  * in InnoDB data source.
@@ -73,8 +71,7 @@ public class InnodbToEnumerableConverter extends ConverterImpl
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(.1);
   }
 
   static List<String> innodbFieldNames(final RelDataType rowType) {
@@ -111,9 +108,8 @@ public class InnodbToEnumerableConverter extends ConverterImpl
         list.append("selectFields", constantArrayList(selectList, Pair.class));
     final Expression table =
         list.append("table",
-            requireNonNull(
-                innodbImplementor.table.getExpression(
-                    InnodbTable.InnodbQueryable.class)));
+            innodbImplementor.table.getExpression(
+                InnodbTable.InnodbQueryable.class));
     IndexCondition condition = innodbImplementor.indexCondition;
     final Expression indexName =
         list.append("indexName",

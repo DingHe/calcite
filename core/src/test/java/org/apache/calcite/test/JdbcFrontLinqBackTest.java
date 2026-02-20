@@ -58,9 +58,9 @@ import static org.apache.calcite.test.CalciteAssert.that;
 import static org.apache.calcite.util.ReflectUtil.isStatic;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for a JDBC front-end (with some quite complex SQL) and Linq4j back-end
@@ -429,9 +429,9 @@ public class JdbcFrontLinqBackTest {
     boolean status = statement.execute(sql);
     assertFalse(status);
     ResultSet resultSet = statement.getResultSet();
-    assertThat(resultSet, nullValue());
+    assertTrue(resultSet == null);
     int updateCount = statement.getUpdateCount();
-    assertThat(updateCount, is(1));
+    assertTrue(updateCount == 1);
   }
 
   /** Local PreparedStatement insert WITHOUT bind variables. */
@@ -446,13 +446,13 @@ public class JdbcFrontLinqBackTest {
     boolean status = preparedStatement.execute();
     assertFalse(status);
     ResultSet resultSet = preparedStatement.getResultSet();
-    assertThat(resultSet, nullValue());
+    assertTrue(resultSet == null);
     int updateCount = preparedStatement.getUpdateCount();
-    assertThat(updateCount, is(1));
+    assertTrue(updateCount == 1);
   }
 
   /** Local PreparedStatement insert WITH bind variables. */
-  @Test void testPreparedStatementInsert2() {
+  @Test void testPreparedStatementInsert2() throws Exception {
   }
 
   /** Some of the rows have the wrong number of columns. */

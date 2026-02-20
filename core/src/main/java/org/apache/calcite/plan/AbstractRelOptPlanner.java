@@ -36,19 +36,19 @@ import org.slf4j.Logger;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 import static org.apache.calcite.util.Static.RESOURCE;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Abstract base for implementations of the {@link RelOptPlanner} interface.
@@ -65,26 +65,26 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
    * Maps rule description to rule, just to ensure that rules' descriptions
    * are unique.
    */
-  protected final Map<String, RelOptRule> mapDescToRule = new LinkedHashMap<>();
+  protected final Map<String, RelOptRule> mapDescToRule = new LinkedHashMap<>(); //rule描述到rule的映射
 
-  protected final RelOptCostFactory costFactory;
+  protected final RelOptCostFactory costFactory; //成本工厂
 
   private @MonotonicNonNull MulticastRelOptListener listener;
 
   private @MonotonicNonNull RuleAttemptsListener ruleAttemptsListener;
 
-  private @Nullable Pattern ruleDescExclusionFilter;
+  private @Nullable Pattern ruleDescExclusionFilter;  //过滤rule的正则表达式
 
   protected final AtomicBoolean cancelFlag;
 
   private final Set<Class<? extends RelNode>> classes = new HashSet<>();
 
-  private final Set<Convention> conventions = new HashSet<>();
+  private final Set<Convention> conventions = new HashSet<>();  //调用约定
 
   /** External context. Never null. */
   protected final Context context;
 
-  private @Nullable RexExecutor executor;
+  private @Nullable RexExecutor executor; //用于提前计算常量表达式
 
   //~ Constructors -----------------------------------------------------------
 
@@ -93,7 +93,7 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
    */
   protected AbstractRelOptPlanner(RelOptCostFactory costFactory,
       @Nullable Context context) {
-    this.costFactory = requireNonNull(costFactory, "costFactory");
+    this.costFactory = Objects.requireNonNull(costFactory, "costFactory");
     if (context == null) {
       context = Contexts.empty();
     }
@@ -142,14 +142,15 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
       throw RESOURCE.preparationAborted().ex();
     }
   }
-
+  //获取规则集合
   @Override public List<RelOptRule> getRules() {
     return ImmutableList.copyOf(mapDescToRule.values());
   }
-
+  //添加规则
   @Override public boolean addRule(RelOptRule rule) {
     // Check that there isn't a rule with the same description
-    final String description = requireNonNull(rule.toString());
+    final String description = rule.toString();
+    assert description != null;
 
     RelOptRule existingRule = mapDescToRule.put(description, rule);
     if (existingRule != null) {
@@ -165,7 +166,7 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
     }
     return true;
   }
-
+  //删除规则
   @Override public boolean removeRule(RelOptRule rule) {
     String description = rule.toString();
     RelOptRule removed = mapDescToRule.remove(description);
@@ -174,21 +175,21 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
 
   /**
    * Returns the rule with a given description.
-   *
+   * 根据描述获取规则
    * @param description Description
    * @return Rule with given description, or null if not found
    */
   protected @Nullable RelOptRule getRuleByDescription(String description) {
     return mapDescToRule.get(description);
   }
-
+  //设置规则的过滤正则表达式
   @Override public void setRuleDescExclusionFilter(@Nullable Pattern exclusionFilter) {
     ruleDescExclusionFilter = exclusionFilter;
   }
 
   /**
    * Determines whether a given rule is excluded by ruleDescExclusionFilter.
-   *
+   * 确定是否要过滤此规则
    * @param rule rule to test
    * @return true iff rule should be excluded
    */
@@ -196,11 +197,11 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
     return ruleDescExclusionFilter != null
         && ruleDescExclusionFilter.matcher(rule.toString()).matches();
   }
-
+  //优先选择此优化器
   @Override public RelOptPlanner chooseDelegate() {
     return this;
   }
-
+  //不支持物化视图
   @Override public void addMaterialization(RelOptMaterialization materialization) {
     // ignore - this planner does not support materializations
   }
@@ -208,7 +209,7 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
   @Override public List<RelOptMaterialization> getMaterializations() {
     return ImmutableList.of();
   }
-
+  //不支持格
   @Override public void addLattice(RelOptLattice lattice) {
     // ignore - this planner does not support lattices
   }
@@ -232,23 +233,24 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
   @Override public void registerClass(RelNode node) {
     final Class<? extends RelNode> clazz = node.getClass();
     if (classes.add(clazz)) {
-      onNewClass(node);
+      onNewClass(node); //把匹配此类及其子类的规则操作数加入classOperands，便于后面规则转换，不包含物理节点的TransformationRule规则
     }
     Convention convention = node.getConvention();
     if (convention != null && conventions.add(convention)) {
-      convention.register(this);
+      convention.register(this);  //把优化器注册到调用约定
     }
   }
 
-  /** Called when a new class of {@link RelNode} is seen. */
+  /** Called when a new class of {@link RelNode} is seen. 匹配关系节点和规则的映射*/
   protected void onNewClass(RelNode node) {
-    node.register(this);
+    node.register(this);  //把优化器注册到关系节点
   }
 
   @Override public RelTraitSet emptyTraitSet() {
     return RelTraitSet.createEmpty();
   }
 
+  //通过RelMetadataQuery.getCumulativeCost获取累计成本
   @Override public @Nullable RelOptCost getCost(RelNode rel, RelMetadataQuery mq) {
     return mq.getCumulativeCost(rel);
   }
@@ -281,7 +283,7 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
   @Override public List<RelTraitDef> getRelTraitDefs() {
     return ImmutableList.of();
   }
-
+  //常量表达式预先计算
   @Override public void setExecutor(@Nullable RexExecutor executor) {
     this.executor = executor;
   }
@@ -311,13 +313,13 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
     checkCancel();
 
     assert ruleCall.getRule().matches(ruleCall);
-    if (isRuleExcluded(ruleCall.getRule())) {
+    if (isRuleExcluded(ruleCall.getRule())) {  //规则是否被过滤
       LOGGER.debug("call#{}: Rule [{}] not fired due to exclusion filter",
           ruleCall.id, ruleCall.getRule());
       return;
     }
 
-    if (ruleCall.isRuleExcluded()) {
+    if (ruleCall.isRuleExcluded()) { //确定规则是否被root节点的hint排除
       LOGGER.debug("call#{}: Rule [{}] not fired due to exclusion hint",
           ruleCall.id, ruleCall.getRule());
       return;
@@ -332,7 +334,7 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
               true);
       listener.ruleAttempted(event);
     }
-
+     //真正在这里使用规则把RelNode转换
     ruleCall.getRule().onMatch(ruleCall);
 
     if (listener != null) {
@@ -433,17 +435,17 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
       final Class<? extends RelNode> clazz) {
     return Util.filter(classes, c -> {
       // RelSubset must be exact type, not subclass
-      if (c == RelSubset.class) {
+      if (c == RelSubset.class) {  //RelSubset必须精确匹配
         return c == clazz;
       }
-      return clazz.isAssignableFrom(c);
+      return clazz.isAssignableFrom(c);  //c是class的子类，clazz是c的父类
     });
   }
 
   /** Listener for counting the attempts of each rule. Only enabled under DEBUG level.*/
   private static class RuleAttemptsListener implements RelOptListener {
     private long beforeTimestamp;
-    private final Map<String, Pair<Long, Long>> ruleAttempts;
+    private Map<String, Pair<Long, Long>> ruleAttempts;
 
     RuleAttemptsListener() {
       ruleAttempts = new HashMap<>();
@@ -458,10 +460,12 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
       } else {
         long elapsed = (System.nanoTime() - this.beforeTimestamp) / 1000;
         String rule = event.getRuleCall().getRule().toString();
-        ruleAttempts.compute(rule, (k, p) ->
-            p == null
-                ? Pair.of(1L,  elapsed)
-                : Pair.of(p.left + 1, p.right + elapsed));
+        if (ruleAttempts.containsKey(rule)) {
+          Pair<Long, Long> p = ruleAttempts.get(rule);
+          ruleAttempts.put(rule, Pair.of(p.left + 1, p.right + elapsed));
+        } else {
+          ruleAttempts.put(rule, Pair.of(1L,  elapsed));
+        }
       }
     }
 
@@ -479,16 +483,17 @@ public abstract class AbstractRelOptPlanner implements RelOptPlanner {
       // then by rule name ascending.
       List<Map.Entry<String, Pair<Long, Long>>> list =
           new ArrayList<>(this.ruleAttempts.entrySet());
-      list.sort((left, right) -> {
-        int res = right.getValue().left.compareTo(left.getValue().left);
-        if (res == 0) {
-          res = right.getValue().right.compareTo(left.getValue().right);
-        }
-        if (res == 0) {
-          res = left.getKey().compareTo(right.getKey());
-        }
-        return res;
-      });
+      Collections.sort(list,
+          (left, right) -> {
+            int res = right.getValue().left.compareTo(left.getValue().left);
+            if (res == 0) {
+              res = right.getValue().right.compareTo(left.getValue().right);
+            }
+            if (res == 0) {
+              res = left.getKey().compareTo(right.getKey());
+            }
+            return res;
+          });
 
       // Print out rule attempts and time
       StringBuilder sb = new StringBuilder();

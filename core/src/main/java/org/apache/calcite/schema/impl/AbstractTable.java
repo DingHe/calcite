@@ -43,7 +43,7 @@ public abstract class AbstractTable implements Table, Wrapper {
   @Override public Statistic getStatistic() {
     return Statistics.UNKNOWN;
   }
-
+  //默认实体表
   @Override public Schema.TableType getJdbcTableType() {
     return Schema.TableType.TABLE;
   }

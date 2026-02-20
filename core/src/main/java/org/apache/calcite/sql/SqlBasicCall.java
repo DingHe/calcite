@@ -22,10 +22,9 @@ import org.apache.calcite.util.ImmutableNullableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Implementation of {@link SqlCall} that keeps its operands in an array.
@@ -74,7 +73,7 @@ public class SqlBasicCall extends SqlCall {
       SqlParserPos pos,
       @Nullable SqlLiteral functionQualifier) {
     super(pos);
-    this.operator = requireNonNull(operator, "operator");
+    this.operator = Objects.requireNonNull(operator, "operator");
     this.operandList = ImmutableNullableList.copyOf(operandList);
     this.functionQuantifier = functionQualifier;
   }
@@ -103,7 +102,7 @@ public class SqlBasicCall extends SqlCall {
    * the same operator (for instance, a version where overloading has been
    * resolved); use with care. */
   public void setOperator(SqlOperator operator) {
-    this.operator = requireNonNull(operator, "operator");
+    this.operator = Objects.requireNonNull(operator, "operator");
   }
 
   @Override public SqlOperator getOperator() {

@@ -23,10 +23,9 @@ import org.apache.calcite.util.SerializableCharset;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.nio.charset.Charset;
+import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * BasicSqlType represents a standard atomic SQL type (excluding interval
@@ -39,11 +38,11 @@ public class BasicSqlType extends AbstractSqlType {
 
   //~ Instance fields --------------------------------------------------------
 
-  private final int precision;
+  private final int precision; //精度
   private final int scale;
   protected final RelDataTypeSystem typeSystem;
-  private final @Nullable SqlCollation collation;
-  private final @Nullable SerializableCharset wrappedCharset;
+  private final @Nullable SqlCollation collation; //排序规则
+  private final @Nullable SerializableCharset wrappedCharset; //字符集
 
   //~ Constructors -----------------------------------------------------------
 
@@ -103,7 +102,7 @@ public class BasicSqlType extends AbstractSqlType {
       @Nullable SqlCollation collation,
       @Nullable SerializableCharset wrappedCharset) {
     super(typeName, nullable, null);
-    this.typeSystem = requireNonNull(typeSystem, "typeSystem");
+    this.typeSystem = Objects.requireNonNull(typeSystem, "typeSystem");
     this.precision = precision;
     this.scale = scale;
     this.collation = collation;

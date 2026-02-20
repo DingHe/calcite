@@ -28,9 +28,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,10 +46,10 @@ class RelTraitTest {
     RelTrait trait1 = RelCompositeTrait.of(COLLATION, collation.get());
     RelTrait trait2 = RelCompositeTrait.of(COLLATION, collation.get());
 
-    assertThat("RelCompositeTrait.of should return the same instance for "
-            + message,
+    assertEquals(
         trait1 + " @" + toHexString(identityHashCode(trait1)),
-        is(trait2 + " @" + toHexString(identityHashCode(trait2))));
+        trait2 + " @" + toHexString(identityHashCode(trait2)),
+        () -> "RelCompositeTrait.of should return the same instance for " + message);
   }
 
   @Test void compositeEmpty() {
@@ -71,7 +69,7 @@ class RelTraitTest {
   @Test void testTraitSetDefault() {
     RelTraitSet traits = RelTraitSet.createEmpty();
     traits = traits.plus(Convention.NONE).plus(RelCollations.EMPTY);
-    assertThat(traits, hasSize(2));
+    assertEquals(traits.size(), 2);
     assertTrue(traits.isDefault());
     traits = traits.replace(EnumerableConvention.INSTANCE);
     assertFalse(traits.isDefault());
@@ -82,17 +80,17 @@ class RelTraitTest {
     assertTrue(traits.getDefault().isDefault());
     traits = traits.getDefaultSansConvention();
     assertFalse(traits.isDefault());
-    assertThat(EnumerableConvention.INSTANCE, is(traits.getConvention()));
+    assertEquals(traits.getConvention(), EnumerableConvention.INSTANCE);
     assertTrue(traits.isDefaultSansConvention());
-    assertThat("ENUMERABLE.[]", is(traits.toString()));
+    assertEquals(traits.toString(), "ENUMERABLE.[]");
   }
 
   @Test void testTraitSetEqual() {
     RelTraitSet traits = RelTraitSet.createEmpty();
     RelTraitSet traits1 = traits.plus(Convention.NONE).plus(RelCollations.of(0));
-    assertThat(traits1, hasSize(2));
+    assertEquals(traits1.size(), 2);
     RelTraitSet traits2 = traits1.replace(EnumerableConvention.INSTANCE);
-    assertThat(traits2, hasSize(2));
+    assertEquals(traits2.size(), 2);
     assertNotEquals(traits1, traits2);
     assertTrue(traits1.equalsSansConvention(traits2));
     RelTraitSet traits3 = traits2.replace(RelCollations.of(1));

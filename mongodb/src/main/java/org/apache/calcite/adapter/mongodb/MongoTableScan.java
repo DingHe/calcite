@@ -33,10 +33,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression representing a scan of a MongoDB collection.
  *
@@ -45,7 +41,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class MongoTableScan extends TableScan implements MongoRel {
   final MongoTable mongoTable;
-  final @Nullable RelDataType projectRowType;
+  final RelDataType projectRowType;
 
   /**
    * Creates a MongoTableScan.
@@ -57,12 +53,13 @@ public class MongoTableScan extends TableScan implements MongoRel {
    * @param projectRowType Fields and types to project; null to project raw row
    */
   protected MongoTableScan(RelOptCluster cluster, RelTraitSet traitSet,
-      RelOptTable table, MongoTable mongoTable,
-      @Nullable RelDataType projectRowType) {
+      RelOptTable table, MongoTable mongoTable, RelDataType projectRowType) {
     super(cluster, traitSet, ImmutableList.of(), table);
-    this.mongoTable = requireNonNull(mongoTable, "mongoTable");
+    this.mongoTable = mongoTable;
     this.projectRowType = projectRowType;
-    checkArgument(getConvention() == MongoRel.CONVENTION);
+
+    assert mongoTable != null;
+    assert getConvention() == MongoRel.CONVENTION;
   }
 
   @Override public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
@@ -80,8 +77,7 @@ public class MongoTableScan extends TableScan implements MongoRel {
     final float f =
         projectRowType == null ? 1f
             : (float) projectRowType.getFieldCount() / 100f;
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(.1 * f);
+    return super.computeSelfCost(planner, mq).multiplyBy(.1 * f);
   }
 
   @Override public void register(RelOptPlanner planner) {

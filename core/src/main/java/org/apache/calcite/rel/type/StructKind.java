@@ -50,7 +50,7 @@ package org.apache.calcite.rel.type;
  */
 public enum StructKind {
   /** This is not a structured type. */
-  NONE,
+  NONE, //如果字段没有结构化类型，使用 NONE，意味着这个字段没有子字段或嵌套结构
 
   /** This is a traditional structured type, where each field must be
    * referenced explicitly.
@@ -62,7 +62,7 @@ public enum StructKind {
    * {@code SELECT address.zipcode FROM customer}
    * it not valid.
    */
-  FULLY_QUALIFIED,
+  FULLY_QUALIFIED, //传统的结构化类型，每个字段都需要显式引用，SELECT c.address.zipcode FROM customer AS c
 
   /** As {@link #PEEK_FIELDS}, but takes priority if another struct-typed
    * field also has a field of the name being sought.
@@ -70,17 +70,17 @@ public enum StructKind {
    * <p>In Phoenix, only one of a table's columns is labeled
    * {@code PEEK_FIELDS_DEFAULT} - the default column family - but in principle
    * there could be more than one. */
-  PEEK_FIELDS_DEFAULT,
+  PEEK_FIELDS_DEFAULT, //如果有多个相同字段名称的字段，PEEK_FIELDS_DEFAULT 会优先选择其中标记为默认的字段
 
   /** If a field has this type, you can see its fields without qualifying them
    * with the name of this field.
    *
    * <p>For example, if {@code address} is labeled {@code PEEK_FIELDS}, you
    * could write {@code zipcode} as shorthand for {@code address.zipcode}. */
-  PEEK_FIELDS,
+  PEEK_FIELDS, //假设 address 字段被标记为 PEEK_FIELDS，那么 zipcode 可以直接作为查询字段，而不需要写成 address.zipcode
 
   /** As {@link #PEEK_FIELDS}, but fields are not expanded in "SELECT *".
    *
    * <p>Used in Flink, not Phoenix. */
-  PEEK_FIELDS_NO_EXPAND,
+  PEEK_FIELDS_NO_EXPAND, //类似于 PEEK_FIELDS，但是在 SELECT * 查询中不会展开字段
 }

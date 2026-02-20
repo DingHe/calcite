@@ -82,7 +82,7 @@ public class JoinPushTransitivePredicatesRule
     final RelBuilder relBuilder = call.builder();
 
     RelNode left = join.getLeft();
-    if (!preds.leftInferredPredicates.isEmpty()) {
+    if (preds.leftInferredPredicates.size() > 0) {
       RelNode curr = left;
       left = relBuilder.push(left)
           .filter(preds.leftInferredPredicates).build();
@@ -90,7 +90,7 @@ public class JoinPushTransitivePredicatesRule
     }
 
     RelNode right = join.getRight();
-    if (!preds.rightInferredPredicates.isEmpty()) {
+    if (preds.rightInferredPredicates.size() > 0) {
       RelNode curr = right;
       right = relBuilder.push(right)
           .filter(preds.rightInferredPredicates).build();

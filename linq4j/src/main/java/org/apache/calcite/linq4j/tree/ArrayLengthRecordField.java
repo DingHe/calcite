@@ -27,14 +27,15 @@ import static java.util.Objects.requireNonNull;
 /**
  * Length field of a RecordType.
  */
-@SuppressWarnings("rawtypes")
 public class ArrayLengthRecordField implements Types.RecordField {
   private final String fieldName;
   private final Class clazz;
 
   public ArrayLengthRecordField(String fieldName, Class clazz) {
-    this.fieldName = requireNonNull(fieldName, "fieldName");
-    this.clazz = requireNonNull(clazz, "clazz");
+    assert fieldName != null : "fieldName should not be null";
+    assert clazz != null : "clazz should not be null";
+    this.fieldName = fieldName;
+    this.clazz = clazz;
   }
 
   @Override public boolean nullable() {
@@ -53,7 +54,7 @@ public class ArrayLengthRecordField implements Types.RecordField {
     return 0;
   }
 
-  @Override public Object get(@Nullable Object o) {
+  @Override public Object get(@Nullable Object o) throws IllegalAccessException {
     return Array.getLength(requireNonNull(o, "o"));
   }
 
@@ -70,8 +71,15 @@ public class ArrayLengthRecordField implements Types.RecordField {
     }
 
     ArrayLengthRecordField that = (ArrayLengthRecordField) o;
-    return clazz.equals(that.clazz)
-        && fieldName.equals(that.fieldName);
+
+    if (!clazz.equals(that.clazz)) {
+      return false;
+    }
+    if (!fieldName.equals(that.fieldName)) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

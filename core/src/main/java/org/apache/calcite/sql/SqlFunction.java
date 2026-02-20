@@ -34,11 +34,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.dataflow.qual.Pure;
 
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 import static org.apache.calcite.util.Static.RESOURCE;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * A <code>SqlFunction</code> is a type of operator which has conventional
@@ -133,7 +132,7 @@ public class SqlFunction extends SqlOperator {
         operandTypeChecker);
 
     this.sqlIdentifier = sqlIdentifier;
-    this.category = requireNonNull(category, "category");
+    this.category = Objects.requireNonNull(category, "category");
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -311,9 +310,7 @@ public class SqlFunction extends SqlOperator {
           // if we succeed, the arguments would be wrapped with CAST operator.
           if (function != null) {
             TypeCoercion typeCoercion = validator.getTypeCoercion();
-            if ((function.category == SqlFunctionCategory.USER_DEFINED_FUNCTION
-                || function.category == SqlFunctionCategory.USER_DEFINED_TABLE_FUNCTION)
-                && typeCoercion.userDefinedFunctionCoercion(scope, call, function)) {
+            if (typeCoercion.userDefinedFunctionCoercion(scope, call, function)) {
               break validCoercionType;
             }
           }

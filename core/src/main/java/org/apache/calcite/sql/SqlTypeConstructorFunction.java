@@ -27,7 +27,7 @@ import org.apache.calcite.sql.type.ExplicitOperandTypeChecker;
  */
 public class SqlTypeConstructorFunction extends SqlFunction {
 
-  private final RelDataType type;
+  private RelDataType type;
 
   /**
    * Creates a constructor function for types.

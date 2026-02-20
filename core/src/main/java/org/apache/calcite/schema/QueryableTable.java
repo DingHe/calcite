@@ -28,7 +28,7 @@ import java.lang.reflect.Type;
 public interface QueryableTable extends Table {
   /** Converts this table into a {@link Queryable}. */
   <T> Queryable<T> asQueryable(QueryProvider queryProvider, SchemaPlus schema,
-      String tableName);
+      String tableName); //把表转为Querable,linq4j可以查询
 
   /** Returns the element type of the collection that will implement this
    * table. */
@@ -36,7 +36,7 @@ public interface QueryableTable extends Table {
 
   /** Generates an expression with which this table can be referenced in
    * generated code.
-   *
+   * 生成表的Expression表达式
    * @param schema Schema
    * @param tableName Table name (unique within schema)
    * @param clazz The desired collection class; for example {@code Queryable}.

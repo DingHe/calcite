@@ -50,7 +50,7 @@ import static java.util.Objects.requireNonNull;
  * A <code>RelSet</code> is an equivalence-set of expressions; that is, a set of
  * expressions which have identical semantics. We are generally interested in
  * using the expression which has the lowest cost.
- *
+ * RelSet是表达式的相等集，具有相同的语义，一般使用成本最低的表达式。一般集合中的表达式有相同的调用约定
  * <p>All of the expressions in an <code>RelSet</code> have the same calling
  * convention.
  */
@@ -60,22 +60,22 @@ class RelSet {
   private static final Logger LOGGER = CalciteTrace.getPlannerTracer();
 
   //~ Instance fields --------------------------------------------------------
-
+  //等价的关系代数集合存储在 rels 中，他们具有相同的调用规约，但是其他物理属性可能不相同，例如：RelCollation 和 RelDistribution
   final List<RelNode> rels = new ArrayList<>();
   /**
    * Relational expressions that have a subset in this set as a child. This
    * is a multi-set. If multiple relational expressions in this set have the
    * same parent, there will be multiple entries.
    */
-  final List<RelNode> parents = new ArrayList<>();
-  final List<RelSubset> subsets = new ArrayList<>();
+  final List<RelNode> parents = new ArrayList<>();  //该等价集的父等价集
+  final List<RelSubset> subsets = new ArrayList<>(); //RelSet包含的所有子集
 
   /**
    * Set to the superseding set when this is found to be equivalent to another
-   * set.
+   * set.  表示this已经被equivalentSet取代，后续使用equivalentSet
    */
   @MonotonicNonNull RelSet equivalentSet;
-  @MonotonicNonNull RelNode rel;
+  @MonotonicNonNull RelNode rel; //表示创建此RelSet的关系节点
 
   /**
    * Exploring state of current RelSet.
@@ -136,8 +136,7 @@ class RelSet {
         continue;
       }
       for (RelNode child : node.getInputs()) {
-        RelSet childSet =
-            VolcanoPlanner.equivRoot(((RelSubset) child).getSet());
+        RelSet childSet = planner.equivRoot(((RelSubset) child).getSet());
         if (childSet.id != this.id) {
           childSets.add(childSet);
         }
@@ -181,11 +180,11 @@ class RelSet {
     final RelTraitSet traitSet = rel.getTraitSet().simplify();
     final RelSubset subset =
         getOrCreateSubset(rel.getCluster(), traitSet, rel.isEnforcer());
-    subset.add(rel);
+    subset.add(rel); //把rel加入RelSubset所属的RelSet的rels里面
     return subset;
   }
 
-  /**
+  /**subset 要添加转换器的子集,required为true 表示将其他子集转换为该子集（即将“已交付”子集转换为“所需”子集），false 表示将该子集转换为“所需”子集，useAbstractConverter如果为 true，则使用 AbstractConverter 来进行转换；否则，会使用当前子集的约定（Convention）来进行转换
    * If the subset is required, convert delivered subsets to this subset.
    * Otherwise, convert this subset to required subsets in this RelSet.
    * The subset can be both required and delivered.
@@ -196,7 +195,7 @@ class RelSet {
     List<RelSubset> others =
         subsets.stream()
             .filter(n -> required ? n.isDelivered() : n.isRequired())
-            .collect(Collectors.toList());
+            .collect(Collectors.toList()); //根据 required 参数，筛选出当前 RelSet 中所有“已交付”或“所需”的子集，存储在 others 列表中
 
     for (RelSubset other : others) {
       assert other.getTraitSet().size() == subset.getTraitSet().size();
@@ -258,12 +257,12 @@ class RelSet {
       }
     }
   }
-
+  //获取或者创建RelSubset
   RelSubset getOrCreateSubset(
       RelOptCluster cluster, RelTraitSet traits, boolean required) {
     boolean needsConverter = false;
     final VolcanoPlanner planner = (VolcanoPlanner) cluster.getPlanner();
-    RelSubset subset = getSubset(traits);
+    RelSubset subset = getSubset(traits);//看看RelSet中是否已经存在某种物理特征的子集
 
     if (subset == null) {
       needsConverter = true;
@@ -274,7 +273,7 @@ class RelSet {
       // register() the planner will try to add this subset again.
       subsets.add(subset);
 
-      if (planner.getListener() != null) {
+       if (planner.getListener() != null) {
         postEquivalenceEvent(planner, subset);
       }
     } else if ((required && !subset.isRequired())
@@ -388,7 +387,7 @@ class RelSet {
         subset = getOrCreateSubset(cluster, otherTraits, true);
       }
 
-      requireNonNull(subset, "subset");
+      assert subset != null;
       if (subset.passThroughCache == null) {
         subset.passThroughCache = otherSubset.passThroughCache;
       } else if (otherSubset.passThroughCache != null) {

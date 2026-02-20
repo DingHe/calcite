@@ -46,13 +46,13 @@ public class SqlTrimFunction extends SqlFunction {
   protected static final SqlTrimFunction INSTANCE =
       new SqlTrimFunction("TRIM", SqlKind.TRIM,
           ReturnTypes.ARG2.andThen(SqlTypeTransforms.TO_NULLABLE)
-              .andThen(SqlTypeTransforms.TO_VARYING),
+              .andThen(SqlTypeTransforms.TO_VARYING), //返回值类型跟第二个操作数一致，并且可以为null
           OperandTypes.ANY_STRING_STRING.and(
               OperandTypes.same(3, 1, 2)));
 
   //~ Enums ------------------------------------------------------------------
 
-  /**
+  /** 定义trim函数处理左边还是右边，或者两边都要处理
    * Defines the enumerated values "LEADING", "TRAILING", "BOTH".
    */
   public enum Flag implements Symbolizable {
@@ -108,7 +108,7 @@ public class SqlTrimFunction extends SqlFunction {
       throw new AssertionError();
     }
   }
-
+  //把函数转为SqlCall
   @Override public SqlCall createCall(
       @Nullable SqlLiteral functionQualifier,
       SqlParserPos pos,

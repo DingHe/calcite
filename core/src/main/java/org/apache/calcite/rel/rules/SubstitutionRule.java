@@ -16,7 +16,7 @@
  */
 package org.apache.calcite.rel.rules;
 
-/**
+/** 实现此接口意味着新的RelNode明显比旧的好
  * A rule that implements this interface indicates that the new RelNode
  * is typically better than the old one. All the substitution rules will
  * be executed first until they are done. The execution order of

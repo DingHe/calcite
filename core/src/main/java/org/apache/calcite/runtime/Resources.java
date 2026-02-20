@@ -54,9 +54,7 @@ import java.util.ResourceBundle;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static java.lang.Boolean.parseBoolean;
-
-import static java.lang.Double.parseDouble;
+import static java.lang.reflect.Modifier.isStatic;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
@@ -247,9 +245,7 @@ public class Resources {
         }
         try {
           Inst inst = (Inst) method.invoke(o, args);
-          if (inst == null) {
-            throw new AssertionError("got null from " + method);
-          }
+          assert inst != null : "got null from " + method;
           inst.validate(validations);
         } catch (IllegalAccessException e) {
           throw new RuntimeException("in " + method, e);
@@ -698,7 +694,7 @@ public class Resources {
       super(accessor, method);
       final Default resource = getDefault();
       if (resource != null) {
-        defaultValue = parseBoolean(resource.value());
+        defaultValue = Boolean.parseBoolean(resource.value());
       } else {
         defaultValue = false;
       }
@@ -729,7 +725,7 @@ public class Resources {
       super(accessor, method);
       final Default resource = getDefault();
       if (resource != null) {
-        defaultValue = parseDouble(resource.value());
+        defaultValue = Double.parseDouble(resource.value());
       } else {
         defaultValue = 0d;
       }
@@ -1153,7 +1149,7 @@ public class Resources {
     public boolean booleanValue(BooleanProp p) {
       final String s = properties.getProperty(p.key);
       if (s != null) {
-        return parseBoolean(s);
+        return Boolean.parseBoolean(s);
       }
       p.checkDefault2();
       return p.defaultValue;
@@ -1162,14 +1158,14 @@ public class Resources {
     @Override
     public boolean booleanValue(BooleanProp p, boolean defaultValue) {
       final String s = properties.getProperty(p.key);
-      return s == null ? defaultValue : parseBoolean(s);
+      return s == null ? defaultValue : Boolean.parseBoolean(s);
     }
 
     @Override
     public double doubleValue(DoubleProp p) {
       final String s = properties.getProperty(p.key);
       if (s != null) {
-        return parseDouble(s);
+        return Double.parseDouble(s);
       }
       p.checkDefault2();
       return p.defaultValue;
@@ -1178,7 +1174,7 @@ public class Resources {
     @Override
     public double doubleValue(DoubleProp p, double defaultValue) {
       final String s = properties.getProperty(p.key);
-      return s == null ? defaultValue : parseDouble(s);
+      return s == null ? defaultValue : Double.parseDouble(s);
     }
   }
 }

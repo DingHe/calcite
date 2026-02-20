@@ -58,11 +58,11 @@ public class RelMdColumnOrigins
           new RelMdColumnOrigins(), BuiltInMetadata.ColumnOrigin.Handler.class);
 
   //~ Constructors -----------------------------------------------------------
-
+  //私有构造，确保类只能通过SOURCE访问
   private RelMdColumnOrigins() {}
 
   //~ Methods ----------------------------------------------------------------
-
+  //返回元数据定义
   @Override public MetadataDef<BuiltInMetadata.ColumnOrigin> getDef() {
     return BuiltInMetadata.ColumnOrigin.DEF;
   }
@@ -151,8 +151,10 @@ public class RelMdColumnOrigins
         return rel.getProgram().expandLocalRef(localRef);
       }
     };
-    final List<RexNode> projects =
-        new ArrayList<>(rexShuttle.apply(rel.getProgram().getProjectList()));
+    final List<RexNode> projects = new ArrayList<>();
+    for (RexNode rex : rexShuttle.apply(rel.getProgram().getProjectList())) {
+      projects.add(rex);
+    }
     final RexNode rexNode = projects.get(iOutputColumn);
     if (rexNode instanceof RexInputRef) {
       // Direct reference:  no derivation added.
@@ -209,7 +211,7 @@ public class RelMdColumnOrigins
     final Set<RelColumnOrigin> set = new HashSet<>();
     Set<RelColumnMapping> mappings = rel.getColumnMappings();
     if (mappings == null) {
-      if (!rel.getInputs().isEmpty()) {
+      if (rel.getInputs().size() > 0) {
         // This is a non-leaf transformation:  say we don't
         // know about origins, because there are probably
         // columns below.
@@ -246,7 +248,7 @@ public class RelMdColumnOrigins
     // it's up to the plugin writer to override with the
     // correct information.
 
-    if (!rel.getInputs().isEmpty()) {
+    if (rel.getInputs().size() > 0) {
       // No generic logic available for non-leaf rels.
       return null;
     }

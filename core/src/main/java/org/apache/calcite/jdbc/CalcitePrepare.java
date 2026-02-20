@@ -45,7 +45,6 @@ import org.apache.calcite.sql.validate.CyclicDefinitionException;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.tools.RelRunner;
 import org.apache.calcite.util.ImmutableIntList;
-import org.apache.calcite.util.TryThreadLocal;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableList;
@@ -66,26 +65,26 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
 import static java.util.Objects.requireNonNull;
 
-/**
+/** 准备执行的statements
  * API for a service that prepares statements for execution.
  */
 public interface CalcitePrepare {
   Function0<CalcitePrepare> DEFAULT_FACTORY = CalcitePrepareImpl::new;
-  TryThreadLocal<Deque<Context>> THREAD_CONTEXT_STACK =
-      TryThreadLocal.withInitial(ArrayDeque::new);
+  ThreadLocal<@Nullable Deque<Context>> THREAD_CONTEXT_STACK =
+      ThreadLocal.withInitial(ArrayDeque::new);  //存放CalcitePrepare执行的上下文
 
-  ParseResult parse(Context context, String sql);
+  ParseResult parse(Context context, String sql); //解析的结果就是SqlNode
 
-  ConvertResult convert(Context context, String sql);
+  ConvertResult convert(Context context, String sql); //比parse更进一步，把SqlNode转为RelNode节点
 
   /** Executes a DDL statement.
    *
    * <p>The statement identified itself as DDL in the
    * {@link org.apache.calcite.jdbc.CalcitePrepare.ParseResult#kind} field. */
-  void executeDdl(Context context, SqlNode node);
+  void executeDdl(Context context, SqlNode node); //执行DDl语句
 
   /** Analyzes a view.
-   *
+   * 分析一个视图，并且生成表，同时分析出SqlNode和RelNode节点
    * @param context Context
    * @param sql View SQL
    * @param fail Whether to fail (and throw a descriptive error message) if the
@@ -98,26 +97,26 @@ public interface CalcitePrepare {
       Context context,
       Query<T> query,
       Type elementType,
-      long maxRowCount);
+      long maxRowCount);   //准备sql语句，生成Bindable，同时可以获得Enumerable对象
 
   <T> CalciteSignature<T> prepareQueryable(
       Context context,
-      Queryable<T> queryable);
+      Queryable<T> queryable); //跟prepareSql类似，不过这个接口是通过Queryable来获取数据
 
   /** Context for preparing a statement. */
   interface Context {
-    JavaTypeFactory getTypeFactory();
+    JavaTypeFactory getTypeFactory(); //java关系类型工厂
 
     /** Returns the root schema for statements that need a read-consistent
      * snapshot. */
-    CalciteSchema getRootSchema();
+    CalciteSchema getRootSchema(); //statement的root schema
 
     /** Returns the root schema for statements that need to be able to modify
      * schemas and have the results available to other statements. Viz, DDL
      * statements. */
     CalciteSchema getMutableRootSchema();
 
-    List<String> getDefaultSchemaPath();
+    List<String> getDefaultSchemaPath(); //默认的schema路径
 
     CalciteConnectionConfig config();
 
@@ -131,10 +130,10 @@ public interface CalcitePrepare {
      * <p>The object is being analyzed is typically a view. If it is already
      * being analyzed further up the stack, the view definition can be deduced
      * to be cyclic. */
-    @Nullable List<String> getObjectPath();
+    @Nullable List<String> getObjectPath(); //主要是view的路径
 
     /** Gets a runner; it can execute a relational expression. */
-    RelRunner getRelRunner();
+    RelRunner getRelRunner(); //基于RelNode节点准备执行语句
   }
 
   /** Callback to register Spark as the main engine. */
@@ -194,7 +193,7 @@ public interface CalcitePrepare {
     }
 
     public static void push(Context context) {
-      final Deque<Context> stack = THREAD_CONTEXT_STACK.get();
+      final Deque<Context> stack = castNonNull(THREAD_CONTEXT_STACK.get());
       final List<String> path = context.getObjectPath();
       if (path != null) {
         for (Context context1 : stack) {
@@ -208,13 +207,11 @@ public interface CalcitePrepare {
     }
 
     public static Context peek() {
-      final Deque<Context> stack = THREAD_CONTEXT_STACK.get();
-      return castNonNull(stack.peek());
+      return castNonNull(castNonNull(THREAD_CONTEXT_STACK.get()).peek());
     }
 
     public static void pop(Context context) {
-      final Deque<Context> stack = THREAD_CONTEXT_STACK.get();
-      Context x = castNonNull(stack).pop();
+      Context x = castNonNull(THREAD_CONTEXT_STACK.get()).pop();
       assert x == context;
     }
 
@@ -248,8 +245,8 @@ public interface CalcitePrepare {
   class ParseResult {
     public final CalcitePrepareImpl prepare;
     public final String sql; // for debug
-    public final SqlNode sqlNode;
-    public final RelDataType rowType;
+    public final SqlNode sqlNode;  //解析的结果就是SqlNode
+    public final RelDataType rowType;  //行的数据类型
     public final RelDataTypeFactory typeFactory;
 
     public ParseResult(CalcitePrepareImpl prepare, SqlValidator validator,
@@ -281,13 +278,13 @@ public interface CalcitePrepare {
      */
     public SqlKind kind() {
       return sqlNode.getKind();
-    }
+    } //获取SqlNode的kind
   }
 
   /** The result of parsing and validating a SQL query and converting it to
    * relational algebra. */
   class ConvertResult extends ParseResult {
-    public final RelRoot root;
+    public final RelRoot root; //相比ParseResult多了RelRoot
 
     public ConvertResult(CalcitePrepareImpl prepare, SqlValidator validator,
         String sql, SqlNode sqlNode, RelDataType rowType, RelRoot root) {
@@ -381,7 +378,7 @@ public interface CalcitePrepare {
   /** A union type of the three possible ways of expressing a query: as a SQL
    * string, a {@link Queryable} or a {@link RelNode}. Exactly one must be
    * provided.
-   *
+   * 三种方式来表达一个Query，sql、Queryable或者RelNode
    * @param <T> element type */
   class Query<T> {
     public final @Nullable String sql;

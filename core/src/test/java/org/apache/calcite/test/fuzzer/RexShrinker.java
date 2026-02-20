@@ -76,7 +76,7 @@ public class RexShrinker extends RexShuttle {
       if (res != null) {
         didWork = true;
         if (!res.getType().equals(type)) {
-          return rexBuilder.makeCast(call.getParserPosition(), type, res);
+          return rexBuilder.makeCast(type, res);
         }
         return res;
       }

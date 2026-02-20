@@ -25,7 +25,7 @@ import java.sql.SQLException;
  * Runs a relational expression.
  *
  * <p>Experimental.
- *
+ * 基于RelNode节点准备语句，需要实现参数为RelNode的prepareStatement方法
  * @see RelRunners
  */
 public interface RelRunner {

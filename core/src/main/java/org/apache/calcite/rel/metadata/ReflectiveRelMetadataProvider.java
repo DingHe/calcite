@@ -85,11 +85,16 @@ public class ReflectiveRelMetadataProvider
    * @param map Map
    * @param metadataClass0 Metadata class
    * @param handlerMap Methods handled and the objects to call them on
+   * 总的来说，反射元数据Provider就是把元数据的定义和MetadataHandler的实现关联起来
    */
   protected ReflectiveRelMetadataProvider(
+      //关系数据类型，元数据的处理方法
       ConcurrentMap<Class<RelNode>, UnboundMetadata> map,
+      //元数据的类型，就是Metadata的实现类
       Class<? extends Metadata> metadataClass0,
+      //Method是元数据的定义的处理方法，MetadataHanlder是对应的元数据的MetadataHanlder的实现类
       Multimap<Method, MetadataHandler<?>> handlerMap,
+      //handlerClass表示元数据Metadata实现里面定义的Handler接口，例如 ColumnOrigin里面的Handler
       Class<? extends MetadataHandler<?>> handlerClass) {
     checkArgument(!map.isEmpty(), "ReflectiveRelMetadataProvider "
         + "methods map is empty; are your methods named wrong?");
@@ -142,6 +147,9 @@ public class ReflectiveRelMetadataProvider
   }
 
   @Deprecated // to be removed before 2.0
+  //target表示MetadataHandler 的实现，例如RelMdColumnOrigins
+  //methods表示元数据Metadata实现里面定义的方法，例如ColumnOrigin，里面定义了方法getColumnOrigins(int outputColumn)
+  //handlerClass表示元数据Metadata实现里面定义的Handler接口，例如 ColumnOrigin里面的Handler
   private static RelMetadataProvider reflectiveSource(
       final MetadataHandler target, final ImmutableList<Method> methods,
       final Class<? extends MetadataHandler<?>> handlerClass) {
@@ -240,6 +248,7 @@ public class ReflectiveRelMetadataProvider
     return builder.build();
   }
 
+  //查找MetadataHandler对应的实现类
   @Override public List<MetadataHandler<?>> handlers(
       Class<? extends MetadataHandler<?>> handlerClass) {
     if (this.handlerClass.isAssignableFrom(handlerClass)) {
@@ -261,6 +270,7 @@ public class ReflectiveRelMetadataProvider
     return parameterTypes1.length == parameterTypes.length + 2
         && RelNode.class.isAssignableFrom(parameterTypes1[0])
         && RelMetadataQuery.class == parameterTypes1[1]
+        //这里还要判断参数类型相等
         && Arrays.asList(parameterTypes)
             .equals(Util.skip(Arrays.asList(parameterTypes1), 2));
   }
@@ -315,8 +325,11 @@ public class ReflectiveRelMetadataProvider
    * given metadata methods. */
   @Deprecated // to be removed before 2.0
   static class Space {
+    //存储元数据支持的关系节点类型
     final Set<Class<RelNode>> classes = new HashSet<>();
+    //Pair存储关系节点类型，元数据处理方法，Map的value是对应的元数据MetaHandler实现类的处理方法
     final Map<Pair<Class<RelNode>, Method>, Method> handlerMap = new HashMap<>();
+    //Method是元数据的定义的处理方法，MetadataHanlder是对应的元数据的MetadataHanlder的实现类
     final ImmutableMultimap<Method, MetadataHandler<?>> providerMap;
 
     Space(Multimap<Method, MetadataHandler<?>> providerMap) {
@@ -325,7 +338,9 @@ public class ReflectiveRelMetadataProvider
       // Find the distinct set of RelNode classes handled by this provider,
       // ordered base-class first.
       for (Map.Entry<Method, MetadataHandler<?>> entry : providerMap.entries()) {
+        //元数据定义的方法，例如ColumnOrigin，里面定义了方法getColumnOrigins(int outputColumn)
         final Method method = entry.getKey();
+        //元数据MetaHandler实现的类，例如RelMdColumnOrigins
         final MetadataHandler<?> provider = entry.getValue();
         for (final Method handlerMethod : provider.getClass().getMethods()) {
           if (couldImplement(handlerMethod, method)) {
@@ -342,6 +357,7 @@ public class ReflectiveRelMetadataProvider
      * nearest base class. Assumes that base classes have already been added to
      * {@code map}. */
     @SuppressWarnings({ "unchecked", "SuspiciousMethodCalls" })
+    //查找当前类的实现或者最近父类的实现
     Method find(final Class<? extends RelNode> relNodeClass, Method method) {
       requireNonNull(relNodeClass, "relNodeClass");
       for (Class r = relNodeClass;;) {
@@ -350,6 +366,7 @@ public class ReflectiveRelMetadataProvider
           return implementingMethod;
         }
         for (Class<?> clazz : r.getInterfaces()) {
+          //检查clazz是否是RelNode的子类，isAssignableFrom是“是否能从clazz复制给RelNode"
           if (RelNode.class.isAssignableFrom(clazz)) {
             implementingMethod = handlerMap.get(Pair.of(clazz, method));
             if (implementingMethod != null) {
@@ -370,7 +387,7 @@ public class ReflectiveRelMetadataProvider
   /** Extended work space. */
   @Deprecated // to be removed before 2.0
   static class Space2 extends Space {
-    private final Class<Metadata> metadataClass0;
+    private Class<Metadata> metadataClass0;
 
     Space2(Class<Metadata> metadataClass0,
         ImmutableMultimap<Method, MetadataHandler<?>> providerMap) {
@@ -382,7 +399,7 @@ public class ReflectiveRelMetadataProvider
     public static Space2 create(
         MetadataHandler<?> target,
         ImmutableList<Method> methods) {
-      assert !methods.isEmpty();
+      assert methods.size() > 0;
       final Method method0 = methods.get(0);
       //noinspection unchecked
       Class<Metadata> metadataClass0 = (Class) method0.getDeclaringClass();

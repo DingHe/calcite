@@ -43,8 +43,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 /**
  * RelMdCollation supplies a default implementation of
  * {@link RelMetadataQuery#distribution}
@@ -149,8 +147,7 @@ public class RelMdDistribution
    * {@link org.apache.calcite.rel.core.Calc}'s distribution. */
   public static RelDistribution calc(RelMetadataQuery mq, RelNode input,
       RexProgram program) {
-    checkArgument(program.getCondition() != null
-        || !program.getProjectList().isEmpty());
+    assert program.getCondition() != null || !program.getProjectList().isEmpty();
     final RelDistribution inputDistribution = mq.distribution(input);
     if (!program.getProjectList().isEmpty()) {
       final Mappings.TargetMapping mapping =

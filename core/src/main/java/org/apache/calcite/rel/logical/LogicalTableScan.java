@@ -53,7 +53,7 @@ import java.util.List;
  * <pre>select from fields as f
  * where f.getClass().getName().equals("java.lang.String")</pre>
  * </blockquote>
- *
+ * 代表执行计划要扫描这个表
  * <p>can. It is the optimizer's responsibility to find these ways, by applying
  * transformation rules.
  */

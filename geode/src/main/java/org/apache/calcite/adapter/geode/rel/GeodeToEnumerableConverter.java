@@ -50,8 +50,6 @@ import java.util.Map;
 
 import static org.apache.calcite.adapter.geode.rel.GeodeRules.geodeFieldNames;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression representing a scan of a table in a Geode data source.
  */
@@ -69,8 +67,7 @@ public class GeodeToEnumerableConverter extends ConverterImpl implements Enumera
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(.1);
   }
 
   /**

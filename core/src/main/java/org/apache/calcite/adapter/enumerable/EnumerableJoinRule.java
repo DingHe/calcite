@@ -41,8 +41,8 @@ class EnumerableJoinRule extends ConverterRule {
   public static final Config DEFAULT_CONFIG = Config.INSTANCE
       .withConversion(LogicalJoin.class, Convention.NONE,
           EnumerableConvention.INSTANCE, "EnumerableJoinRule")
-      .withRuleFactory(EnumerableJoinRule::new);
-
+      .withRuleFactory(EnumerableJoinRule::new);//RuleFactory 输入Config，返回ConverterRule,所以这里的EnumerableJoinRule::new正好是用config构造rule本身
+  //总的来说，该规则匹配LogicalJoin关系节点，输入调用特征为NONE，输出为EnumerableConvention
   /** Called from the Config. */
   protected EnumerableJoinRule(Config config) {
     super(config);
@@ -51,10 +51,10 @@ class EnumerableJoinRule extends ConverterRule {
   @Override public RelNode convert(RelNode rel) {
     Join join = (Join) rel;
     List<RelNode> newInputs = new ArrayList<>();
-    for (RelNode input : join.getInputs()) {
-      if (!(input.getConvention() instanceof EnumerableConvention)) {
+    for (RelNode input : join.getInputs()) { //getInputs返回join的左右关系节点
+      if (!(input.getConvention() instanceof EnumerableConvention)) { //如果不是EnumerableConvention
         input =
-            convert(
+            convert( //转为EnumerableConvention
                 input,
                 input.getTraitSet()
                     .replace(EnumerableConvention.INSTANCE));
@@ -66,6 +66,8 @@ class EnumerableJoinRule extends ConverterRule {
     final RelNode right = newInputs.get(1);
     final JoinInfo info = join.analyzeCondition();
 
+    //如果关联条件全部或者部分是等值，转为hash join
+    //否则是嵌套循环 join
     // If the join has equiKeys (i.e. complete or partial equi-join),
     // create an EnumerableHashJoin, which supports all types of joins,
     // even if the join condition contains partial non-equi sub-conditions;

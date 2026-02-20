@@ -335,15 +335,19 @@ public class LoptOptimizeJoinRule
       for (RexNode filter : multiJoin.getJoinFilters()) {
         ImmutableBitSet joinFactors =
             multiJoin.getFactorsRefByJoinFilter(filter);
-        if (joinFactors.cardinality() == 2
+        if ((joinFactors.cardinality() == 2)
             && joinFactors.get(factor1)
             && joinFactors.get(factor2)) {
           selfJoinFilters.add(filter);
         }
       }
-      if (!selfJoinFilters.isEmpty()
-          && isSelfJoinFilterUnique(mq, multiJoin, factor1, factor2,
-              selfJoinFilters)) {
+      if ((selfJoinFilters.size() > 0)
+          && isSelfJoinFilterUnique(
+            mq,
+            multiJoin,
+            factor1,
+            factor2,
+            selfJoinFilters)) {
         multiJoin.addRemovableSelfJoinPair(factor1, factor2);
       }
     }
@@ -750,7 +754,7 @@ public class LoptOptimizeJoinRule
       prevFactor = nextFactor;
     }
 
-    assert filtersToAdd.isEmpty();
+    assert filtersToAdd.size() == 0;
     return joinTree;
   }
 

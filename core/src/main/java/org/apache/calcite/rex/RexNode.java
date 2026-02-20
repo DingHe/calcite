@@ -37,7 +37,7 @@ import static java.util.Objects.requireNonNull;
  * {@link RexVariable} (variable), {@link RexCall} (call to operator with
  * operands). Expressions are generally created using a {@link RexBuilder}
  * factory.
- *
+ * 行表达式
  * <p>All sub-classes of RexNode are immutable.
  */
 public abstract class RexNode {
@@ -49,7 +49,7 @@ public abstract class RexNode {
 
   //~ Methods ----------------------------------------------------------------
 
-  public abstract RelDataType getType();
+  public abstract RelDataType getType(); //行数据类型
 
   /**
    * Returns whether this expression always returns true. (Such as if this
@@ -57,7 +57,7 @@ public abstract class RexNode {
    */
   public boolean isAlwaysTrue() {
     return false;
-  }
+  } //是否总是返回真
 
   /**
    * Returns whether this expression always returns false. (Such as if this
@@ -65,15 +65,15 @@ public abstract class RexNode {
    */
   public boolean isAlwaysFalse() {
     return false;
-  }
+  } //是否总是返回假
 
   public boolean isA(SqlKind kind) {
     return getKind() == kind;
-  }
+  } //是否是某种类型
 
   public boolean isA(Collection<SqlKind> kinds) {
     return getKind().belongsTo(kinds);
-  }
+  } //是否属于某一类别
 
   /**
    * Returns the kind of node this is.

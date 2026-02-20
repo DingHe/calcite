@@ -86,8 +86,6 @@ public class Row {
   }
 
   /** Returns a copy of the values. */
-  // Note: This implements BuiltInMethod.ROW_COPY_VALUES.
-  @SuppressWarnings("unused")
   public @Nullable Object[] copyValues() {
     return values.clone();
   }

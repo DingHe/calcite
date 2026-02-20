@@ -47,16 +47,13 @@ import org.apache.calcite.rel.hint.HintStrategyTable;
 import org.apache.calcite.rel.hint.Hintable;
 import org.apache.calcite.rel.hint.RelHint;
 import org.apache.calcite.rel.logical.LogicalAggregate;
-import org.apache.calcite.rel.logical.LogicalAsofJoin;
 import org.apache.calcite.rel.logical.LogicalCalc;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.CoreRules;
-import org.apache.calcite.rel.rules.FilterProjectTransposeRule;
 import org.apache.calcite.rel.rules.MultiJoin;
-import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.stream.StreamRules;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -124,7 +121,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -139,8 +135,6 @@ import java.util.TreeSet;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import static org.apache.calcite.rel.type.RelDataTypeImpl.NON_NULLABLE_SUFFIX;
 
 import static java.util.Objects.requireNonNull;
@@ -153,15 +147,6 @@ public abstract class RelOptUtil {
   //~ Static fields/initializers ---------------------------------------------
 
   public static final double EPSILON = 1.0e-5;
-
-  /** Default amount by which the complexity of a {@link Project} or
-   * {@link Filter} may increase when applying a rule. (Complexity is,
-   * roughly, the number of {@link RexNode}s in all expressions.)
-   *
-   * @see ProjectMergeRule.Config#bloat()
-   * @see FilterProjectTransposeRule.Config#bloat()
-   * @see RelBuilder.Config#bloat() */
-  public static final int DEFAULT_BLOAT = 100;
 
   @SuppressWarnings("Guava")
   @Deprecated // to be removed before 2.0
@@ -269,11 +254,11 @@ public abstract class RelOptUtil {
   public static List<CorrelationId> getVariablesSetAndUsed(RelNode rel0,
       RelNode rel1) {
     Set<CorrelationId> set = getVariablesSet(rel0);
-    if (set.isEmpty()) {
+    if (set.size() == 0) {
       return ImmutableList.of();
     }
     Set<CorrelationId> used = getVariablesUsed(rel1);
-    if (used.isEmpty()) {
+    if (used.size() == 0) {
       return ImmutableList.of();
     }
     final List<CorrelationId> result = new ArrayList<>();
@@ -354,7 +339,7 @@ public abstract class RelOptUtil {
       RelVisitor visitor,
       RelNode p) {
     try {
-      visitor.go(p);
+      visitor.go(p);  //访问RelNode节点
     } catch (Exception e) {
       throw new RuntimeException("while visiting tree", e);
     }
@@ -427,7 +412,7 @@ public abstract class RelOptUtil {
     String s = "Cannot add expression of different type to set:\n"
         + "set type is " + expectedRowType.getFullTypeString()
         + "\nexpression type is " + actualRowType.getFullTypeString()
-        + "\nset is " + equivalenceClass
+        + "\nset is " + equivalenceClass.toString()
         + "\nexpression is " + RelOptUtil.toString(newRel)
         + getFullTypeDifferenceString("rowtype of original rel", expectedRowType,
         "rowtype of new rel", actualRowType);
@@ -465,7 +450,7 @@ public abstract class RelOptUtil {
   @Experimental
   public static RelNode propagateRelHints(RelNode originalRel, RelNode equiv) {
     if (!(originalRel instanceof Hintable)
-        || ((Hintable) originalRel).getHints().isEmpty()) {
+        || ((Hintable) originalRel).getHints().size() == 0) {
       return equiv;
     }
     final RelShuttle shuttle =
@@ -525,7 +510,7 @@ public abstract class RelOptUtil {
 
     if (originalRel instanceof Hintable
         && newRel instanceof Hintable
-        && !((Hintable) originalRel).getHints().isEmpty()) {
+        && ((Hintable) originalRel).getHints().size() > 0) {
       final List<RelHint> hints = ((Hintable) originalRel).getHints();
       if (filterHints) {
         HintStrategyTable hintStrategies = originalRel.getCluster().getHintStrategies();
@@ -627,7 +612,7 @@ public abstract class RelOptUtil {
     assert extraExpr == null || extraName != null;
     RelNode ret = seekRel;
 
-    if (conditions != null && !conditions.isEmpty()) {
+    if ((conditions != null) && (conditions.size() > 0)) {
       RexNode conditionExp =
           RexUtil.composeConjunction(
               cluster.getRexBuilder(), conditions, true);
@@ -823,7 +808,7 @@ public abstract class RelOptUtil {
   @Deprecated // to be removed before 2.0
   public static RelNode createNullFilter(
       RelNode rel,
-      Integer @Nullable [] fieldOrdinals) {
+      Integer[] fieldOrdinals) {
     RexNode condition = null;
     final RexBuilder rexBuilder = rel.getCluster().getRexBuilder();
     RelDataType rowType = rel.getRowType();
@@ -915,7 +900,7 @@ public abstract class RelOptUtil {
       RelDataType castRowType,
       boolean rename,
       RelFactories.ProjectFactory projectFactory) {
-    requireNonNull(projectFactory, "projectFactory");
+    assert projectFactory != null;
     RelDataType rowType = rel.getRowType();
     if (areRowTypesEqual(rowType, castRowType, rename)) {
       // nothing to do
@@ -965,7 +950,8 @@ public abstract class RelOptUtil {
   /** Gets all fields in an aggregate. */
   public static Set<Integer> getAllFields2(ImmutableBitSet groupSet,
       List<AggregateCall> aggCallList) {
-    final Set<Integer> allFields = new TreeSet<>(groupSet.asList());
+    final Set<Integer> allFields = new TreeSet<>();
+    allFields.addAll(groupSet.asList());
     for (AggregateCall aggregateCall : aggCallList) {
       allFields.addAll(aggregateCall.getArgList());
       if (aggregateCall.filterArg >= 0) {
@@ -1138,7 +1124,7 @@ public abstract class RelOptUtil {
         rightKeys,
         filterNulls,
         nonEquiList);
-    return nonEquiList.isEmpty();
+    return nonEquiList.size() == 0;
   }
 
   /**
@@ -2128,7 +2114,7 @@ public abstract class RelOptUtil {
       SqlExplainLevel detailLevel) {
     StringWriter sw = new StringWriter();
     PrintWriter pw = new PrintWriter(sw);
-    if (!header.isEmpty()) {
+    if (!header.equals("")) {
       pw.println(header);
     }
     RelWriter planWriter;
@@ -2358,8 +2344,8 @@ public abstract class RelOptUtil {
 
     // The result of IS DISTINCT FROM is NOT NULL because it can
     // only return TRUE or FALSE.
-    requireNonNull(ret, "ret");
-    checkArgument(!ret.getType().isNullable());
+    assert ret != null;
+    assert !ret.getType().isNullable();
 
     return ret;
   }
@@ -3182,16 +3168,6 @@ public abstract class RelOptUtil {
     return pushShuttle(project).visitList(nodes);
   }
 
-  public static @Nullable RexNode pushPastProjectUnlessBloat(RexNode node,
-      Project project, int bloat) {
-    List<RexNode> newConditions =
-        pushPastProjectUnlessBloat(Collections.singletonList(node), project, bloat);
-    if (newConditions == null || newConditions.size() != 1) {
-      return null;
-    }
-    return newConditions.get(0);
-  }
-
   /** As {@link #pushPastProject}, but returns null if the resulting expressions
    * are significantly more complex.
    *
@@ -3703,7 +3679,7 @@ public abstract class RelOptUtil {
     return !calc.containsOver();
   }
 
-  /** Predicate for if a {@link Filter} does not contain windowed aggregates. */
+  /** Predicate for if a {@link Filter} does not windowed aggregates. */
   public static boolean notContainsWindowedAgg(Filter filter) {
     return !filter.containsOver();
   }
@@ -3850,18 +3826,9 @@ public abstract class RelOptUtil {
 
     final RelNode right = relBuilder.build();
     final RelNode left = relBuilder.build();
-    if (joinType == JoinRelType.ASOF || joinType == JoinRelType.LEFT_ASOF) {
-      LogicalAsofJoin ljoin = (LogicalAsofJoin) originalJoin;
-      RexNode match =
-          RexUtil.shift(ljoin.getMatchCondition(), leftCount, extraLeftExprs.size());
-      RelNode copy =
-          ljoin.copy(originalJoin.getTraitSet(), joinCond, match, left, right);
-      relBuilder.push(copy);
-    } else {
-      relBuilder.push(
-          originalJoin.copy(originalJoin.getTraitSet(),
-              joinCond, left, right, joinType, originalJoin.isSemiJoinDone()));
-    }
+    relBuilder.push(
+        originalJoin.copy(originalJoin.getTraitSet(),
+            joinCond, left, right, joinType, originalJoin.isSemiJoinDone()));
     if (!extraLeftExprs.isEmpty() || !extraRightExprs.isEmpty()) {
       final int totalFields = joinType.projectsRight()
           ? leftCount + extraLeftExprs.size() + rightCount + extraRightExprs.size()
@@ -4016,7 +3983,10 @@ public abstract class RelOptUtil {
     if (before == after) {
       return;
     }
-    operands.replaceAll(e -> RexUtil.shift(e, before, after - before));
+    for (int i = 0; i < operands.size(); i++) {
+      RexNode node = operands.get(i);
+      operands.set(i, RexUtil.shift(node, before, after - before));
+    }
   }
 
   /**
@@ -4172,7 +4142,7 @@ public abstract class RelOptUtil {
      */
     private RelNode visitHintable(RelNode node) {
       final List<RelHint> topHints = ((Hintable) node).getHints();
-      final boolean hasHints = !topHints.isEmpty();
+      final boolean hasHints = topHints != null && topHints.size() > 0;
       final boolean hasQueryHints = hasHints && !(node instanceof TableScan);
       if (hasQueryHints) {
         inheritPaths.push(Pair.of(topHints, new ArrayDeque<>()));
@@ -4186,7 +4156,7 @@ public abstract class RelOptUtil {
 
     private RelNode attachHints(RelNode original) {
       assert original instanceof Hintable;
-      if (!inheritPaths.isEmpty()) {
+      if (inheritPaths.size() > 0) {
         final List<RelHint> hints = inheritPaths.stream()
             .sorted(Comparator.comparingInt(o -> o.right.size()))
             .map(path -> copyWithInheritPath(path.left, path.right))
@@ -4195,7 +4165,7 @@ public abstract class RelOptUtil {
               return acc;
             });
         final List<RelHint> filteredHints = hintStrategies.apply(hints, original);
-        if (!filteredHints.isEmpty()) {
+        if (filteredHints.size() > 0) {
           return ((Hintable) original).attachHints(filteredHints);
         }
       }
@@ -4301,7 +4271,7 @@ public abstract class RelOptUtil {
      */
     private RelNode visitHintable(RelNode node) {
       final List<RelHint> topHints = ((Hintable) node).getHints();
-      final boolean hasHints = !topHints.isEmpty();
+      final boolean hasHints = topHints != null && topHints.size() > 0;
       if (hasHints) {
         // This node is definitely not created by the planner, returns early.
         return node;
@@ -4319,7 +4289,7 @@ public abstract class RelOptUtil {
           .map(hint -> copyWithAppendPath(hint, appendPath))
           .collect(Collectors.toList());
       final List<RelHint> filteredHints = hintStrategies.apply(hints, original);
-      if (!filteredHints.isEmpty()) {
+      if (filteredHints.size() > 0) {
         return ((Hintable) original).attachHints(filteredHints);
       }
       return original;
@@ -4327,7 +4297,7 @@ public abstract class RelOptUtil {
 
     private static RelHint copyWithAppendPath(RelHint hint,
         List<Integer> appendPaths) {
-      if (appendPaths.isEmpty()) {
+      if (appendPaths.size() == 0) {
         return hint;
       } else {
         List<Integer> newPath = new ArrayList<>(hint.inheritPath);
@@ -4364,14 +4334,14 @@ public abstract class RelOptUtil {
     }
 
     private static RelNode resetHints(Hintable hintable) {
-      if (hintable.getHints().isEmpty()) {
+      if (hintable.getHints().size() > 0) {
+        final List<RelHint> resetHints = hintable.getHints().stream()
+            .filter(hint -> hint.inheritPath.size() == 0)
+            .collect(Collectors.toList());
+        return hintable.withHints(resetHints);
+      } else {
         return (RelNode) hintable;
       }
-      final List<RelHint> resetHints =
-          hintable.getHints().stream()
-              .filter(hint -> hint.inheritPath.isEmpty())
-              .collect(Collectors.toList());
-      return hintable.withHints(resetHints);
     }
   }
 

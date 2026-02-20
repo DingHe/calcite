@@ -26,8 +26,6 @@ import org.apache.calcite.util.Util;
 
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * A sql type name specification of collection type.
  *
@@ -71,9 +69,8 @@ public class SqlCollectionTypeNameSpec extends SqlTypeNameSpec {
       SqlTypeName collectionTypeName,
       SqlParserPos pos) {
     super(new SqlIdentifier(collectionTypeName.name(), pos), pos);
-    this.elementTypeName = requireNonNull(elementTypeName, "elementTypeName");
-    this.collectionTypeName =
-        requireNonNull(collectionTypeName, "collectionTypeName");
+    this.elementTypeName = Objects.requireNonNull(elementTypeName, "elementTypeName");
+    this.collectionTypeName = Objects.requireNonNull(collectionTypeName, "collectionTypeName");
   }
 
   public SqlTypeNameSpec getElementTypeName() {

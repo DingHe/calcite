@@ -34,18 +34,18 @@ import java.util.List;
  */
 @Deprecated // to be removed before 2.0
 public class RelOptRuleOperandChildren {
-  static final RelOptRuleOperandChildren ANY_CHILDREN =
+  static final RelOptRuleOperandChildren ANY_CHILDREN =  //匹配任何子节点
       new RelOptRuleOperandChildren(
           RelOptRuleOperandChildPolicy.ANY,
           ImmutableList.of());
 
-  static final RelOptRuleOperandChildren LEAF_CHILDREN =
+  static final RelOptRuleOperandChildren LEAF_CHILDREN =  //匹配叶子节点
       new RelOptRuleOperandChildren(
           RelOptRuleOperandChildPolicy.LEAF,
           ImmutableList.of());
 
-  final RelOptRuleOperandChildPolicy policy;
-  final ImmutableList<RelOptRuleOperand> operands;
+  final RelOptRuleOperandChildPolicy policy; //决定要匹配的操作子节点的数量
+  final ImmutableList<RelOptRuleOperand> operands; //子节点操作
 
   public RelOptRuleOperandChildren(
       RelOptRuleOperandChildPolicy policy,

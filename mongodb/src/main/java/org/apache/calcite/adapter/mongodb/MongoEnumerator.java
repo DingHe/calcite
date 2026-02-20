@@ -24,7 +24,6 @@ import org.apache.calcite.linq4j.tree.Primitive;
 import com.mongodb.client.MongoCursor;
 
 import org.bson.Document;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Date;
 import java.util.Iterator;
@@ -35,7 +34,7 @@ import java.util.Map;
 class MongoEnumerator implements Enumerator<Object> {
   private final Iterator<Document> cursor;
   private final Function1<Document, Object> getter;
-  private @Nullable Object current;
+  private Object current;
 
   /** Creates a MongoEnumerator.
    *
@@ -49,9 +48,6 @@ class MongoEnumerator implements Enumerator<Object> {
   }
 
   @Override public Object current() {
-    if (current == null) {
-      throw new IllegalStateException();
-    }
     return current;
   }
 

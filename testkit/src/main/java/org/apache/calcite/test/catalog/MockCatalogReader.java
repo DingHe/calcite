@@ -135,7 +135,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     super(CalciteSchema.createRootSchema(false, false, DEFAULT_CATALOG),
         SqlNameMatchers.withCaseSensitive(caseSensitive),
         ImmutableList.of(PREFIX, ImmutableList.of()),
-        typeFactory, CalciteConnectionConfig.DEFAULT);
+        typeFactory, null);
   }
 
   @Override public boolean isCaseSensitive() {
@@ -193,7 +193,6 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     final CalciteSchema schema =
         SqlValidatorUtil.getSchema(rootSchema,
             schemaPath, SqlNameMatchers.withCaseSensitive(true));
-    requireNonNull(schema, "schema");
     schema.add(Util.last(names), relProtoDataType);
   }
 
@@ -224,7 +223,6 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     CalciteSchema schema =
         SqlValidatorUtil.getSchema(rootSchema,
             schemaPath, SqlNameMatchers.withCaseSensitive(true));
-    requireNonNull(schema, "schema");
     schema.removeTable(tableName);
     schema.add(tableName, table);
   }
@@ -236,7 +234,6 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     final CalciteSchema schema =
         SqlValidatorUtil.getSchema(rootSchema,
             schemaPath, SqlNameMatchers.withCaseSensitive(true));
-    requireNonNull(schema, "schema");
     schema.add(tableName, table);
   }
 
@@ -245,10 +242,8 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
   }
 
   private void registerNestedSchema(MockSchema parentSchema, MockSchema schema) {
-    final CalciteSchema subSchema =
-        rootSchema.getSubSchema(parentSchema.getName(), true);
-    requireNonNull(subSchema, "subSchema");
-    subSchema.add(schema.name, new AbstractSchema());
+    rootSchema.getSubSchema(parentSchema.getName(), true)
+        .add(schema.name, new AbstractSchema());
   }
 
   private static List<RelCollation> deduceMonotonicity(
@@ -285,7 +280,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
   /** Mock schema. */
   public static class MockSchema {
     private final List<String> tableNames = new ArrayList<>();
-    private final String name;
+    private String name;
 
     public MockSchema(String name) {
       this.name = name;
@@ -346,7 +341,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
 
     public MockTable(MockCatalogReader catalogReader, String catalogName,
         String schemaName, String name, boolean stream, boolean temporal,
-        double rowCount, @Nullable ColumnResolver resolver,
+        double rowCount, ColumnResolver resolver,
         InitializerExpressionFactory initializerFactory, Double maxRowCount) {
       this(catalogReader, ImmutableList.of(catalogName, schemaName, name),
           stream, temporal, rowCount, resolver, initializerFactory,
@@ -380,8 +375,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
         boolean temporal, double rowCount,
         List<Map.Entry<String, RelDataType>> columnList, List<Integer> keyList,
         RelDataType rowType, List<RelCollation> collationList, List<String> names,
-        Set<String> monotonicColumnSet, StructKind kind,
-        @Nullable ColumnResolver resolver,
+        Set<String> monotonicColumnSet, StructKind kind, ColumnResolver resolver,
         InitializerExpressionFactory initializerFactory) {
       this.catalogReader = catalogReader;
       this.stream = stream;
@@ -427,22 +421,22 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
       }
 
       @Override public Collection getModifiableCollection() {
-        throw new UnsupportedOperationException();
+        return null;
       }
 
       @Override public <E> Queryable<E>
       asQueryable(QueryProvider queryProvider, SchemaPlus schema,
           String tableName) {
-        throw new UnsupportedOperationException();
+        return null;
       }
 
       @Override public Type getElementType() {
-        return Void.class;
+        return null;
       }
 
       @Override public Expression getExpression(SchemaPlus schema,
           String tableName, Class clazz) {
-        throw new UnsupportedOperationException();
+        return null;
       }
 
       @Override public <C> C unwrap(Class<C> aClass) {
@@ -479,9 +473,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
           SqlCall call, @Nullable SqlNode parent, @Nullable CalciteConnectionConfig config) {
         // For testing
         return call.getKind() != SqlKind.MAX
-            && parent != null
-            && (parent.getKind() == SqlKind.SELECT
-                || parent.getKind() == SqlKind.FILTER);
+            && (parent.getKind() == SqlKind.SELECT || parent.getKind() == SqlKind.FILTER);
       }
     }
 
@@ -512,21 +504,21 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
 
     public static MockTable create(MockCatalogReader catalogReader,
         MockSchema schema, String name, boolean stream, double rowCount,
-        @Nullable ColumnResolver resolver) {
+        ColumnResolver resolver) {
       return create(catalogReader, schema, name, stream, rowCount, resolver,
           NullInitializerExpressionFactory.INSTANCE, false);
     }
 
     public static MockTable create(MockCatalogReader catalogReader,
         MockSchema schema, String name, boolean stream, double rowCount,
-        @Nullable ColumnResolver resolver, double maxRowCount) {
+        ColumnResolver resolver, double maxRowCount) {
       return create(catalogReader, schema, name, stream, rowCount, resolver,
           NullInitializerExpressionFactory.INSTANCE, false, maxRowCount);
     }
 
     public static MockTable create(MockCatalogReader catalogReader,
         MockSchema schema, String name, boolean stream, double rowCount,
-        @Nullable ColumnResolver resolver,
+        ColumnResolver resolver,
         InitializerExpressionFactory initializerExpressionFactory,
         boolean temporal, Double maxRowCount) {
       MockTable table =
@@ -539,7 +531,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
 
     public static MockTable create(MockCatalogReader catalogReader,
         MockSchema schema, String name, boolean stream, double rowCount,
-        @Nullable ColumnResolver resolver,
+        ColumnResolver resolver,
         InitializerExpressionFactory initializerExpressionFactory,
         boolean temporal) {
       MockTable table =
@@ -724,9 +716,8 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     }
 
     public static MockModifiableViewRelOptTable create(MockModifiableViewTable modifiableViewTable,
-        MockCatalogReader catalogReader, String catalogName,
-        String schemaName, String name,
-        boolean stream, double rowCount, @Nullable ColumnResolver resolver) {
+        MockCatalogReader catalogReader, String catalogName, String schemaName, String name,
+        boolean stream, double rowCount, ColumnResolver resolver) {
       final Table underlying = modifiableViewTable.unwrap(Table.class);
       final InitializerExpressionFactory initializerExpressionFactory =
           underlying instanceof Wrapper
@@ -813,9 +804,8 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     private final ViewTable viewTable;
 
     private MockRelViewTable(ViewTable viewTable,
-        MockCatalogReader catalogReader, String catalogName,
-        String schemaName, String name,
-        boolean stream, double rowCount, @Nullable ColumnResolver resolver,
+        MockCatalogReader catalogReader, String catalogName, String schemaName, String name,
+        boolean stream, double rowCount, ColumnResolver resolver,
         InitializerExpressionFactory initializerExpressionFactory) {
       super(catalogReader, ImmutableList.of(catalogName, schemaName, name),
           stream, false, rowCount, resolver, initializerExpressionFactory,
@@ -824,9 +814,8 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
     }
 
     public static MockRelViewTable create(ViewTable viewTable,
-        MockCatalogReader catalogReader, String catalogName,
-        String schemaName, String name,
-        boolean stream, double rowCount, @Nullable ColumnResolver resolver) {
+        MockCatalogReader catalogReader, String catalogName, String schemaName, String name,
+        boolean stream, double rowCount, ColumnResolver resolver) {
       Table underlying = viewTable.unwrap(Table.class);
       InitializerExpressionFactory initializerExpressionFactory =
           underlying instanceof Wrapper
@@ -865,8 +854,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
 
     MockViewTable(MockCatalogReader catalogReader, String catalogName,
         String schemaName, String name, boolean stream, double rowCount,
-        MockTable fromTable, ImmutableIntList mapping,
-        @Nullable ColumnResolver resolver,
+        MockTable fromTable, ImmutableIntList mapping, ColumnResolver resolver,
         InitializerExpressionFactory initializerFactory) {
       super(catalogReader, catalogName, schemaName, name, stream, false,
           rowCount, resolver, initializerFactory);
@@ -1117,9 +1105,7 @@ public abstract class MockCatalogReader extends CalciteCatalogReader {
         SqlCall call, @Nullable SqlNode parent, @Nullable CalciteConnectionConfig config) {
       // For testing
       return call.getKind() != SqlKind.MAX
-          && parent != null
-          && (parent.getKind() == SqlKind.SELECT
-              || parent.getKind() == SqlKind.FILTER);
+              && (parent.getKind() == SqlKind.SELECT || parent.getKind() == SqlKind.FILTER);
     }
 
     @Override public Schema.TableType getJdbcTableType() {

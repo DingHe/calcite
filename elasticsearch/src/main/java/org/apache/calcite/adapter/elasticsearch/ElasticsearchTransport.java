@@ -52,10 +52,9 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.StreamSupport;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Set of predefined functions for REST interaction with elastic search API. Performs
@@ -84,12 +83,12 @@ final class ElasticsearchTransport {
   final int fetchSize;
 
   ElasticsearchTransport(final RestClient restClient,
-      final ObjectMapper mapper,
-      final String indexName,
-      final int fetchSize) {
-    this.mapper = requireNonNull(mapper, "mapper");
-    this.restClient = requireNonNull(restClient, "restClient");
-    this.indexName = requireNonNull(indexName, "indexName");
+                         final ObjectMapper mapper,
+                         final String indexName,
+                         final int fetchSize) {
+    this.mapper = Objects.requireNonNull(mapper, "mapper");
+    this.restClient = Objects.requireNonNull(restClient, "restClient");
+    this.indexName = Objects.requireNonNull(indexName, "indexName");
     this.fetchSize = fetchSize;
     this.version = version(); // cache version
     this.mapping = fetchAndCreateMapping(); // cache mapping
@@ -139,7 +138,7 @@ final class ElasticsearchTransport {
   }
 
   <T> Function<HttpRequest, T> rawHttp(Class<T> responseType) {
-    requireNonNull(responseType, "responseType");
+    Objects.requireNonNull(responseType, "responseType");
     return rawHttp().andThen(new JsonParserFn<>(mapper, responseType));
   }
 
@@ -167,7 +166,7 @@ final class ElasticsearchTransport {
   }
 
   void closeScroll(Iterable<String> scrollIds) {
-    requireNonNull(scrollIds, "scrollIds");
+    Objects.requireNonNull(scrollIds, "scrollIds");
 
     // delete current scroll
     final URI uri = URI.create("/_search/scroll");
@@ -205,7 +204,7 @@ final class ElasticsearchTransport {
    * Search request using HTTP post.
    */
   Function<ObjectNode, ElasticsearchJson.Result> search(final Map<String, String> httpParams) {
-    requireNonNull(httpParams, "httpParams");
+    Objects.requireNonNull(httpParams, "httpParams");
     return query -> {
       Hook.QUERY_PLAN.run(query);
       String path = String.format(Locale.ROOT, "/%s/_search", indexName);
@@ -261,7 +260,7 @@ final class ElasticsearchTransport {
     private final RestClient restClient;
 
     HttpFunction(final RestClient restClient) {
-      this.restClient = requireNonNull(restClient, "restClient");
+      this.restClient = Objects.requireNonNull(restClient, "restClient");
     }
 
     @Override public Response apply(final HttpRequest request) {
@@ -275,7 +274,7 @@ final class ElasticsearchTransport {
     private Response applyInternal(final HttpRequest request)
         throws IOException  {
 
-      requireNonNull(request, "request");
+      Objects.requireNonNull(request, "request");
       final HttpEntity entity = request instanceof HttpEntityEnclosingRequest
           ? ((HttpEntityEnclosingRequest) request).getEntity() : null;
 

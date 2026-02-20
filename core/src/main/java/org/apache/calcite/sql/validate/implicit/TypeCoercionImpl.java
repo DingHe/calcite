@@ -48,6 +48,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.math.BigDecimal;
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -290,9 +291,18 @@ public class TypeCoercionImpl extends AbstractTypeCoercion {
       return null;
     }
 
-    RelDataType commonType = commonTypeForBinaryComparison(type1, type2);
+    RelDataType commonType;
+    if (SqlTypeUtil.sameNamedType(type1, type2)) {
+      commonType = factory.leastRestrictive(Arrays.asList(type1, type2));
+    } else {
+      commonType = commonTypeForBinaryComparison(type1, type2);
+    }
     for (int i = 2; i < dataTypes.size() && commonType != null; i++) {
-      commonType = commonTypeForBinaryComparison(commonType, dataTypes.get(i));
+      if (SqlTypeUtil.sameNamedType(commonType, dataTypes.get(i))) {
+        commonType = factory.leastRestrictive(Arrays.asList(commonType, dataTypes.get(i)));
+      } else {
+        commonType = commonTypeForBinaryComparison(commonType, dataTypes.get(i));
+      }
     }
     return commonType;
   }

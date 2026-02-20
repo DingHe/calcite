@@ -29,14 +29,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
-
 /**
  * Operand that determines whether a {@link RelOptRule}
  * can be applied to a particular expression.
- *
+ * Operand决定规则是否能应用到特定的表达式
  * <p>For example, the rule to pull a filter up from the left side of a join
  * takes operands: <code>Join(Filter, Any)</code>.
  *
@@ -47,23 +43,23 @@ import static java.util.Objects.requireNonNull;
 public class RelOptRuleOperand {
   //~ Instance fields --------------------------------------------------------
 
-  private @Nullable RelOptRuleOperand parent;
-  private @NotOnlyInitialized RelOptRule rule;
+  private @Nullable RelOptRuleOperand parent; //父节点
+  private @NotOnlyInitialized RelOptRule rule; //规则
   private final Predicate<RelNode> predicate;
 
   // REVIEW jvs 29-Aug-2004: some of these are Volcano-specific and should be
   // factored out
-  public int @MonotonicNonNull [] solveOrder;
-  public int ordinalInParent;
-  public int ordinalInRule;
-  public final @Nullable RelTrait trait;
-  private final Class<? extends RelNode> clazz;
-  private final ImmutableList<RelOptRuleOperand> children;
+  public int @MonotonicNonNull [] solveOrder; //它通常用于定义在应用优化规则时，操作数的优先级或处理顺序。较低的 solveOrder 值意味着这个操作数在优化过程中会被优先处理
+  public int ordinalInParent;  //指明当前操作数在父节点的子节点中的位置
+  public int ordinalInRule; ///每个规则可能包含多个操作数，ordinalInRule 用于唯一标识当前操作数在规则中的位置
+  public final @Nullable RelTrait trait; //特征
+  private final Class<? extends RelNode> clazz; //要匹配的关系节点
+  private final ImmutableList<RelOptRuleOperand> children; //子操作数
 
   /**
    * Whether child operands can be matched in any order.
    */
-  public final RelOptRuleOperandChildPolicy childPolicy;
+  public final RelOptRuleOperandChildPolicy childPolicy; //决定子节点的数量
 
   //~ Constructors -----------------------------------------------------------
 
@@ -90,10 +86,10 @@ public class RelOptRuleOperand {
    */
   @Deprecated // to be removed before 2.0; see [CALCITE-1166]
   protected <R extends RelNode> RelOptRuleOperand(
-      Class<R> clazz,
-      RelTrait trait,
-      Predicate<? super R> predicate,
-      RelOptRuleOperandChildren children) {
+      Class<R> clazz, //要匹配的关系节点
+      RelTrait trait,  //要匹配的特征
+      Predicate<? super R> predicate, //判断谓词
+      RelOptRuleOperandChildren children) { //要匹配的子节点
     this(clazz, trait, predicate, children.policy, children.operands);
   }
 
@@ -107,30 +103,32 @@ public class RelOptRuleOperand {
    * <a href="https://issues.apache.org/jira/browse/CALCITE-1166">[CALCITE-1166]
    * Disallow sub-classes of RelOptRuleOperand</a>. */
   @SuppressWarnings({"initialization.fields.uninitialized",
-      "initialization.invalid.field.write.initialized", "unchecked"})
+      "initialization.invalid.field.write.initialized"})
   <R extends RelNode> RelOptRuleOperand(
       Class<R> clazz,
       @Nullable RelTrait trait,
       Predicate<? super R> predicate,
       RelOptRuleOperandChildPolicy childPolicy,
       ImmutableList<RelOptRuleOperand> children) {
-    this.clazz = requireNonNull(clazz, "clazz");
+    assert clazz != null;
     switch (childPolicy) {
     case ANY:
       break;
     case LEAF:
-      checkArgument(children.isEmpty());
+      assert children.size() == 0;  //叶子节点，则子节点数量为0
       break;
     case UNORDERED:
-      assert children.size() == 1;
+      assert children.size() == 1; //只有一个子节点，则没有顺序
       break;
     default:
-      checkArgument(!children.isEmpty());
+      assert children.size() > 0;
     }
-    this.childPolicy = requireNonNull(childPolicy, "childPolicy");
+    this.childPolicy = childPolicy;
+    this.clazz = Objects.requireNonNull(clazz, "clazz");
     this.trait = trait;
-    this.predicate = requireNonNull((Predicate<RelNode>) predicate);
-    this.children = requireNonNull(children, "children");
+    //noinspection unchecked
+    this.predicate = Objects.requireNonNull((Predicate) predicate);
+    this.children = children;
     for (RelOptRuleOperand child : this.children) {
       assert child.parent == null : "cannot re-use operands";
       child.parent = this;
@@ -141,7 +139,7 @@ public class RelOptRuleOperand {
 
   /**
    * Returns the parent operand.
-   *
+   * 返回父操作数
    * @return parent operand
    */
   public @Nullable RelOptRuleOperand getParent() {
@@ -150,7 +148,7 @@ public class RelOptRuleOperand {
 
   /**
    * Sets the parent operand.
-   *
+   * 设置父操作数
    * @param parent Parent operand
    */
   public void setParent(@Nullable RelOptRuleOperand parent) {
@@ -159,7 +157,7 @@ public class RelOptRuleOperand {
 
   /**
    * Returns the rule this operand belongs to.
-   *
+   * 返回要匹配的规则
    * @return containing rule
    */
   public RelOptRule getRule() {
@@ -243,7 +241,7 @@ public class RelOptRuleOperand {
     if (this == that) {
       s.append('*');
     }
-    if (!children.isEmpty()) {
+    if (children != null && !children.isEmpty()) {
       s.append('(');
       boolean first = true;
       for (RelOptRuleOperand child : children) {
@@ -258,7 +256,7 @@ public class RelOptRuleOperand {
     return s;
   }
 
-  /**
+  /** 返回该操作匹配的关系节点
    * Returns relational expression class matched by this operand.
    */
   public Class<? extends RelNode> getMatchedClass() {
@@ -267,24 +265,24 @@ public class RelOptRuleOperand {
 
   /**
    * Returns the child operands.
-   *
+   * 返回子操作数
    * @return child operands
    */
   public List<RelOptRuleOperand> getChildOperands() {
     return children;
   }
 
-  /**
+  /** 返回关系表达式是否匹配该操作数
    * Returns whether a relational expression matches this operand. It must be
-   * of the right class and trait.
+   * of the right class and trait.主要判断rule的操作数是否匹配
    */
   public boolean matches(RelNode rel) {
-    if (!clazz.isInstance(rel)) {
+    if (!clazz.isInstance(rel)) {  //类型一致
       return false;
     }
-    if ((trait != null) && !rel.getTraitSet().contains(trait)) {
+    if ((trait != null) && !rel.getTraitSet().contains(trait)) { //包含特征
       return false;
     }
-    return predicate.test(rel);
+    return predicate.test(rel); //谓词测试
   }
 }

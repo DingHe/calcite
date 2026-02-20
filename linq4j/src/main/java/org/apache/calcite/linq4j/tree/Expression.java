@@ -31,17 +31,19 @@ public abstract class Expression extends AbstractNode {
    * be a different implementation that retains information about type
    * parameters.
    *
-   * @param nodeType Node type
-   * @param type Type of the expression
+   * @param nodeType Node type 表达式类型
+   * @param type Type of the expression  节点类型
    */
   protected Expression(ExpressionType nodeType, Type type) {
     super(nodeType, type);
+    assert nodeType != null;
+    assert type != null;
   }
 
   @Override // More specific return type.
   public abstract Expression accept(Shuttle shuttle);
 
-  /**
+  /** 如果该节点能简化到简单的形式，则返回true
    * Indicates that the node can be reduced to a simpler node. If this
    * returns true, Reduce() can be called to produce the reduced form.
    */

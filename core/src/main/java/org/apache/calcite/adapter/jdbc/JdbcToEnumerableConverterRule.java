@@ -36,6 +36,7 @@ public class JdbcToEnumerableConverterRule extends ConverterRule {
             "JdbcToEnumerableConverterRule")
         .withRuleFactory(JdbcToEnumerableConverterRule::new)
         .toRule(JdbcToEnumerableConverterRule.class);
+    //从JdbcConvention转到EnumerableConvention
   }
 
   /** Called from the Config. */

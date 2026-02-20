@@ -33,19 +33,18 @@ import org.apache.calcite.util.Util;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Relational expression that imposes a particular distribution on its input
  * without otherwise changing its content.
- *
+ * 关系表达式对其输入施加特定的分布，但不改变其内容。
  * @see org.apache.calcite.rel.core.SortExchange
  */
 public abstract class Exchange extends SingleRel {
   //~ Instance fields --------------------------------------------------------
 
-  public final RelDistribution distribution;
+  public final RelDistribution distribution; //决定数据如何分布到不同的节点
 
   //~ Constructors -----------------------------------------------------------
 
@@ -60,7 +59,7 @@ public abstract class Exchange extends SingleRel {
   protected Exchange(RelOptCluster cluster, RelTraitSet traitSet, RelNode input,
       RelDistribution distribution) {
     super(cluster, traitSet, input);
-    this.distribution = requireNonNull(distribution, "distribution");
+    this.distribution = Objects.requireNonNull(distribution, "distribution");
 
     assert traitSet.containsIfApplicable(distribution)
         : "traits=" + traitSet + ", distribution=" + distribution;

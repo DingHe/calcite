@@ -23,13 +23,12 @@ import com.google.common.collect.Ordering;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /** Mutable version of {@link LatticeNode}, used while a graph is being
  * built. */
@@ -71,12 +70,12 @@ class MutableNode {
   /** Creates a non-root node. */
   @SuppressWarnings("argument.type.incompatible")
   MutableNode(LatticeTable table, @Nullable MutableNode parent, @Nullable Step step) {
-    this.table = requireNonNull(table, "table");
+    this.table = Objects.requireNonNull(table, "table");
     this.parent = parent;
     this.step = step;
     if (parent != null) {
       parent.children.add(this);
-      parent.children.sort(ORDERING);
+      Collections.sort(parent.children, ORDERING);
     }
   }
 

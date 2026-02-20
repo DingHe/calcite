@@ -72,9 +72,9 @@ import static java.util.Objects.requireNonNull;
  */
 public class RelOptTableImpl extends Prepare.AbstractPreparingTable {
   private final @Nullable RelOptSchema schema;
-  private final RelDataType rowType;
-  private final @Nullable Table table;
-  private final @Nullable TableExpressionFactory tableExpressionFactory;
+  private final RelDataType rowType;  //关系数据类型
+  private final @Nullable Table table;  //数据源表
+  private final @Nullable TableExpressionFactory tableExpressionFactory; //表的lin4j表达式工厂
   private final ImmutableList<String> names;
 
   /** Estimate for the row count, or null.

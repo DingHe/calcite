@@ -37,8 +37,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Implementation of
  * {@link Project}
@@ -60,8 +58,7 @@ public class GeodeProject extends Project implements GeodeRel {
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(0.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(0.1);
   }
 
   @Override public void implement(GeodeImplementContext geodeImplementContext) {

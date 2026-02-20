@@ -71,29 +71,6 @@ class JdbcAdapterTest {
         .returnsCount(14);
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6462">[CALCITE-6462]
-   * VolcanoPlanner internal valid may throw exception when log trace is enabled</a>. */
-  @Test void testVolcanoPlannerInternalValid() {
-    CalciteAssert.model(JdbcTest.SCOTT_MODEL)
-        .query("select *\n"
-            + "from scott.emp e left join scott.dept d\n"
-            + "on 'job' in (select job from scott.bonus b)")
-        .explainContains("PLAN=JdbcToEnumerableConverter\n"
-            + "  JdbcProject(EMPNO=[$0], ENAME=[$1], JOB=[$2], MGR=[$3], HIREDATE=[$4], SAL=[$5], COMM=[$6], DEPTNO=[$7], DEPTNO0=[$8], DNAME=[$9], LOC=[$10])\n"
-            + "    JdbcJoin(condition=[true], joinType=[left])\n"
-            + "      JdbcTableScan(table=[[SCOTT, EMP]])\n"
-            + "      JdbcJoin(condition=[true], joinType=[inner])\n"
-            + "        JdbcTableScan(table=[[SCOTT, DEPT]])\n"
-            + "        JdbcAggregate(group=[{0}])\n"
-            + "          JdbcProject(cs=[true])\n"
-            + "            JdbcFilter(condition=[=('job', $1)])\n"
-            + "              JdbcTableScan(table=[[SCOTT, BONUS]])\n\n")
-        .runs()
-        .enable(CalciteAssert.DB == DatabaseInstance.HSQLDB)
-        .returnsCount(14);
-  }
-
   @Test void testUnionPlan() {
     CalciteAssert.model(FoodmartSchema.FOODMART_MODEL)
         .query("select * from \"sales_fact_1997\"\n"
@@ -925,24 +902,6 @@ class JdbcAdapterTest {
             + "FROM \"foodmart\".\"expense_fact\"");
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6346">[CALCITE-6346]
-   * JdbcAdapter: Cast for dynamic filter arguments is lost</a>. */
-  @Test void testCastDynamic() {
-    CalciteAssert.that()
-        .with(CalciteAssert.Config.FOODMART_CLONE)
-        .query("SELECT * FROM \"foodmart\".\"sales_fact_1997\""
-            + " WHERE cast (? as varchar(10)) = cast(? as varchar(10))")
-        .planHasSql("SELECT *\n"
-            + "FROM \"foodmart\".\"sales_fact_1997\"\n"
-            + "WHERE CAST(? AS VARCHAR(10)) = CAST(? AS VARCHAR(10))")
-        .consumesPreparedStatement(p -> {
-          p.setInt(1, 10);
-          p.setLong(2, 10);
-        })
-        .runs();
-  }
-
   @Test void testLastValueOver() {
     CalciteAssert
         .model(FoodmartSchema.FOODMART_MODEL)
@@ -1128,12 +1087,12 @@ class JdbcAdapterTest {
         + "  JdbcTableModify(table=[[foodmart, expense_fact]], "
         + "operation=[INSERT], flattened=[false])\n"
         + "    JdbcValues(tuples=[[{ 666, 666, 1997-01-01 00:00:00, 666, "
-        + "'666', 666, 666.0000 }]])\n\n";
+        + "'666', 666, 666 }]])\n\n";
     final String jdbcSql = "INSERT INTO \"foodmart\".\"expense_fact\" (\"store_id\", "
         + "\"account_id\", \"exp_date\", \"time_id\", \"category_id\", \"currency_id\", "
         + "\"amount\")\n"
         + "VALUES (666, 666, TIMESTAMP '1997-01-01 00:00:00', 666, '666', "
-        + "666, 666.0000)";
+        + "666, 666)";
     final AssertThat that =
         CalciteAssert.model(FoodmartSchema.FOODMART_MODEL)
             .enable(CalciteAssert.DB == DatabaseInstance.HSQLDB
@@ -1161,14 +1120,14 @@ class JdbcAdapterTest {
         + "  JdbcTableModify(table=[[foodmart, expense_fact]], "
         + "operation=[INSERT], flattened=[false])\n"
         + "    JdbcValues(tuples=[["
-        + "{ 666, 666, 1997-01-01 00:00:00, 666, '666', 666, 666.0000 }, "
-        + "{ 666, 777, 1997-01-01 00:00:00, 666, '666', 666, 666.0000 }]])\n\n";
+        + "{ 666, 666, 1997-01-01 00:00:00, 666, '666', 666, 666 }, "
+        + "{ 666, 777, 1997-01-01 00:00:00, 666, '666', 666, 666 }]])\n\n";
     final String jdbcSql = "INSERT INTO \"foodmart\".\"expense_fact\""
         + " (\"store_id\", \"account_id\", \"exp_date\", \"time_id\", "
         + "\"category_id\", \"currency_id\", \"amount\")\n"
         + "VALUES "
-        + "(666, 666, TIMESTAMP '1997-01-01 00:00:00', 666, '666', 666, 666.0000),\n"
-        + "(666, 777, TIMESTAMP '1997-01-01 00:00:00', 666, '666', 666, 666.0000)";
+        + "(666, 666, TIMESTAMP '1997-01-01 00:00:00', 666, '666', 666, 666),\n"
+        + "(666, 777, TIMESTAMP '1997-01-01 00:00:00', 666, '666', 666, 666)";
     final AssertThat that =
         CalciteAssert.model(FoodmartSchema.FOODMART_MODEL)
             .enable(CalciteAssert.DB == DatabaseInstance.HSQLDB

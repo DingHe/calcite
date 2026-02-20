@@ -52,6 +52,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * Abstract base class for testing materialized views.
  *
@@ -122,12 +124,12 @@ public abstract class MaterializedViewTester {
         final MaterializationService.DefaultTableFactory tableFactory =
             new MaterializationService.DefaultTableFactory();
         for (Pair<String, String> pair : f.materializationList) {
-          String sql = pair.left;
+          String sql = requireNonNull(pair.left, "sql");
           final RelNode mvRel = toRel(cluster, rootSchema, defaultSchema, sql);
           final Table table =
               tableFactory.createTable(CalciteSchema.from(rootSchema),
                   sql, ImmutableList.of(defaultSchema.getName()));
-          String name = pair.right;
+          String name = requireNonNull(pair.right, "name");
           defaultSchema.add(name, table);
           relBuilder.scan(defaultSchema.getName(), name);
           final LogicalTableScan logicalScan = (LogicalTableScan) relBuilder.build();

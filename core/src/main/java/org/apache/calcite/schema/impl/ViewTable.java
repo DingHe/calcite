@@ -42,7 +42,7 @@ import java.util.List;
 
 /**
  * Table whose contents are defined using an SQL statement.
- *
+ * sql语句定义的表
  * <p>It is not evaluated; it is expanded during query planning.
  */
 public class ViewTable

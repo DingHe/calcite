@@ -280,7 +280,7 @@ public class JdbcRules {
       final Join join = (Join) rel;
       switch (join.getJoinType()) {
       case SEMI:
-      case ANTI:
+      case ANTI:  //不支持半连接和反连接
         // It's not possible to convert semi-joins or anti-joins. They have fewer columns
         // than regular joins.
         return null;

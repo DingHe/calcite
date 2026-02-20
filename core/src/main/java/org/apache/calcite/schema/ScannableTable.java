@@ -21,7 +21,7 @@ import org.apache.calcite.linq4j.Enumerable;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-/**
+/**  扫描表，把表的内容转为Enumerable迭代器
  * Table that can be scanned without creating an intermediate relational
  * expression.
  */

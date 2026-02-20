@@ -68,7 +68,8 @@ import static java.util.Objects.requireNonNull;
 
 /**
  * <code>SqlDialect</code> encapsulates the differences between dialects of SQL.
- *
+ * 封装不同SQL方言之间的差异，主要由SqlWriter和SqlBuilder使用。
+ * 增加新的类，需要继承此类，以包含DEFAULT_CONTEXT和DEFAULT这两静态成员。
  * <p>It is used by classes such as {@link SqlWriter} and
  * {@link org.apache.calcite.sql.util.SqlBuilder}.
  *
@@ -88,8 +89,8 @@ public class SqlDialect {
       LoggerFactory.getLogger(SqlDialect.class);
 
   /** Empty context. */
-  public static final Context EMPTY_CONTEXT = emptyContext();
-
+  public static final Context EMPTY_CONTEXT = emptyContext();  //空的上下文
+  //方言共有的标量函数和操作
   /** Built-in scalar functions and operators common for every dialect. */
   protected static final Set<SqlOperator> BUILT_IN_OPERATORS_LIST =
       ImmutableSet.<SqlOperator>builder()
@@ -145,16 +146,16 @@ public class SqlDialect {
 
   //~ Instance fields --------------------------------------------------------
 
-  protected final @Nullable String identifierQuoteString;
+  protected final @Nullable String identifierQuoteString;   //标识符引用使用的符号，所谓的标识符就是表名、列名等字段
   protected final @Nullable String identifierEndQuoteString;
   protected final @Nullable String identifierEscapedQuote;
-  protected final String literalQuoteString;
+  protected final String literalQuoteString;   //常量字符串使用的符号
   protected final String literalEndQuoteString;
   protected final String literalEscapedQuote;
   private final DatabaseProduct databaseProduct;
   protected final NullCollation nullCollation;
   private final RelDataTypeSystem dataTypeSystem;
-  private final Casing unquotedCasing;
+  private final Casing unquotedCasing;  //标识符存储之前是否需要转换大小写问题。
   private final Casing quotedCasing;
   private final boolean caseSensitive;
 
@@ -244,7 +245,7 @@ public class SqlDialect {
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  //创建一个空的山下文
   /** Creates an empty context. Use {@link #EMPTY_CONTEXT} to reference the instance. */
   private static Context emptyContext() {
     return new ContextImpl(DatabaseProduct.UNKNOWN, null, null, -1, -1,
@@ -363,7 +364,7 @@ public class SqlDialect {
   /**
    * Encloses an identifier in quotation marks appropriate for the current SQL
    * dialect, writing the result to a {@link StringBuilder}.
-   *
+   * 根据不同的方言使用合适的引号把标识符括起来
    * <p>For example, <code>quoteIdentifier("emp")</code> yields a string
    * containing <code>"emp"</code> in Oracle, and a string containing <code>
    * [emp]</code> in Access.
@@ -408,6 +409,7 @@ public class SqlDialect {
     return buf;
   }
 
+  //标识符是否要括起来，默认是true
   /** Returns whether to quote an identifier.
    * By default, all identifiers are quoted. */
   protected boolean identifierNeedsQuote(String val) {
@@ -416,7 +418,7 @@ public class SqlDialect {
 
   /**
    * Converts a string into a string literal.
-   *
+   * 把字符串转为字符常量
    * <p>For example, {@code "can't run"} becomes {@code "'can''t run'"}.
    */
   public final String quoteStringLiteral(String val) {
@@ -464,13 +466,6 @@ public class SqlDialect {
     default:
       operator.unparse(writer, call, leftPrec, rightPrec);
     }
-  }
-
-  public void unparseBoolLiteral(SqlWriter writer,
-      SqlLiteral literal, int leftPrec, int rightPrec) {
-    Object value = literal.getValue();
-    writer.keyword(
-        value == null ? "UNKNOWN" : (Boolean) value ? "TRUE" : "FALSE");
   }
 
   public void unparseDateTimeLiteral(SqlWriter writer,
@@ -783,12 +778,7 @@ public class SqlDialect {
   public boolean supportsWindowFunctions() {
     return true;
   }
-
-  /** Returns whether this dialect supports case when return boolean type. */
-  public boolean supportBooleanCaseWhen() {
-    return true;
-  }
-
+  //判断给定的方言是否支持给定的函数或者操作
   /** Returns whether this dialect supports a given function or operator.
    * It only applies to built-in scalar functions and operators, since
    * user-defined functions and procedures should be read by JdbcSchema. */
@@ -1314,7 +1304,7 @@ public class SqlDialect {
       return ae;
     }
 
-    /**
+    /** 替换所有匹配上的字符
      * Replaces every occurrence of <code>find</code> in <code>s</code> with
      * <code>replace</code>.
      */
@@ -1365,7 +1355,7 @@ public class SqlDialect {
    * in different versions or ports of a database, but they are sufficient
    * to drive a {@code switch} statement if behavior is broadly different
    * between say, MySQL and Oracle.
-   *
+   * 这些枚举值无法区分数据库不同版本的差异，但不同数据库之间存在巨大的差异，则足够满足要求
    * <p>If possible, you should not refer to particular database at all; write
    * extend the dialect to describe the particular capability, for example,
    * whether the database allows expressions to appear in the GROUP BY clause.
@@ -1445,7 +1435,7 @@ public class SqlDialect {
 
     /**
      * Returns a dummy dialect for this database.
-     *
+     * 获取数据方言类
      * <p>Since databases have many versions and flavors, this dummy dialect
      * is at best an approximation. If you want exact information, better to
      * use a dialect created from an actual connection's metadata
@@ -1460,7 +1450,7 @@ public class SqlDialect {
   }
 
   /** Information for creating a dialect.
-   *
+   * 创建dialect需要的上下文
    * <p>It is immutable; to "set" a property, call one of the "with" methods,
    * which returns a new context with the desired property value. */
   public interface Context {

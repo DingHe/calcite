@@ -35,8 +35,6 @@ import java.util.function.Predicate;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Abstract base class for a rule which converts from one calling convention to
  * another without changing semantics.
@@ -48,16 +46,16 @@ public abstract class ConverterRule
 
   private final RelTrait inTrait;
   private final RelTrait outTrait;
-  protected final Convention out;
+  protected final Convention out; //输出调用特征
 
   //~ Constructors -----------------------------------------------------------
 
   /** Creates a <code>ConverterRule</code>. */
   protected ConverterRule(Config config) {
     super(config);
-    this.inTrait = requireNonNull(config.inTrait());
-    this.outTrait = requireNonNull(config.outTrait());
-
+    this.inTrait = Objects.requireNonNull(config.inTrait());
+    this.outTrait = Objects.requireNonNull(config.outTrait());
+    //输入特征和输出特征的定义要一致
     // Source and target traits must have same type
     assert inTrait.getTraitDef() == outTrait.getTraitDef();
 
@@ -161,7 +159,7 @@ public abstract class ConverterRule
    *
    * <p>The union-to-java converter, for example, is not guaranteed, because
    * it only works on unions.
-   *
+   * 如果能convert any关系表达式的convention，则返回true
    * @return {@code true} if this rule can convert <em>any</em> relational
    *   expression
    */
@@ -185,7 +183,7 @@ public abstract class ConverterRule
   @Value.Immutable(singleton = false)
   public interface Config extends RelRule.Config {
     Config INSTANCE = ImmutableConverterRule.Config.builder()
-        .withInTrait(Convention.NONE)
+        .withInTrait(Convention.NONE)  //调用约定默认为NONE
         .withOutTrait(Convention.NONE)
         .withRuleFactory(new Function<Config, ConverterRule>() {
           @Override public ConverterRule apply(final Config config) {
@@ -202,7 +200,7 @@ public abstract class ConverterRule
 
     /** Sets {@link #outTrait}. */
     Config withOutTrait(RelTrait trait);
-
+    //输入Config，返回ConverterRule
     Function<Config, ConverterRule> ruleFactory();
 
     /** Sets {@link #outTrait}. */

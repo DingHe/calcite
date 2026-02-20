@@ -42,7 +42,6 @@ import org.apache.calcite.sql.validate.SqlValidatorUtil;
 
 import com.google.common.collect.ImmutableList;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.immutables.value.Value;
 
 import java.util.ArrayList;
@@ -70,7 +69,7 @@ public class GeodeRules {
   /**
    * Returns 'string' if it is a call to item['string'], null otherwise.
    */
-  static @Nullable String isItem(RexCall call) {
+  static String isItem(RexCall call) {
     if (call.getOperator() != SqlStdOperatorTable.ITEM) {
       return null;
     }

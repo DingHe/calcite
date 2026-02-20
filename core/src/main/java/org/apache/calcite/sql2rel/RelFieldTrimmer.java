@@ -26,7 +26,6 @@ import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.AggregateCall;
-import org.apache.calcite.rel.core.AsofJoin;
 import org.apache.calcite.rel.core.Calc;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.Exchange;
@@ -86,8 +85,6 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Transformer that walks over a tree of relational expressions, replacing each
@@ -499,7 +496,7 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
     // Get all the correlationIds present in the SubQueries
     Set<CorrelationId> correlationIds = RelOptUtil.getVariablesUsed(subQueries);
     ImmutableBitSet requiredColumns = ImmutableBitSet.of();
-    if (!correlationIds.isEmpty()) {
+    if (correlationIds.size() > 0) {
       assert correlationIds.size() == 1;
       // Correlation columns are also needed by SubQueries, so add them to inputFieldsUsed.
       requiredColumns = RelOptUtil.correlationColumns(correlationIds.iterator().next(), project);
@@ -789,9 +786,6 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
         + join.getLeft().getRowType().getFieldCount()
         + join.getRight().getRowType().getFieldCount();
     final RexNode conditionExpr = join.getCondition();
-    final RexNode matchConditionExpr = (join instanceof AsofJoin)
-        ? ((AsofJoin) join).getMatchCondition()
-        : null;
     final int systemFieldCount = join.getSystemFieldList().size();
 
     // Add in fields used in the condition.
@@ -800,9 +794,6 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
     RelOptUtil.InputFinder inputFinder =
         new RelOptUtil.InputFinder(combinedInputExtraFields, fieldsUsed);
     conditionExpr.accept(inputFinder);
-    if (matchConditionExpr != null) {
-      matchConditionExpr.accept(inputFinder);
-    }
     final ImmutableBitSet fieldsUsedPlus = inputFinder.build();
 
     // If no system fields are used, we can remove them.
@@ -896,8 +887,6 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
             mapping, newInputs.get(0), newInputs.get(1));
     RexNode newConditionExpr =
         conditionExpr.accept(shuttle);
-    RexNode newMatchConditionExpr =
-        matchConditionExpr != null ? matchConditionExpr.accept(shuttle) : null;
 
     relBuilder.push(newInputs.get(0));
     relBuilder.push(newInputs.get(1));
@@ -925,14 +914,8 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
         mapping.set(pair.source + offset, pair.target + newOffset);
       }
       break;
-    case ASOF:
-    case LEFT_ASOF:
-      relBuilder.asofJoin(join.getJoinType(), newConditionExpr,
-          requireNonNull(newMatchConditionExpr, "newMatchConditionExpr"));
-      break;
     default:
       relBuilder.join(join.getJoinType(), newConditionExpr);
-      break;
     }
     return result(relBuilder.build(), mapping, join);
   }

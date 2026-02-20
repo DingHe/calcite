@@ -446,6 +446,7 @@ public class RelJson {
     return map;
   }
 
+  @SuppressWarnings({"BetaApi", "UnstableApiUsage"}) // RangeSet GA in Guava 32
   public @Nullable Object toJson(@Nullable Object value) {
     if (value == null
         || value instanceof Number
@@ -506,6 +507,7 @@ public class RelJson {
     return map;
   }
 
+  @SuppressWarnings({"BetaApi", "UnstableApiUsage"}) // RangeSet GA in Guava 32
   public <C extends Comparable<C>> List<List<String>> toJson(
       RangeSet<C> rangeSet) {
     final List<List<String>> list = new ArrayList<>();
@@ -660,10 +662,10 @@ public class RelJson {
 
   private Object toJson(RexWindow window) {
     final Map<String, @Nullable Object> map = jsonBuilder().map();
-    if (!window.partitionKeys.isEmpty()) {
+    if (window.partitionKeys.size() > 0) {
       map.put("partition", toJson(window.partitionKeys));
     }
-    if (!window.orderKeys.isEmpty()) {
+    if (window.orderKeys.size() > 0) {
       map.put("order", toJson(window.orderKeys));
     }
     if (window.getLowerBound() == null) {
@@ -877,6 +879,8 @@ public class RelJson {
    * nullAs: "UNKNOWN"}} represents the range x &ge; 0 and x &le; 5 or
    * x &gt; 10.
    */
+  // BetaApi is no longer a concern; the Beta tag was removed in Guava 32.0
+  @SuppressWarnings({"BetaApi", "unchecked"})
   public static <C extends Comparable<C>> Sarg<C> sargFromJson(
       Map<String, Object> map) {
     final String nullAs = requireNonNull((String) map.get("nullAs"), "nullAs");
@@ -887,6 +891,7 @@ public class RelJson {
   }
 
   /** Converts a JSON list to a {@link RangeSet}. */
+  @SuppressWarnings({"BetaApi", "UnstableApiUsage"}) // RangeSet GA in Guava 32
   public static <C extends Comparable<C>> RangeSet<C> rangeSetFromJson(
       List<List<String>> rangeSetsJson) {
     final ImmutableRangeSet.Builder<C> builder = ImmutableRangeSet.builder();
@@ -972,8 +977,7 @@ public class RelJson {
     }
   }
 
-  private static @Nullable RexWindowExclusion toRexWindowExclusion(
-      @Nullable Map<String, Object> map) {
+  private @Nullable RexWindowExclusion toRexWindowExclusion(@Nullable Map<String, Object> map) {
     if (map == null) {
       return null;
     }

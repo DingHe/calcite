@@ -65,6 +65,7 @@ import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -351,10 +352,9 @@ public class RelMetadataFixture {
     final RelMetadataQuery mq = rel.getCluster().getMetadataQuery();
     Set<ImmutableBitSet> result = mq.getUniqueKeys(rel);
     assertThat(result, notNullValue());
-    assertThat("unique keys, sql: " + relSupplier
-            + ", rel: " + RelOptUtil.toString(rel),
+    assertEquals(ImmutableSortedSet.copyOf(expectedUniqueKeys),
         ImmutableSortedSet.copyOf(result),
-        is(ImmutableSortedSet.copyOf(expectedUniqueKeys)));
+        () -> "unique keys, sql: " + relSupplier + ", rel: " + RelOptUtil.toString(rel));
     checkUniqueConsistent(rel);
     return this;
   }
@@ -372,10 +372,9 @@ public class RelMetadataFixture {
         ImmutableBitSet.range(0, rel.getRowType().getFieldCount());
     for (ImmutableBitSet key : allCols.powerSet()) {
       Boolean result2 = mq.areColumnsUnique(rel, key);
-      assertThat("areColumnsUnique. key: " + key
-          + ", uniqueKeys: " + uniqueKeys
-          + ", rel: " + RelOptUtil.toString(rel),
-          SqlFunctions.isTrue(result2), is(isUnique(uniqueKeys, key)));
+      assertEquals(isUnique(uniqueKeys, key), SqlFunctions.isTrue(result2),
+          () -> "areColumnsUnique. key: " + key + ", uniqueKeys: " + uniqueKeys
+              + ", rel: " + RelOptUtil.toString(rel));
     }
   }
 

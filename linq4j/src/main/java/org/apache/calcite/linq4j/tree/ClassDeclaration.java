@@ -23,28 +23,27 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
-/**
+/** 类声明
  * Declaration of a class.
  */
 public class ClassDeclaration extends MemberDeclaration {
-  public final int modifier;
+  public final int modifier; //修饰符
   public final String classClass = "class";
-  public final String name;
-  public final List<MemberDeclaration> memberDeclarations;
-  public final @Nullable Type extended;
-  public final List<Type> implemented;
+  public final String name; //类名
+  public final List<MemberDeclaration> memberDeclarations; //成员声明
+  public final @Nullable Type extended; //继承的类
+  public final List<Type> implemented; //实现的接口
 
   public ClassDeclaration(int modifier, String name, @Nullable Type extended,
       List<Type> implemented, List<MemberDeclaration> memberDeclarations) {
+    assert name != null : "name should not be null";
     this.modifier = modifier;
-    this.name = requireNonNull(name, "name");
+    this.name = name;
     this.memberDeclarations = memberDeclarations;
     this.extended = extended;
     this.implemented = implemented;
   }
-
+  //生成代码
   @Override public void accept(ExpressionWriter writer) {
     String modifiers = Modifier.toString(modifier);
     writer.append(modifiers);
@@ -89,10 +88,23 @@ public class ClassDeclaration extends MemberDeclaration {
     if (!classClass.equals(that.classClass)) {
       return false;
     }
-    return Objects.equals(extended, that.extended)
-        && implemented.equals(that.implemented)
-        && memberDeclarations.equals(that.memberDeclarations)
-        && name.equals(that.name);
+    if (extended != null ? !extended.equals(that.extended) : that.extended
+        != null) {
+      return false;
+    }
+    if (implemented != null ? !implemented.equals(that.implemented) : that
+        .implemented != null) {
+      return false;
+    }
+    if (memberDeclarations != null ? !memberDeclarations.equals(that
+        .memberDeclarations) : that.memberDeclarations != null) {
+      return false;
+    }
+    if (!name.equals(that.name)) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override public int hashCode() {

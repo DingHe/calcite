@@ -78,13 +78,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-
-import static java.lang.Integer.parseInt;
-import static java.util.Objects.requireNonNull;
 
 /**
  * Holder for various classes and functions used in tests as user-defined
@@ -164,7 +162,7 @@ public class Smalls {
     if (s == null) {
       items = ImmutableList.of();
     } else {
-      Integer latest = parseInt(s.substring(1, s.length() - 1));
+      Integer latest = Integer.parseInt(s.substring(1, s.length() - 1));
       items = ImmutableList.of(1, 3, latest);
     }
     final Enumerable<Integer> enumerable = Linq4j.asEnumerable(items);
@@ -515,7 +513,7 @@ public class Smalls {
    * and named parameters. */
   public static class MyPlusFunction {
     public static final ThreadLocal<AtomicInteger> INSTANCE_COUNT =
-        ThreadLocal.withInitial(AtomicInteger::new);
+        new ThreadLocal<>().withInitial(() -> new AtomicInteger(0));
 
     // Note: Not marked @Deterministic
     public MyPlusFunction() {
@@ -532,7 +530,7 @@ public class Smalls {
    * {@link org.apache.calcite.schema.FunctionContext} parameter. */
   public static class MyPlusInitFunction {
     public static final ThreadLocal<AtomicInteger> INSTANCE_COUNT =
-        ThreadLocal.withInitial(AtomicInteger::new);
+        new ThreadLocal<>().withInitial(() -> new AtomicInteger(0));
     public static final ThreadLocal<String> THREAD_DIGEST =
         new ThreadLocal<>();
 
@@ -567,7 +565,7 @@ public class Smalls {
   /** As {@link MyPlusFunction} but declared to be deterministic. */
   public static class MyDeterministicPlusFunction {
     public static final ThreadLocal<AtomicInteger> INSTANCE_COUNT =
-        ThreadLocal.withInitial(AtomicInteger::new);
+        new ThreadLocal<>().withInitial(() -> new AtomicInteger(0));
 
     @Deterministic public MyDeterministicPlusFunction() {
       INSTANCE_COUNT.get().incrementAndGet();
@@ -901,7 +899,7 @@ public class Smalls {
    * The constructor has an initialization parameter. */
   public static class MyTwoParamsSumFunctionFilter1 {
     public MyTwoParamsSumFunctionFilter1(FunctionContext fx) {
-      requireNonNull(fx, "fx");
+      Objects.requireNonNull(fx, "fx");
       assert fx.getParameterCount() == 2;
     }
     public int init() {

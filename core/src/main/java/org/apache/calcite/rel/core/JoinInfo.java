@@ -30,8 +30,7 @@ import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /** An analyzed join condition.
  *
@@ -46,15 +45,14 @@ import static java.util.Objects.requireNonNull;
 public class JoinInfo {
   public final ImmutableIntList leftKeys;
   public final ImmutableIntList rightKeys;
-  public final ImmutableList<RexNode> nonEquiConditions;
+  public final ImmutableList<RexNode> nonEquiConditions; //非相等条件
 
   /** Creates a JoinInfo. */
   protected JoinInfo(ImmutableIntList leftKeys, ImmutableIntList rightKeys,
       ImmutableList<RexNode> nonEquiConditions) {
-    this.leftKeys = requireNonNull(leftKeys, "leftKeys");
-    this.rightKeys = requireNonNull(rightKeys, "rightKeys");
-    this.nonEquiConditions =
-        requireNonNull(nonEquiConditions, "nonEquiConditions");
+    this.leftKeys = Objects.requireNonNull(leftKeys, "leftKeys");
+    this.rightKeys = Objects.requireNonNull(rightKeys, "rightKeys");
+    this.nonEquiConditions = Objects.requireNonNull(nonEquiConditions, "nonEquiConditions");
     assert leftKeys.size() == rightKeys.size();
   }
 
@@ -75,7 +73,7 @@ public class JoinInfo {
       ImmutableIntList rightKeys) {
     return new JoinInfo(leftKeys, rightKeys, ImmutableList.of());
   }
-
+  //如果非等值条件为空，则就是等值join
   /** Returns whether this is an equi-join. */
   public boolean isEqui() {
     return nonEquiConditions.isEmpty();

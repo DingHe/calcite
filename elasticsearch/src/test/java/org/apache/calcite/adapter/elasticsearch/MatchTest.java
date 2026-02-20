@@ -49,7 +49,6 @@ import org.junit.jupiter.api.parallel.ResourceAccessMode;
 import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.io.IOException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -65,8 +64,6 @@ import static org.apache.calcite.test.Matchers.hasTree;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Testing Elasticsearch match query.
@@ -94,11 +91,7 @@ class MatchTest {
 
     // load records from file
     final List<ObjectNode> bulk = new ArrayList<>();
-    final URL url =
-        requireNonNull(
-            ElasticSearchAdapterTest.class.getResource("/zips-mini.json"),
-            "url");
-    Resources.readLines(url,
+    Resources.readLines(ElasticSearchAdapterTest.class.getResource("/zips-mini.json"),
         StandardCharsets.UTF_8, new LineProcessor<Void>() {
           @Override public boolean processLine(String line) throws IOException {
             line = line.replace("_id", "id"); // _id is a reserved attribute in ES

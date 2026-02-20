@@ -44,9 +44,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Relational operator that returns the contents of a table.
@@ -58,7 +57,7 @@ public abstract class TableScan
   /**
    * The table definition.
    */
-  protected final RelOptTable table;
+  protected final RelOptTable table; //对应的表
 
   /**
    * The table hints.
@@ -70,10 +69,10 @@ public abstract class TableScan
   protected TableScan(RelOptCluster cluster, RelTraitSet traitSet,
       List<RelHint> hints, RelOptTable table) {
     super(cluster, traitSet);
-    this.table = requireNonNull(table, "table");
-    RelOptSchema relOptSchema = table.getRelOptSchema();
+    this.table = Objects.requireNonNull(table, "table");
+    RelOptSchema relOptSchema = table.getRelOptSchema(); //通过RelOptTable获取schema
     if (relOptSchema != null) {
-      cluster.getPlanner().registerSchema(relOptSchema);
+      cluster.getPlanner().registerSchema(relOptSchema); //在优化器中注册schema
     }
     this.hints = ImmutableList.copyOf(hints);
   }
@@ -92,7 +91,7 @@ public abstract class TableScan
   }
 
   //~ Methods ----------------------------------------------------------------
-
+   //直接返回表的行数
   @Override public double estimateRowCount(RelMetadataQuery mq) {
     return table.getRowCount();
   }
@@ -108,11 +107,11 @@ public abstract class TableScan
     double dIo = 0;
     return planner.getCostFactory().makeCost(dRows, dCpu, dIo);
   }
-
+  //就是表的行数
   @Override public RelDataType deriveRowType() {
     return table.getRowType();
   }
-
+ //返回一个跟表的字段数量大小一样的集合
   /** Returns an identity projection for the given table. */
   public static ImmutableIntList identity(RelOptTable table) {
     return ImmutableIntList.identity(table.getRowType().getFieldCount());
@@ -139,7 +138,7 @@ public abstract class TableScan
    *
    * <p>Sub-classes, representing table types that have these capabilities,
    * should override.
-   *
+   * 表可以直接project，然后包含上衍生字段
    * @param fieldsUsed  Bitmap of the fields desired by the consumer
    * @param extraFields Extra fields, not advertised in the table's row-type,
    *                    wanted by the consumer
@@ -150,7 +149,7 @@ public abstract class TableScan
       Set<RelDataTypeField> extraFields,
       RelBuilder relBuilder) {
     final int fieldCount = getRowType().getFieldCount();
-    if (fieldsUsed.equals(ImmutableBitSet.range(fieldCount))
+    if (fieldsUsed.equals(ImmutableBitSet.range(fieldCount)) //如果返回全部字段，并且没有衍生字段，直接返回
         && extraFields.isEmpty()) {
       return this;
     }
@@ -163,14 +162,14 @@ public abstract class TableScan
     // Project the subset of fields.
     for (int i : fieldsUsed) {
       RelDataTypeField field = fields.get(i);
-      exprList.add(rexBuilder.makeInputRef(this, i));
+      exprList.add(rexBuilder.makeInputRef(this, i)); //字段表达式用RexInputRef表示
       nameList.add(field.getName());
     }
 
     // Project nulls for the extra fields. (Maybe a sub-class table has
     // extra fields, but we don't.)
     for (RelDataTypeField extraField : extraFields) {
-      exprList.add(rexBuilder.makeNullLiteral(extraField.getType()));
+      exprList.add(rexBuilder.makeNullLiteral(extraField.getType())); //衍生字段默认为空
       nameList.add(extraField.getName());
     }
 

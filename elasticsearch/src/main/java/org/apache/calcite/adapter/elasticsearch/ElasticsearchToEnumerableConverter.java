@@ -43,8 +43,6 @@ import java.util.AbstractList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression representing a scan of a table in an Elasticsearch data source.
  */
@@ -60,8 +58,7 @@ public class ElasticsearchToEnumerableConverter extends ConverterImpl implements
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(.1);
+    return super.computeSelfCost(planner, mq).multiplyBy(.1);
   }
 
   @Override public Result implement(EnumerableRelImplementor relImplementor, Prefer prefer) {
@@ -89,9 +86,8 @@ public class ElasticsearchToEnumerableConverter extends ConverterImpl implements
                 Pair.class));
     final Expression table =
         block.append("table",
-            requireNonNull(
-                implementor.table.getExpression(
-                    ElasticsearchTable.ElasticsearchQueryable.class)));
+            implementor.table.getExpression(
+                ElasticsearchTable.ElasticsearchQueryable.class));
     final Expression ops = block.append("ops", Expressions.constant(implementor.list));
     final Expression sort = block.append("sort", constantArrayList(implementor.sort, Pair.class));
     final Expression groupBy = block.append("groupBy", Expressions.constant(implementor.groupBy));

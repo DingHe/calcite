@@ -1,0 +1,113 @@
+@startuml
+'https://plantuml.com/class-diagram
+
+interface Connection
+interface QueryProvider
+interface AvaticaFactory{
+int getJdbcMajorVersion()
+int getJdbcMinorVersion()
+AvaticaConnection newConnection()
+AvaticaStatement newStatement()
+AvaticaPreparedStatement newPreparedStatement()
+AvaticaResultSet newResultSet()
+AvaticaSpecificDatabaseMetaData newDatabaseMetaData()
+ResultSetMetaData newResultSetMetaData()
+}
+
+abstract class CalciteFactory{
+}
+
+class CalciteJdbc41Factory {
+}
+
+interface CalciteConnection{
+SchemaPlus getRootSchema();
+JavaTypeFactory getTypeFactory();
+Properties getProperties();
+CalciteConnectionConfig config();
+Context createPrepareContext();
+}
+
+
+abstract class AvaticaConnection {
+- Service service;
+# final UnregisteredDriver driver;
+# final AvaticaFactory factory;
+# final Meta meta;
++ void openConnection();
++ AvaticaStatement createStatement();
++ PreparedStatement prepareStatement()
++ void commit()
+# ResultSet executeQueryInternal()
+}
+note left of AvaticaConnection::openConnection
+this.meta.openConnection
+end note
+note left of AvaticaConnection::createStatement
+this.factory.newStatement
+end note
+note left of AvaticaConnection::prepareStatement
+Meta.StatementHandle h = this.meta.prepare(this.handle, sql, -1L)
+this.factory.newPreparedStatement
+end note
+note left of AvaticaConnection::commit
+this.meta.commit
+rollback类似
+end note
+note left of AvaticaConnection::executeQueryInternal
+this.meta.execute(handle, pstmt.getParameterValues(), statement.getFetchSize());
+
+end note
+abstract class CalciteConnectionImpl {
+}
+
+class CalciteJdbc41Connection{
+}
+
+abstract class CalciteSchema{
+}
+class SimpleCalciteSchema {
+}
+class CachingCalciteSchema{
+}
+class CalciteRootSchema {
+}
+
+interface CalcitePrepare {
+}
+
+class CalcitePrepareImpl {
+}
+
+interface Statement {
+}
+abstract class AvaticaStatement {
+}
+abstract class CalciteStatement {
+}
+class calciteJdbc41Statement {
+}
+
+Connection <|-- CalciteConnection
+Connection <|-- AvaticaConnection
+QueryProvider <|-- CalciteConnection
+
+QueryProvider <|-- CalciteConnectionImpl
+CalciteConnection <|-- CalciteConnectionImpl
+AvaticaConnection <|-- CalciteConnectionImpl
+CalciteConnectionImpl <|-- CalciteJdbc41Connection
+
+AvaticaFactory <|-- CalciteFactory
+CalciteFactory <|-- CalciteJdbc41Factory
+
+CalciteSchema <|-- SimpleCalciteSchema
+CalciteSchema <|-- CachingCalciteSchema
+CachingCalciteSchema <|-- CalciteRootSchema
+
+CalcitePrepare <|-- CalcitePrepareImpl
+
+Statement <|-- AvaticaStatement
+AvaticaStatement <|-- CalciteStatement
+CalciteStatement <|-- calciteJdbc41Statement
+
+@enduml

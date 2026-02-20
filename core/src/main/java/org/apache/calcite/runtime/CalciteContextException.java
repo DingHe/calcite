@@ -23,8 +23,6 @@ package org.apache.calcite.runtime;
 import org.checkerframework.checker.initialization.qual.UnknownInitialization;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Exception which contains information about the textual context of the causing
  * exception.
@@ -81,7 +79,8 @@ public class CalciteContextException extends CalciteException {
       int posColumn,
       int endPosLine,
       int endPosColumn) {
-    super(message, requireNonNull(cause, "cause"));
+    super(message, cause);
+    assert cause != null;
     setPosition(posLine, posColumn, endPosLine, endPosColumn);
   }
 

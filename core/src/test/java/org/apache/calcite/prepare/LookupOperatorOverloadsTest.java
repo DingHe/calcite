@@ -37,13 +37,13 @@ import org.apache.calcite.util.Smalls;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.apache.calcite.sql.SqlFunctionCategory.MATCH_RECOGNIZE;
@@ -53,35 +53,32 @@ import static org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_PROCEDURE;
 import static org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_SPECIFIC_FUNCTION;
 import static org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_TABLE_FUNCTION;
 import static org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_TABLE_SPECIFIC_FUNCTION;
-import static org.apache.calcite.test.Matchers.isListOf;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Test for lookupOperatorOverloads() in {@link CalciteCatalogReader}.
  */
 class LookupOperatorOverloadsTest {
 
-  private void checkFunctionType(int size, @Nullable String name,
+  private void checkFunctionType(int size, String name,
       List<SqlOperator> operatorList) {
     assertThat(size, is(operatorList.size()));
 
     for (SqlOperator op : operatorList) {
       assertThat(op, instanceOf(SqlUserDefinedTableFunction.class));
-      assertThat(op.getName(), is(name));
+      assertThat(name, is(op.getName()));
     }
   }
 
   private static void check(List<SqlFunctionCategory> actuals,
       SqlFunctionCategory... expecteds) {
-    assertThat(actuals, isListOf(expecteds));
+    assertThat(actuals, is(Arrays.asList(expecteds)));
   }
 
-  @Test void testIsUserDefined() {
+  @Test void testIsUserDefined() throws SQLException {
     List<SqlFunctionCategory> cats = new ArrayList<>();
     for (SqlFunctionCategory c : SqlFunctionCategory.values()) {
       if (c.isUserDefined()) {
@@ -93,7 +90,7 @@ class LookupOperatorOverloadsTest {
         USER_DEFINED_TABLE_FUNCTION, USER_DEFINED_TABLE_SPECIFIC_FUNCTION);
   }
 
-  @Test void testIsTableFunction() {
+  @Test void testIsTableFunction() throws SQLException {
     List<SqlFunctionCategory> cats = new ArrayList<>();
     for (SqlFunctionCategory c : SqlFunctionCategory.values()) {
       if (c.isTableFunction()) {
@@ -104,7 +101,7 @@ class LookupOperatorOverloadsTest {
         USER_DEFINED_TABLE_SPECIFIC_FUNCTION, MATCH_RECOGNIZE);
   }
 
-  @Test void testIsSpecific() {
+  @Test void testIsSpecific() throws SQLException {
     List<SqlFunctionCategory> cats = new ArrayList<>();
     for (SqlFunctionCategory c : SqlFunctionCategory.values()) {
       if (c.isSpecific()) {
@@ -115,7 +112,7 @@ class LookupOperatorOverloadsTest {
         USER_DEFINED_TABLE_SPECIFIC_FUNCTION);
   }
 
-  @Test void testIsUserDefinedNotSpecificFunction() {
+  @Test void testIsUserDefinedNotSpecificFunction() throws SQLException {
     List<SqlFunctionCategory> cats = new ArrayList<>();
     for (SqlFunctionCategory sqlFunctionCategory : SqlFunctionCategory.values()) {
       if (sqlFunctionCategory.isUserDefinedNotSpecificFunction()) {
@@ -145,12 +142,11 @@ class LookupOperatorOverloadsTest {
           connection.unwrap(CalciteConnection.class);
       SchemaPlus rootSchema = calciteConnection.getRootSchema();
       SchemaPlus schema = rootSchema.add(schemaName, new AbstractSchema());
-      final TableFunction table =
-          requireNonNull(TableFunctionImpl.create(Smalls.MAZE_METHOD));
+      final TableFunction table = TableFunctionImpl.create(Smalls.MAZE_METHOD);
       schema.add(funcName, table);
       schema.add(anotherName, table);
       final TableFunction table2 =
-          requireNonNull(TableFunctionImpl.create(Smalls.MAZE3_METHOD));
+          TableFunctionImpl.create(Smalls.MAZE3_METHOD);
       schema.add(funcName, table2);
 
       final CalciteServerStatement statement =

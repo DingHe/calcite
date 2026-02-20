@@ -46,8 +46,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * The <code>JSON_VALUE</code> function.
  */
@@ -67,7 +65,7 @@ public class SqlJsonValueFunction extends SqlFunction {
 
   private static RelDataType deriveExplicitType(SqlOperatorBinding opBinding, RelDataType type) {
     if (SqlTypeName.ARRAY == type.getSqlTypeName()) {
-      RelDataType elementType = requireNonNull(type.getComponentType());
+      RelDataType elementType = Objects.requireNonNull(type.getComponentType());
       RelDataType nullableElementType = deriveExplicitType(opBinding, elementType);
       return SqlTypeUtil.createArrayType(
           opBinding.getTypeFactory(),

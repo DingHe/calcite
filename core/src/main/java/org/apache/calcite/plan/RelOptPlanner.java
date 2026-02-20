@@ -44,14 +44,14 @@ public interface RelOptPlanner {
 
   /**
    * Sets the root node of this query.
-   *
+   * 设置关系节点的根节点
    * @param rel Relational expression
    */
   void setRoot(RelNode rel);
 
   /**
    * Returns the root node of this query.
-   *
+   * 返回关系节点的根节点
    * @return Root node
    */
   @Nullable RelNode getRoot();
@@ -59,18 +59,18 @@ public interface RelOptPlanner {
   /**
    * Registers a rel trait definition. If the {@link RelTraitDef} has already
    * been registered, does nothing.
-   *
+   * 注册特征定义
    * @return whether the RelTraitDef was added, as per
    * {@link java.util.Collection#add}
    */
   boolean addRelTraitDef(RelTraitDef relTraitDef);
 
-  /**
+  /** 清理全部的特征定义
    * Clear all the registered RelTraitDef.
    */
   void clearRelTraitDefs();
 
-  /**
+  /** 返回特征定义的列表
    * Returns the list of active trait types.
    */
   List<RelTraitDef> getRelTraitDefs();
@@ -81,7 +81,7 @@ public interface RelOptPlanner {
    */
   void clear();
 
-  /**
+  /** 返回所有已经注册的rule
    * Returns the list of all registered rules.
    */
   List<RelOptRule> getRules();
@@ -95,7 +95,7 @@ public interface RelOptPlanner {
    * ConverterRule to all
    * {@link #addRelTraitDef(RelTraitDef) registered} RelTraitDef
    * instances.
-   *
+   * ConverterRule会被转到addRelTraitDef定义里面
    * @return whether the rule was added, as per
    * {@link java.util.Collection#add}
    */
@@ -103,7 +103,7 @@ public interface RelOptPlanner {
 
   /**
    * Removes a rule.
-   *
+   * 删除指定的Rule
    * @return true if the rule was present, as per
    * {@link java.util.Collection#remove(Object)}
    */
@@ -121,7 +121,7 @@ public interface RelOptPlanner {
    * Sets the exclusion filter to use for this planner. Rules which match the
    * given pattern will not be fired regardless of whether or when they are
    * added to the planner.
-   *
+   * 匹配上的Rule将不会被触发
    * @param exclusionFilter pattern to match for exclusion; null to disable
    *                        filtering
    */
@@ -142,7 +142,7 @@ public interface RelOptPlanner {
   /**
    * Changes a relational expression to an equivalent one with a different set
    * of traits.
-   *
+   * 把rel关系表达式按照toTraits特征转换
    * @param rel Relational expression (may or may not have been registered; must
    *   not have the desired traits)
    * @param toTraits Trait set to convert the relational expression to
@@ -160,7 +160,7 @@ public interface RelOptPlanner {
 
   /**
    * Defines a pair of relational expressions that are equivalent.
-   *
+   * 添加物化视图
    * <p>Typically {@code tableRel} is a
    * {@link org.apache.calcite.rel.logical.LogicalTableScan} representing a
    * table that is a materialized view and {@code queryRel} is the SQL
@@ -179,7 +179,7 @@ public interface RelOptPlanner {
 
   /**
    * Defines a lattice.
-   *
+   * 定义格
    * <p>The lattice may have materializations; it is not necessary to call
    * {@link #addMaterialization} for these; they are registered implicitly.
    */
@@ -192,7 +192,7 @@ public interface RelOptPlanner {
 
   /**
    * Finds the most efficient expression to implement this query.
-   *
+   * 查找查询的最优表达式
    * @throws CannotPlanException if cannot find a plan
    */
   RelNode findBestExp();
@@ -206,7 +206,7 @@ public interface RelOptPlanner {
   /**
    * Computes the cost of a RelNode. In most cases, this just dispatches to
    * {@link RelMetadataQuery#getCumulativeCost}.
-   *
+   *  计算关系节点的成本，实现上是派发给RelMetadataQuery.getCumulativeCost
    * @param rel Relational expression of interest
    * @param mq Metadata query
    * @return estimated cost
@@ -254,7 +254,7 @@ public interface RelOptPlanner {
 
   /**
    * Determines whether a relational expression has been registered.
-   *
+   *  确定一个rel是否已经注册
    * @param rel expression to test
    * @return whether rel has been registered
    */
@@ -300,7 +300,7 @@ public interface RelOptPlanner {
 
   /**
    * Prunes a node from the planner.
-   *
+   * 修剪一个关系节点，此时注册的规则都被取消，并且将来不会被触发
    * <p>When a node is pruned, the related pending rule
    * calls are cancelled, and future rules will not fire.
    * This can be used to reduce the search space.

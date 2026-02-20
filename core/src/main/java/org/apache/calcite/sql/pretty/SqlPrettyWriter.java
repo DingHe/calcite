@@ -268,7 +268,7 @@ public class SqlPrettyWriter implements SqlWriter {
   private static final Bean DEFAULT_BEAN =
       new SqlPrettyWriter(SqlPrettyWriter.config()
           .withDialect(AnsiSqlDialect.DEFAULT)).getBean();
-  protected static final String NL = System.lineSeparator();
+  protected static final String NL = System.getProperty("line.separator");
 
   //~ Instance fields --------------------------------------------------------
 
@@ -299,8 +299,9 @@ public class SqlPrettyWriter implements SqlWriter {
 
   /** Creates a writer with the given configuration
    * and a given buffer to write to. */
-  public SqlPrettyWriter(SqlWriterConfig config, StringBuilder buf) {
-    this(config, buf, false);
+  public SqlPrettyWriter(SqlWriterConfig config,
+      StringBuilder buf) {
+    this(config, requireNonNull(buf, "buf"), false);
   }
 
   /** Creates a writer with the given configuration and dialect,
@@ -854,7 +855,7 @@ public class SqlPrettyWriter implements SqlWriter {
       @Nullable String keyword,
       String open,
       String close) {
-    requireNonNull(frameType, "frameType");
+    assert frameType != null;
     FrameImpl frame = this.frame;
     if (frame != null) {
       if (frame.itemCount++ == 0 && frame.newlineAfterOpen) {
@@ -941,7 +942,7 @@ public class SqlPrettyWriter implements SqlWriter {
         isKeywordsLowerCase()
             ? s.toLowerCase(Locale.ROOT)
             : s.toUpperCase(Locale.ROOT));
-    if (!s.isEmpty()) {
+    if (!s.equals("")) {
       setNeedWhitespace(needWhitespaceAfter(s));
     }
   }
@@ -958,7 +959,7 @@ public class SqlPrettyWriter implements SqlWriter {
         || s.equals(")")
         || s.equals("[")
         || s.equals("]")
-        || s.isEmpty());
+        || s.equals(""));
   }
 
   private static boolean needWhitespaceAfter(String s) {
@@ -1057,12 +1058,13 @@ public class SqlPrettyWriter implements SqlWriter {
   }
 
   @Override public Frame startList(FrameTypeEnum frameType) {
-    return startList(requireNonNull(frameType, "frameType"), null, "", "");
+    assert frameType != null;
+    return startList(frameType, null, "", "");
   }
 
-  @Override public Frame startList(FrameType frameType, String open,
-      String close) {
-    return startList(requireNonNull(frameType, "frameType"), null, open, close);
+  @Override public Frame startList(FrameType frameType, String open, String close) {
+    assert frameType != null;
+    return startList(frameType, null, open, close);
   }
 
   @Override public SqlWriter list(FrameTypeEnum frameType, Consumer<SqlWriter> action) {
@@ -1179,12 +1181,12 @@ public class SqlPrettyWriter implements SqlWriter {
         boolean newlineBeforeClose, boolean newlineAfterClose) {
       this.frameType = frameType;
       this.keyword = keyword;
-      this.open = requireNonNull(open, "open");
-      this.close = requireNonNull(close, "close");
+      this.open = open;
+      this.close = close;
       this.left = left;
       this.extraIndent = extraIndent;
       this.chopLimit = chopLimit;
-      this.lineFolding = requireNonNull(lineFolding, "lineFolding");
+      this.lineFolding = lineFolding;
       this.newlineAfterOpen = newlineAfterOpen;
       this.newlineBeforeSep = newlineBeforeSep;
       this.newlineAfterSep = newlineAfterSep;
@@ -1198,7 +1200,7 @@ public class SqlPrettyWriter implements SqlWriter {
     }
 
     protected void before() {
-      if (!open.isEmpty()) {
+      if ((open != null) && !open.equals("")) {
         keyword(open);
       }
     }
@@ -1297,12 +1299,14 @@ public class SqlPrettyWriter implements SqlWriter {
       final int lprec = sepOp.getRightPrec();
       final int rprec = sepOp.getLeftPrec();
       if (chopLimit < 0) {
-        for (SqlNode node : list) {
+        for (int i = 0; i < list.size(); i++) {
+          SqlNode node = list.get(i);
           sep(false, sepOp.getName());
           node.unparse(SqlPrettyWriter.this, lprec, rprec);
         }
       } else if (newlineBeforeSep) {
-        for (SqlNode node : list) {
+        for (int i = 0; i < list.size(); i++) {
+          SqlNode node = list.get(i);
           sep(false, sepOp.getName());
           final Save prevSize = new Save();
           node.unparse(SqlPrettyWriter.this, lprec, rprec);

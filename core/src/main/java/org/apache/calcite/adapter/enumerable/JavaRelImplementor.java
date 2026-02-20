@@ -22,7 +22,7 @@ import org.apache.calcite.linq4j.tree.ParameterExpression;
 import org.apache.calcite.plan.RelImplementor;
 import org.apache.calcite.rex.RexBuilder;
 
-/**
+/**  RelImplementor的java实现
  * Abstract base class for implementations of {@link RelImplementor}
  * that generate java code.
  */
@@ -38,7 +38,7 @@ public abstract class JavaRelImplementor implements RelImplementor {
   public RexBuilder getRexBuilder() {
     return rexBuilder;
   }
-
+  //获取关系数据类型工厂
   public JavaTypeFactory getTypeFactory() {
     return (JavaTypeFactory) rexBuilder.getTypeFactory();
   }
@@ -46,7 +46,7 @@ public abstract class JavaRelImplementor implements RelImplementor {
   /**
    * Returns the expression used to access
    * {@link org.apache.calcite.DataContext}.
-   *
+   * java代码为 final DataContext root;
    * @return expression used to access {@link org.apache.calcite.DataContext}.
    */
   public ParameterExpression getRootExpression() {

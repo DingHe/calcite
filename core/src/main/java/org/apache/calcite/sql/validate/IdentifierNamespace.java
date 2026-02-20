@@ -251,9 +251,7 @@ public class IdentifierNamespace extends AbstractNamespace {
   }
 
   @Override public SqlValidatorNamespace resolve() {
-    if (resolvedNamespace == null) {
-      throw new IllegalStateException("must call validate first");
-    }
+    assert resolvedNamespace != null : "must call validate first";
     return resolvedNamespace.resolve();
   }
 

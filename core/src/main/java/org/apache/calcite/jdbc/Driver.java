@@ -54,8 +54,8 @@ import static java.util.Objects.requireNonNull;
  * Calcite JDBC driver.
  */
 public class Driver extends UnregisteredDriver {
-  public static final String CONNECT_STRING_PREFIX = "jdbc:calcite:";
-
+  public static final String CONNECT_STRING_PREFIX = "jdbc:calcite:"; //calcite dirver的前缀
+  //sql语句准备的工厂
   protected final @Nullable Supplier<CalcitePrepare> prepareFactory;
 
   static {
@@ -134,7 +134,7 @@ public class Driver extends UnregisteredDriver {
   @Override protected DriverVersion createDriverVersion() {
     return CalciteDriverVersion.INSTANCE;
   }
-
+  //在Handler里面加载模型
   @Override protected Handler createHandler() {
     return new HandlerImpl() {
       @Override public void onConnectionInit(AvaticaConnection connection_)
@@ -142,7 +142,7 @@ public class Driver extends UnregisteredDriver {
         final CalciteConnectionImpl connection =
             (CalciteConnectionImpl) connection_;
         super.onConnectionInit(connection);
-        final String model = model(connection);
+        final String model = model(connection);  //不管是map还是jdbc模型，都转为custom模型
         if (model != null) {
           try {
             new ModelHandler(connection, model);
@@ -163,11 +163,11 @@ public class Driver extends UnregisteredDriver {
         final Properties info = connection.getProperties();
         final String schemaName = Util.first(connection.config().schema(), "adhoc");
         if (schemaFactory == null) {
-          final JsonSchema.Type schemaType = connection.config().schemaType();
+          final JsonSchema.Type schemaType = connection.config().schemaType();//Schema的类型分为MAP,JDBC,CUSTOM
           if (schemaType != null) {
             switch (schemaType) {
             case JDBC:
-              schemaFactory = JdbcSchema.Factory.INSTANCE;
+              schemaFactory = JdbcSchema.Factory.INSTANCE; //如果jdbc类型，使用jdbc shecma类来创建
               break;
             case MAP:
               schemaFactory = AbstractSchema.Factory.INSTANCE;
@@ -177,7 +177,7 @@ public class Driver extends UnregisteredDriver {
             }
           }
         }
-        if (schemaFactory != null) {
+        if (schemaFactory != null) {  //map和jdbc的方式也转为custom方式
           final JsonBuilder json = new JsonBuilder();
           final Map<String, @Nullable Object> root = json.map();
           root.put("version", "1.0");

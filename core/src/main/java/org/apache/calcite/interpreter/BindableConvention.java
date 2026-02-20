@@ -29,7 +29,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 /**
  * Calling convention that returns results as an
  * {@link org.apache.calcite.linq4j.Enumerable} of object arrays.
- *
+ * 不需要代码生成,表示查询计划将绑定到外部执行引擎，适用于与数据库或其他大规模执行系统（如 Flink）结合的场景
  * <p>The relational expression needs to implement
  * {@link org.apache.calcite.runtime.ArrayBindable}.
  * Unlike {@link org.apache.calcite.adapter.enumerable.EnumerableConvention},

@@ -33,13 +33,8 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.apache.calcite.util.Util.first;
-
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import static java.lang.Double.parseDouble;
-import static java.lang.Integer.parseInt;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -59,9 +54,8 @@ public abstract class TestUtil {
   private static final String JAVA_VERSION =
       System.getProperties().getProperty("java.version");
 
-  public static final Version AVATICA_VERSION =
-      Version.of(first(System.getProperty("calcite.avatica.version"), "0"));
-
+  public static final String AVATICA_VERSION =
+      System.getProperty("calcite.avatica.version");
   private static final Supplier<Integer> GUAVA_MAJOR_VERSION =
       Suppliers.memoize(TestUtil::computeGuavaMajorVersion);
 
@@ -93,11 +87,6 @@ public abstract class TestUtil {
             + actual
             + "\nActual java:\n"
             + toJavaString(actual) + '\n');
-  }
-
-  public static void assertThatScientific(String value, org.hamcrest.Matcher<String> matcher) {
-    double d = parseDouble(value);
-    assertThat(Util.toScientificNotation(d), matcher);
   }
 
   /**
@@ -228,8 +217,7 @@ public abstract class TestUtil {
         .replace("(", "\\(")
         .replace(")", "\\)")
         .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("^", "\\^");
+        .replace("]", "\\]");
   }
 
   /** Removes floating-point rounding errors from the end of a string.
@@ -293,7 +281,7 @@ public abstract class TestUtil {
     if (version.startsWith("1.")) {
       // running on version <= 8 (expecting string of type: x.y.z*)
       final String[] versions = version.split("\\.");
-      return parseInt(versions[1]);
+      return Integer.parseInt(versions[1]);
     }
     // probably running on > 8 (just get first integer which is major version)
     Matcher matcher = Pattern.compile("^\\d+").matcher(version);
@@ -301,7 +289,7 @@ public abstract class TestUtil {
       throw new IllegalArgumentException("Can't parse (detect) JDK version from " + version);
     }
 
-    return parseInt(matcher.group());
+    return Integer.parseInt(matcher.group());
   }
 
   /** Returns the Guava major version. */

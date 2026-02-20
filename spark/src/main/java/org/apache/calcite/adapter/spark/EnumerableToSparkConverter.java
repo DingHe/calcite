@@ -36,8 +36,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Relational expression that converts input of {@link EnumerableConvention}
  * into {@link SparkRel#CONVENTION Spark convention}.
@@ -61,8 +59,7 @@ public class EnumerableToSparkConverter
 
   @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
       RelMetadataQuery mq) {
-    final RelOptCost cost = requireNonNull(super.computeSelfCost(planner, mq));
-    return cost.multiplyBy(.01);
+    return super.computeSelfCost(planner, mq).multiplyBy(.01);
   }
 
   @Override public Result implementSpark(Implementor implementor) {

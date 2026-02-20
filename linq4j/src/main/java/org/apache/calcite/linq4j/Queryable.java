@@ -23,7 +23,12 @@ import org.checkerframework.framework.qual.Covariant;
  * wherein the type of the data is known.
  *
  * <p>Analogous to LINQ's System.Linq.IQueryable.
- *
+ *  范型参数 T是数据类型，通过实现该接口，需要实现下面的方法
+ *  getElementType --返回数据类型
+ *  getExpression  --返回关联的表达式
+ *  getProvider    --数据源提供者
+ *  asQueryable    --返回Queryable 对象
+ *  enumerator     --返回枚举器
  * @param <T> Element type
  */
 @Covariant(0)

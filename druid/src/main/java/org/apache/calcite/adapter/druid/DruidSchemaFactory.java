@@ -62,9 +62,8 @@ public class DruidSchemaFactory implements SchemaFactory {
         : url.replace(":8082", ":8081");
     // "tables" is a hidden attribute, copied in from the enclosing custom
     // schema
-    final boolean containsTables =
-        operand.get("tables") instanceof List
-            && !((List) operand.get("tables")).isEmpty();
+    final boolean containsTables = operand.get("tables") instanceof List
+        && ((List) operand.get("tables")).size() > 0;
     return new DruidSchema(url, coordinatorUrl, !containsTables);
   }
 }

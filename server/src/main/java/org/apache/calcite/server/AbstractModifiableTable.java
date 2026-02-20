@@ -26,14 +26,12 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.schema.ModifiableTable;
 import org.apache.calcite.schema.impl.AbstractTable;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.List;
 
 /** Abstract base class for implementations of {@link ModifiableTable}. */
 abstract class AbstractModifiableTable
     extends AbstractTable implements ModifiableTable {
-  AbstractModifiableTable(String ignoredTableName) {
+  AbstractModifiableTable(String tableName) {
     super();
   }
 
@@ -43,8 +41,8 @@ abstract class AbstractModifiableTable
       Prepare.CatalogReader catalogReader,
       RelNode child,
       TableModify.Operation operation,
-      @Nullable List<String> updateColumnList,
-      @Nullable List<RexNode> sourceExpressionList,
+      List<String> updateColumnList,
+      List<RexNode> sourceExpressionList,
       boolean flattened) {
     return LogicalTableModify.create(table, catalogReader, child, operation,
         updateColumnList, sourceExpressionList, flattened);

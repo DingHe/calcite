@@ -20,8 +20,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.math.BigInteger;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * String of bits.
@@ -209,7 +208,7 @@ public class BitString {
    * @return BitString
    */
   public static BitString createFromBytes(byte[] bytes) {
-    int bitCount = requireNonNull(bytes, "bytes").length * 8;
+    int bitCount = Objects.requireNonNull(bytes, "bytes").length * 8;
     StringBuilder sb = new StringBuilder(bitCount);
     for (byte b : bytes) {
       final String s = Integer.toBinaryString(Byte.toUnsignedInt(b));

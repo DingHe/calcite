@@ -25,7 +25,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-/**
+/** sql返回值类型推断链，根据rules的顺序，返回第一个推断返回值不为null的类型
  * Strategy to infer the type of an operator call from the type of the operands
  * by using a series of {@link SqlReturnTypeInference} rules in a given order.
  * If a rule fails to find a return type (by returning NULL), next rule is tried
@@ -53,7 +53,7 @@ public class SqlReturnTypeInferenceChain implements SqlReturnTypeInference {
 
   @Override public @Nullable RelDataType inferReturnType(SqlOperatorBinding opBinding) {
     for (SqlReturnTypeInference rule : rules) {
-      RelDataType ret = rule.inferReturnType(opBinding);
+      RelDataType ret = rule.inferReturnType(opBinding);  //遍历规则，如果rule返回的返回值类型不为null，则返回
       if (ret != null) {
         return ret;
       }

@@ -116,6 +116,7 @@ public class ChainedRelMetadataProvider implements RelMetadataProvider {
     return builder.build();
   }
 
+  //返回MetadataHandler对应的实现类
   @Override public List<MetadataHandler<?>> handlers(
       Class<? extends MetadataHandler<?>> handlerClass) {
     final ImmutableList.Builder<MetadataHandler<?>> builder =

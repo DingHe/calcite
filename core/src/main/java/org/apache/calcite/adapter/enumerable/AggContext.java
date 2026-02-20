@@ -23,7 +23,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import java.lang.reflect.Type;
 import java.util.List;
 
-/**
+/** 聚合函数计算的上下文
  * Information on the aggregate calculation context.
  * {@link AggAddContext} provides basic static information on types of arguments
  * and the return value of the aggregate being implemented.
@@ -31,7 +31,7 @@ import java.util.List;
 public interface AggContext {
   /**
    * Returns the aggregation being implemented.
-   *
+   * 需要实现的聚合函数
    * @return aggregation being implemented.
    */
   SqlAggFunction aggregation();
@@ -41,14 +41,14 @@ public interface AggContext {
    * {@link org.apache.calcite.rel.type.RelDataType}.
    * This can be helpful to test
    * {@link org.apache.calcite.rel.type.RelDataType#isNullable()}.
-   *
+   * 聚合函数的返回值关系类型
    * @return return type of the aggregate
    */
   RelDataType returnRelType();
 
   /**
    * Returns the return type of the aggregate as {@link java.lang.reflect.Type}.
-   *
+   * 聚合函数返回值的java类型
    * @return return type of the aggregate as {@link java.lang.reflect.Type}
    */
   Type returnType();
@@ -58,7 +58,7 @@ public interface AggContext {
    * {@link org.apache.calcite.rel.type.RelDataType}.
    * This can be helpful to test
    * {@link org.apache.calcite.rel.type.RelDataType#isNullable()}.
-   *
+   * 聚合函数参数的关系数据类型
    * @return Parameter types of the aggregate
    */
   List<? extends RelDataType> parameterRelTypes();
@@ -66,26 +66,26 @@ public interface AggContext {
   /**
    * Returns the parameter types of the aggregate as
    * {@link java.lang.reflect.Type}.
-   *
+   * 聚合函数参数的java类型
    * @return Parameter types of the aggregate
    */
   List<? extends Type> parameterTypes();
-
+  //聚合函数key的索引
   /** Returns the ordinals of the input fields that make up the key. */
   List<Integer> keyOrdinals();
 
-  /**
+  /** 聚合函数key的关系数据类型
    * Returns the types of the group key as
    * {@link org.apache.calcite.rel.type.RelDataType}.
    */
   List<? extends RelDataType> keyRelTypes();
 
-  /**
+  /**聚合函数key的java数据类型
    * Returns the types of the group key as
    * {@link java.lang.reflect.Type}.
    */
   List<? extends Type> keyTypes();
-
+  //分组集合
   /** Returns the grouping sets we are aggregating on. */
   List<ImmutableBitSet> groupSets();
 }

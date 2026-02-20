@@ -224,13 +224,12 @@ projectItem:
 
 tableExpression:
       tableReference [, tableReference ]*
-  |   tableExpression [ NATURAL ] [ { LEFT | RIGHT | FULL } [ OUTER ] ] [ ASOF ] JOIN tableExpression [ joinCondition ]
+  |   tableExpression [ NATURAL ] [ { LEFT | RIGHT | FULL } [ OUTER ] ] JOIN tableExpression [ joinCondition ]
   |   tableExpression CROSS JOIN tableExpression
   |   tableExpression [ CROSS | OUTER ] APPLY tableExpression
 
 joinCondition:
       ON booleanExpression
-  |   MATCH_CONDITION booleanExpression ON booleanExpression
   |   USING '(' column [, column ]* ')'
 
 tableReference:
@@ -412,28 +411,6 @@ VALUE is equivalent to VALUES,
 but is not standard SQL and is only allowed in certain
 [conformance levels]({{ site.apiRoot }}/org/apache/calcite/sql/validate/SqlConformance.html#isValueAllowed--).
 
-An "ASOF JOIN" operation combines rows from two tables based on
-comparable timestamp values.  For each row in the left table, the join
-finds at most a single row in the right table that has the "closest"
-timestamp value. The matched row on the right side is the closest
-match whose timestamp column is compared using one of the operations
-&lt;, &le;, &gt;, or &ge;, as specified by the comparison operator in
-the `MATCH_CONDITION` clause.  The comparison is performed using SQL
-semantics, which returns 'false' when comparing NULL values with any
-other values.  Thus a 'NULL' timestamp in the left table will not
-match any timestamps in the right table.
-
-ASOF JOIN statements can also be LEFT ASOF JOIN.  In this case, when there
-is no match for a row in the left table, the columns from the right table
-are null-padded.
-
-There are no RIGHT ASOF joins.
-
-SELECT *
-FROM left_table [ LEFT ] ASOF JOIN right_table
-MATCH_CONDITION ( left_table.timecol &leq; right_table.timecol )
-ON left_table.col = right_table.col
-
 ## Keywords
 
 The following is a list of SQL keywords.
@@ -465,7 +442,6 @@ ARRAY_CONCAT_AGG,
 **AS**,
 ASC,
 **ASENSITIVE**,
-**ASOF**,
 ASSERTION,
 ASSIGNMENT,
 **ASYMMETRIC**,
@@ -764,12 +740,10 @@ MAP,
 **MATCH**,
 MATCHED,
 **MATCHES**,
-**MATCH_CONDITION**,
 **MATCH_NUMBER**,
 **MATCH_RECOGNIZE**,
 **MAX**,
 MAXVALUE,
-**MEASURE**,
 **MEASURES**,
 **MEMBER**,
 **MERGE**,
@@ -1403,10 +1377,10 @@ comp:
 | LOWER(string)              | Returns a character string converted to lower case
 | POSITION(substring IN string) | Returns the position of the first occurrence of *substring* in *string*
 | POSITION(substring IN string FROM integer) | Returns the position of the first occurrence of *substring* in *string* starting at a given point (not standard SQL)
-| TRIM( { BOTH &#124; LEADING &#124; TRAILING } string1 FROM string2) | Removes the longest string containing only the characters in *string1* from the start/end/both ends of *string2*
-| OVERLAY(string1 PLACING string2 FROM integer [ FOR integer2 ]) | Replaces a substring of *string1* with *string2*, starting at the specified position *integer* in *string1* and optionally for a specified length *integer2*
-| SUBSTRING(string FROM integer)  | Returns a substring of a character string starting at a given point. If starting point is less than 1, the returned expression will begin at the first character that is specified in expression
-| SUBSTRING(string FROM integer FOR integer) | Returns a substring of a character string starting at a given point with a given length. If start point is less than 1 in this case, the number of characters that are returned is the largest value of either the start + length - 1 or 0
+| TRIM( { BOTH &#124; LEADING &#124; TRAILING } string1 FROM string2) | Removes the longest string containing only the characters in *string1* from the start/end/both ends of *string1*
+| OVERLAY(string1 PLACING string2 FROM integer [ FOR integer2 ]) | Replaces a substring of *string1* with *string2*
+| SUBSTRING(string FROM integer)  | Returns a substring of a character string starting at a given point
+| SUBSTRING(string FROM integer FOR integer) | Returns a substring of a character string starting at a given point with a given length
 | INITCAP(string)            | Returns *string* with the first letter of each word converter to upper case and the rest to lower case. Words are sequences of alphanumeric characters separated by non-alphanumeric characters.
 
 Not implemented:
@@ -1421,7 +1395,7 @@ Not implemented:
 | OCTET_LENGTH(binary) | Returns the number of bytes in *binary*
 | POSITION(binary1 IN binary2) | Returns the position of the first occurrence of *binary1* in *binary2*
 | POSITION(binary1 IN binary2 FROM integer) | Returns the position of the first occurrence of *binary1* in *binary2* starting at a given point (not standard SQL)
-| OVERLAY(binary1 PLACING binary2 FROM integer [ FOR integer2 ]) | Replaces a substring of *binary1* with *binary2*, starting at the specified position *integer* in *binary1* and optionally for a specified length *integer2*
+| OVERLAY(binary1 PLACING binary2 FROM integer [ FOR integer2 ]) | Replaces a substring of *binary1* with *binary2*
 | SUBSTRING(binary FROM integer) | Returns a substring of *binary* starting at a given point
 | SUBSTRING(binary FROM integer FOR integer) | Returns a substring of *binary* starting at a given point with a given length
 
@@ -2671,10 +2645,6 @@ Note:
 | jsonValue IS JSON ARRAY           | Whether *jsonValue* is a JSON array
 | jsonValue IS NOT JSON ARRAY       | Whether *jsonValue* is not a JSON array
 
-Note:
-
-* If the *jsonValue* is `NULL`, the function will return `NULL`.
-
 ### Dialect-specific Operators
 
 The following operators are not in the SQL standard, and are not enabled in
@@ -2719,9 +2689,7 @@ In the following:
 |:- |:-----------------------------------------------|:-----------
 | p | expr :: type                                   | Casts *expr* to *type*
 | m | expr1 <=> expr2                                | Whether two values are equal, treating null values as the same, and it's similar to `IS NOT DISTINCT FROM`
-| p | ACOSD(numeric)                                 | Returns the inverse cosine of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN. Fails if *numeric* is less than -1.0 or greater than 1.0.
 | * | ACOSH(numeric)                                 | Returns the inverse hyperbolic cosine of *numeric*
-| o s | ADD_MONTHS(date, numMonths)                  | Returns the date that is *numMonths* after *date*
 | s | ARRAY([expr [, expr ]*])                       | Construct an array in Apache Spark. The function allows users to use `ARRAY()` to create an empty array
 | s | ARRAY_APPEND(array, element)                   | Appends an *element* to the end of the *array* and returns the result. Type of *element* should be similar to type of the elements of the *array*. If the *array* is null, the function will return null. If an *element* that is null, the null *element* will be added to the end of the *array*
 | s | ARRAY_COMPACT(array)                           | Removes null values from the *array*
@@ -2746,20 +2714,10 @@ In the following:
 | s | ARRAYS_OVERLAP(array1, array2)                 | Returns true if *array1 contains at least a non-null element present also in *array2*. If the arrays have no common element and they are both non-empty and either of them contains a null element null is returned, false otherwise
 | s | ARRAYS_ZIP(array [, array ]*)                  | Returns a merged *array* of structs in which the N-th struct contains all N-th values of input arrays
 | s | SORT_ARRAY(array [, ascendingOrder])           | Sorts the *array* in ascending or descending order according to the natural ordering of the array elements. The default order is ascending if *ascendingOrder* is not specified. Null elements will be placed at the beginning of the returned array in ascending order or at the end of the returned array in descending order
-| p | ASIND(numeric)                                 | Returns the inverse sine of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN. Fails if *numeric* is less than -1.0 or greater than 1.0.
 | * | ASINH(numeric)                                 | Returns the inverse hyperbolic sine of *numeric*
-| p | ATAND(numeric)                                 | Returns the inverse tangent of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN.
 | * | ATANH(numeric)                                 | Returns the inverse hyperbolic tangent of *numeric*
-| * | BITAND(value1, value2)                         | Returns the bitwise AND of *value1* and *value2*. *value1* and *value2* must both be integer or binary values. Binary values must be of the same length.
-| * | BITOR(value1, value2)                          | Returns the bitwise OR of *value1* and *value2*. *value1* and *value2* must both be integer or binary values. Binary values must be of the same length.
-| * | BITXOR(value1, value2)                         | Returns the bitwise XOR of *value1* and *value2*. *value1* and *value2* must both be integer or binary values. Binary values must be of the same length.
-| * | BITNOT(value)                                  | Returns the bitwise NOT of *value*. *value* must be either an integer type or a binary value.
 | f | BITAND_AGG(value)                              | Equivalent to `BIT_AND(value)`
 | f | BITOR_AGG(value)                               | Equivalent to `BIT_OR(value)`
-| * | BITCOUNT(value)                                | Returns the bitwise COUNT of *value* or NULL if *value* is NULL. *value* must be and integer or binary value.
-| b s | BIT_COUNT(integer)                           | Returns the bitwise COUNT of *integer* or NULL if *integer* is NULL
-| m | BIT_COUNT(numeric)                             | Returns the bitwise COUNT of the integer portion of *numeric* or NULL if *numeric* is NULL
-| b m s | BIT_COUNT(binary)                          | Returns the bitwise COUNT of *binary* or NULL if *binary* is NULL
 | s | BIT_LENGTH(binary)                             | Returns the bit length of *binary*
 | s | BIT_LENGTH(string)                             | Returns the bit length of *string*
 | s | BIT_GET(value, position)                       | Returns the bit (0 or 1) value at the specified *position* of numeric *value*. The positions are numbered from right to left, starting at zero. The *position* argument cannot be negative
@@ -2771,15 +2729,13 @@ In the following:
 | o r | CONCAT(string, string)                       | Concatenates two strings, returns null only when both string arguments are null, otherwise treats null as empty string
 | b m | CONCAT(string [, string ]*)                  | Concatenates one or more strings, returns null if any of the arguments is null
 | p q | CONCAT(string [, string ]*)                  | Concatenates one or more strings, null is treated as empty string
-| m | CONCAT_WS(separator, str1 [, string ]*)        | Concatenates one or more strings, returns null only when separator is null, otherwise treats null arguments as empty strings
-| p | CONCAT_WS(separator, any [, any ]*)            | Concatenates all but the first argument, returns null only when separator is null, otherwise treats null arguments as empty strings
+| m p | CONCAT_WS(separator, str1 [, string ]*)      | Concatenates one or more strings, returns null only when separator is null, otherwise treats null arguments as empty strings
 | q | CONCAT_WS(separator, str1, str2 [, string ]*)  | Concatenates two or more strings, requires at least 3 arguments (up to 254), treats null arguments as empty strings
-| s | CONCAT_WS(separator [, string | array(string)]*)  | Concatenates one or more strings or arrays. Besides the separator, other arguments can include strings or string arrays. returns null only when separator is null, treats other null arguments as empty strings
+| s | CONCAT_WS(separator [, string | array(string)]+)  | Concatenates one or more strings or arrays. Besides the separator, other arguments can include strings or string arrays. returns null only when separator is null, treats other null arguments as empty strings
 | m | COMPRESS(string)                               | Compresses a string using zlib compression and returns the result as a binary string
 | b | CONTAINS_SUBSTR(expression, string [ , json_scope =&gt; json_scope_value ]) | Returns whether *string* exists as a substring in *expression*. Optional *json_scope* argument specifies what scope to search if *expression* is in JSON format. Returns NULL if a NULL exists in *expression* that does not result in a match
 | q | CONVERT(type, expression [ , style ])          | Equivalent to `CAST(expression AS type)`; ignores the *style* operand
 | p r | CONVERT_TIMEZONE(tz1, tz2, datetime)         | Converts the timezone of *datetime* from *tz1* to *tz2*
-| p | COSD(numeric)                                  | Returns the cosine of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN. Fails if *numeric* is greater than the maximum double value.
 | * | COSH(numeric)                                  | Returns the hyperbolic cosine of *numeric*
 | * | COTH(numeric)                                  | Returns the hyperbolic cotangent of *numeric*
 | * | CSC(numeric)                                   | Returns the cosecant of *numeric* in radians
@@ -2805,7 +2761,6 @@ In the following:
 | b s | DATE_FROM_UNIX_DATE(integer)                 | Returns the DATE that is *integer* days after 1970-01-01
 | p r | DATE_PART(timeUnit, datetime)                | Equivalent to `EXTRACT(timeUnit FROM  datetime)`
 | b | DATE_ADD(date, interval)                       | Returns the DATE value that occurs *interval* after *date*
-| s | DATE_ADD(date, numDays)                        | Returns the DATE that is *numDays* after *date*
 | b | DATE_DIFF(date, date2, timeUnit)               | Returns the whole number of *timeUnit* between *date* and *date2*
 | b | DATE_SUB(date, interval)                       | Returns the DATE value that occurs *interval* before *date*
 | b | DATE_TRUNC(date, timeUnit)                     | Truncates *date* to the granularity of *timeUnit*, rounding to the beginning of the unit
@@ -2848,14 +2803,12 @@ In the following:
 | m | JSON_STORAGE_SIZE(jsonValue)                   | Returns the number of bytes used to store the binary representation of *jsonValue*
 | b o p r s | LEAST(expr [, expr ]* )                | Returns the least of the expressions
 | b m p r s | LEFT(string, length)                   | Returns the leftmost *length* characters from the *string*
-| f r s | LEN(string)                                | Equivalent to `CHAR_LENGTH(string)`
-| b f h p r s | LENGTH(string)                       | Equivalent to `CHAR_LENGTH(string)`
+| f s | LEN(string)                                  | Equivalent to `CHAR_LENGTH(string)`
+| b f s | LENGTH(string)                             | Equivalent to `CHAR_LENGTH(string)`
 | h s | LEVENSHTEIN(string1, string2)                | Returns the Levenshtein distance between *string1* and *string2*
-| b | LOG(numeric1 [, base ])                        | Returns the logarithm of *numeric1* to base *base*, or base e if *base* is not present, or error if *numeric1* is 0 or negative
-| m s | LOG([, base ], numeric1)                     | Returns the logarithm of *numeric1* to base *base*, or base e if *base* is not present, or null if *numeric1* is 0 or negative
-| p | LOG([, base ], numeric1 )                      | Returns the logarithm of *numeric1* to base *base*, or base 10 if *numeric1* is not present, or error if *numeric1* is 0 or negative
+| b | LOG(numeric1 [, numeric2 ])                    | Returns the logarithm of *numeric1* to base *numeric2*, or base e if *numeric2* is not present
+| m s | LOG(numeric1 [, numeric2 ])                  | Returns the logarithm of *numeric1* to base *numeric2*, or base e if *numeric2* is not present, or null if *numeric1* is 0 or negative
 | m s | LOG2(numeric)                                | Returns the base 2 logarithm of *numeric*
-| s | LOG1P(numeric)                                 | Returns the natural logarithm of 1 plus *numeric*
 | b o p r s | LPAD(string, length [, pattern ])      | Returns a string or bytes value that consists of *string* prepended to *length* with *pattern*
 | b | TO_BASE32(string)                              | Converts the *string* to base-32 encoded form and returns an encoded string
 | b | FROM_BASE32(string)                            | Returns the decoded result of a base-32 *string* as a string
@@ -2874,7 +2827,6 @@ In the following:
 | s | MAP_FROM_ARRAYS(array1, array2)                | Returns a map created from an *array1* and *array2*. Note that the lengths of two arrays should be the same and calcite is using the LAST_WIN strategy
 | s | MAP_FROM_ENTRIES(arrayOfRows)                  | Returns a map created from an arrays of row with two fields. Note that the number of fields in a row must be 2. Note that calcite is using the LAST_WIN strategy
 | s | STR_TO_MAP(string [, stringDelimiter [, keyValueDelimiter]]) | Returns a map after splitting the *string* into key/value pairs using delimiters. Default delimiters are ',' for *stringDelimiter* and ':' for *keyValueDelimiter*. Note that calcite is using the LAST_WIN strategy
-| s | SUBSTRING_INDEX(string, delim, count)          | Returns the substring from *string* before *count* occurrences of the delimiter *delim*. If *count* is positive, everything to the left of the final delimiter (counting from the left) is returned. If *count* is negative, everything to the right of the final delimiter (counting from the right) is returned. The function substring_index performs a case-sensitive match when searching for *delim*.
 | b m p r s | MD5(string)                            | Calculates an MD5 128-bit checksum of *string* and returns it as a hex string
 | m | MONTHNAME(date)                                | Returns the name, in the connection's locale, of the month in *datetime*; for example, it returns '二月' for both DATE '2020-02-10' and TIMESTAMP '2020-02-10 10:10:10'
 | o r s | NVL(value1, value2)                        | Returns *value1* if *value1* is not null, otherwise *value2*
@@ -2895,13 +2847,10 @@ In the following:
 | b | REGEXP_EXTRACT_ALL(string, regexp)             | Returns an array of all substrings in *string* that matches the *regexp*. Returns an empty array if there is no match
 | b | REGEXP_INSTR(string, regexp [, position [, occurrence [, occurrence_position]]]) | Returns the lowest 1-based position of the substring in *string* that matches the *regexp*, starting search at *position* (default 1), and until locating the nth *occurrence* (default 1). Setting occurrence_position (default 0) to 1 returns the end position of substring + 1. Returns 0 if there is no match
 | m o p r s | REGEXP_LIKE(string, regexp [, flags])  | Equivalent to `string1 RLIKE string2` with an optional parameter for search flags. Supported flags are: <ul><li>i: case-insensitive matching</li><li>c: case-sensitive matching</li><li>n: newline-sensitive matching</li><li>s: non-newline-sensitive matching</li><li>m: multi-line</li></ul>
-| r | REGEXP_REPLACE(string, regexp)                 | Replaces all substrings of *string* that match *regexp* with the empty string
 | b m o r | REGEXP_REPLACE(string, regexp, rep [, pos [, occurrence [, matchType]]]) | Replaces all substrings of *string* that match *regexp* with *rep* at the starting *pos* in expr (if omitted, the default is 1), *occurrence* specifies which occurrence of a match to search for (if omitted, the default is 1), *matchType* specifies how to perform matching
-| p | REGEXP_REPLACE(string, regexp, rep [, matchType]) | Replaces substrings of *string* that match *regexp* with *rep* at the starting *pos* in expr, *matchType* specifies how to perform matching and whether to only replace first match or all
 | b | REGEXP_SUBSTR(string, regexp [, position [, occurrence]]) | Synonym for REGEXP_EXTRACT
 | b m p r s | REPEAT(string, integer)                | Returns a string consisting of *string* repeated of *integer* times; returns an empty string if *integer* is less than 1
 | b m | REVERSE(string)                              | Returns *string* with the order of the characters reversed
-| s | REVERSE(string | array)                        | Returns *string* with the characters in reverse order or array with elements in reverse order
 | b m p r s | RIGHT(string, length)                  | Returns the rightmost *length* characters from the *string*
 | h m s | string1 RLIKE string2                      | Whether *string1* matches regex pattern *string2* (similar to `LIKE`, but uses Java regex)
 | h m s | string1 NOT RLIKE string2                  | Whether *string1* does not match regex pattern *string2* (similar to `NOT LIKE`, but uses Java regex)
@@ -2920,7 +2869,6 @@ In the following:
 | b m p r s | SHA1(string)                           | Calculates a SHA-1 hash value of *string* and returns it as a hex string
 | b p | SHA256(string)                               | Calculates a SHA-256 hash value of *string* and returns it as a hex string
 | b p | SHA512(string)                               | Calculates a SHA-512 hash value of *string* and returns it as a hex string
-| p | SIND(numeric)                                  | Returns the sine of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN. Fails if *numeric* is greater than the maximum double value.
 | * | SINH(numeric)                                  | Returns the hyperbolic sine of *numeric*
 | b m o p r | SOUNDEX(string)                        | Returns the phonetic representation of *string*; throws if *string* is encoded with multi-byte encoding such as UTF-8
 | s | SOUNDEX(string)                                | Returns the phonetic representation of *string*; return original *string* if *string* is encoded with multi-byte encoding such as UTF-8
@@ -2931,7 +2879,6 @@ In the following:
 | m | STRCMP(string, string)                         | Returns 0 if both of the strings are same and returns -1 when the first argument is smaller than the second and 1 when the second one is smaller than the first one
 | b r p | STRPOS(string, substring)                  | Equivalent to `POSITION(substring IN string)`
 | b m o p r | SUBSTR(string, position [, substringLength ]) | Returns a portion of *string*, beginning at character *position*, *substringLength* characters long. SUBSTR calculates lengths using characters as defined by the input character set
-| p | TAND(numeric)                                  | Returns the tangent of *numeric* in degrees as a double. Returns NaN if *numeric* is NaN. Fails if *numeric is greater than the maximum double value.
 | * | TANH(numeric)                                  | Returns the hyperbolic tangent of *numeric*
 | b | TIME(hour, minute, second)                     | Returns a TIME value *hour*, *minute*, *second* (all of type INTEGER)
 | b | TIME(timestamp)                                | Extracts the TIME from *timestamp* (a local time; BigQuery's DATETIME type)

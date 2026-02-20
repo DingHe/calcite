@@ -93,5 +93,6 @@ public interface RelMetadataProvider {
    * <p>The behavior is undefined if the class hierarchy for dispatching is not
    * a tree.
    */
+  //返回MetadataHandler对应的实现类
   List<MetadataHandler<?>> handlers(Class<? extends MetadataHandler<?>> handlerClass);
 }

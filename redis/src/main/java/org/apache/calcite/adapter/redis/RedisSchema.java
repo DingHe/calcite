@@ -35,8 +35,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Schema mapped onto a set of URLs / HTML tables. Each table in the schema
  * is an HTML table on a URL.
@@ -47,6 +45,7 @@ class RedisSchema extends AbstractSchema {
   public final int database;
   public final String password;
   public final List<Map<String, Object>> tables;
+  private Map<String, Table> tableMap = null;
 
   RedisSchema(String host,
       int port,
@@ -64,9 +63,11 @@ class RedisSchema extends AbstractSchema {
     JsonCustomTable[] jsonCustomTables = new JsonCustomTable[tables.size()];
     Set<String> tableNames = Arrays.stream(tables.toArray(jsonCustomTables))
         .map(e -> e.name).collect(Collectors.toSet());
-    return Maps.asMap(ImmutableSet.copyOf(tableNames),
-        CacheBuilder.newBuilder()
-            .build(CacheLoader.from(this::table)));
+    tableMap =
+        Maps.asMap(ImmutableSet.copyOf(tableNames),
+            CacheBuilder.newBuilder()
+                .build(CacheLoader.from(this::table)));
+    return tableMap;
   }
 
   private Table table(String tableName) {
@@ -77,15 +78,13 @@ class RedisSchema extends AbstractSchema {
   public RedisTableFieldInfo getTableFieldInfo(String tableName) {
     RedisTableFieldInfo tableFieldInfo = new RedisTableFieldInfo();
     List<LinkedHashMap<String, Object>> fields = new ArrayList<>();
+    Map<String, Object> map;
     String dataFormat = "";
     String keyDelimiter = "";
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    List<JsonCustomTable> jsonCustomTables =
-        (List<JsonCustomTable>) (List) this.tables;
-    for (JsonCustomTable jsonCustomTable : jsonCustomTables) {
+    for (int i = 0; i < this.tables.size(); i++) {
+      JsonCustomTable jsonCustomTable = (JsonCustomTable) this.tables.get(i);
       if (jsonCustomTable.name.equals(tableName)) {
-        Map<String, Object> map =
-            requireNonNull(jsonCustomTable.operand, "operand");
+        map = jsonCustomTable.operand;
         if (map.get("dataFormat") == null) {
           throw new RuntimeException("dataFormat is null");
         }

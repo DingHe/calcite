@@ -28,9 +28,11 @@ import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.RelFactories;
 
+import org.checkerframework.checker.nullness.qual.Nullable;
+
 import static java.util.Objects.requireNonNull;
 
-/**
+/** 适用于内存中数据处理，将查询转换为可遍历的集合，适合小规模或内存中的查询执行
  * Family of calling conventions that return results as an
  * {@link org.apache.calcite.linq4j.Enumerable}.
  */
@@ -53,7 +55,7 @@ public enum EnumerableConvention implements Convention {
     return "ENUMERABLE";
   }
 
-  @Override public RelNode enforce(
+  @Override public @Nullable RelNode enforce(
       final RelNode input,
       final RelTraitSet required) {
     RelNode rel = input;

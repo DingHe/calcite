@@ -138,6 +138,7 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static org.apache.calcite.test.Matchers.hasFieldNames;
 import static org.apache.calcite.test.Matchers.isAlmost;
 import static org.apache.calcite.test.Matchers.sortsAs;
+import static org.apache.calcite.test.Matchers.within;
 
 import static org.hamcrest.CoreMatchers.anyOf;
 import static org.hamcrest.CoreMatchers.endsWith;
@@ -149,9 +150,9 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.CoreMatchers.startsWith;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.hasToString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -292,10 +293,8 @@ public class RelMetadataTest {
     final RelNode calc = planner.findBestExp();
     final RelMetadataQuery mq = calc.getCluster().getMetadataQuery();
     final RelColumnOrigin nameColumn = mq.getColumnOrigin(calc, 0);
-    assertThat(nameColumn, notNullValue());
     assertThat(nameColumn.getOriginColumnOrdinal(), is(1));
     final RelColumnOrigin deptnoColumn = mq.getColumnOrigin(calc, 1);
-    assertThat(deptnoColumn, notNullValue());
     assertThat(deptnoColumn.getOriginColumnOrdinal(), is(0));
   }
 
@@ -312,7 +311,6 @@ public class RelMetadataTest {
     final RelNode rel = planner.findBestExp();
     final RelMetadataQuery mq = rel.getCluster().getMetadataQuery();
     final RelColumnOrigin allSal = mq.getColumnOrigin(rel, 1);
-    assertThat(allSal, notNullValue());
     assertThat(allSal.getOriginColumnOrdinal(), is(5));
   }
 
@@ -790,23 +788,6 @@ public class RelMetadataTest {
     sql(sql).assertThatRowCount(is(1D), is(0D), is(1D));
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6474">[CALCITE-6474]
-   * Aggregate with constant key can get a RowCount greater than its MaxRowCount </a>. */
-  @Test void testRowCountAggregateConstantKeysOnBigInput() {
-    final String sql = ""
-        + "select distinct deptno from ("
-        + "select deptno from emp e1 union all "
-        + "select deptno from emp e2 union all "
-        + "select deptno from emp e3 union all "
-        + "select deptno from emp e4 union all "
-        + "select deptno from emp e5 union all "
-        + "select deptno from emp e6 union all "
-        + "select deptno from emp e7"
-        + ") where deptno=4";
-    sql(sql).assertThatRowCount(is(1D), is(0D), is(1D));
-  }
-
   @Test void testRowCountFilterAggregateEmptyKey() {
     final String sql = "select count(*) from emp where 1 = 0";
     sql(sql).assertThatRowCount(is(1D), is(1D), is(1D));
@@ -958,7 +939,6 @@ public class RelMetadataTest {
     final RelNode rel = sql("select * from emp").toRel();
     final RelMetadataProvider metadataProvider =
         rel.getCluster().getMetadataProvider();
-    assertThat(metadataProvider, notNullValue());
     for (int i = 0; i < iterationCount; i++) {
       RelMetadataProvider wrappedProvider = new RelMetadataProvider() {
         @Deprecated // to be removed before 2.0
@@ -981,7 +961,7 @@ public class RelMetadataTest {
       RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(wrappedProvider));
       final RelMetadataQuery mq = rel.getCluster().getMetadataQuery();
       final Double result = mq.getRowCount(rel);
-      assertThat(result, closeTo(14d, 0.1d));
+      assertThat(result, within(14d, 0.1d));
     }
   }
 
@@ -1890,10 +1870,8 @@ public class RelMetadataTest {
 
     // Top node is a filter. Its metadata uses getColType(RelNode, int).
     assertThat(rel, instanceOf(LogicalFilter.class));
-    assertThat(rel.getCluster().getMetadataQuery(),
-        instanceOf(MyRelMetadataQuery.class));
-    final MyRelMetadataQuery mq =
-        (MyRelMetadataQuery) rel.getCluster().getMetadataQuery();
+    assertThat(rel.getCluster().getMetadataQuery(), instanceOf(MyRelMetadataQuery.class));
+    final MyRelMetadataQuery mq = (MyRelMetadataQuery) rel.getCluster().getMetadataQuery();
     assertThat(colType(mq, rel, 0), equalTo("DEPTNO-rel"));
     assertThat(colType(mq, rel, 1), equalTo("EXPR$1-rel"));
 
@@ -1922,10 +1900,8 @@ public class RelMetadataTest {
 
     // Invalidate the metadata query triggers clearing of all the metadata.
     rel.getCluster().invalidateMetadataQuery();
-    assertThat(rel.getCluster().getMetadataQuery(),
-        instanceOf(MyRelMetadataQuery.class));
-    final MyRelMetadataQuery mq1 =
-        (MyRelMetadataQuery) rel.getCluster().getMetadataQuery();
+    assertThat(rel.getCluster().getMetadataQuery(), instanceOf(MyRelMetadataQuery.class));
+    final MyRelMetadataQuery mq1 = (MyRelMetadataQuery) rel.getCluster().getMetadataQuery();
     assertThat(colType(mq1, input, 0), equalTo("DEPTNO-agg"));
     if (metadataConfig.isCaching()) {
       assertThat(buf, hasSize(5));
@@ -1969,7 +1945,7 @@ public class RelMetadataTest {
     final RelMetadataQuery mq = result.getCluster().getMetadataQuery();
     final ImmutableList<RelCollation> collations = mq.collations(result);
     assertThat(collations, notNullValue());
-    assertThat(collations, hasToString("[[0]]"));
+    assertEquals("[[0]]", collations.toString());
   }
 
   /**
@@ -2009,7 +1985,7 @@ public class RelMetadataTest {
     assertThat(relNode, instanceOf(Project.class));
     final ImmutableList<RelCollation> collations = mq.collations(relNode);
     assertThat(collations, notNullValue());
-    assertThat(collations, hasToString(expectedCollation));
+    assertEquals(expectedCollation, collations.toString());
   }
 
   /** Unit test for
@@ -2021,9 +1997,7 @@ public class RelMetadataTest {
     final Project rel = (Project) sql("select * from emp, dept").toRel();
     final Join join = (Join) rel.getInput();
     final RelOptTable empTable = join.getInput(0).getTable();
-    assertThat(empTable, notNullValue());
     final RelOptTable deptTable = join.getInput(1).getTable();
-    assertThat(deptTable, notNullValue());
     Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
       metadataConfig.applyMetadata(cluster);
       checkCollation(cluster, empTable, deptTable);
@@ -2228,9 +2202,7 @@ public class RelMetadataTest {
     final Project rel = (Project) sql("select * from emp, dept").toRel();
     final Join join = (Join) rel.getInput();
     final RelOptTable empTable = join.getInput(0).getTable();
-    assertThat(empTable, notNullValue());
     final RelOptTable deptTable = join.getInput(1).getTable();
-    assertThat(deptTable, notNullValue());
     Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
       checkAverageRowSize(cluster, empTable, deptTable);
       return null;
@@ -2247,8 +2219,8 @@ public class RelMetadataTest {
     Double rowSize = mq.getAverageRowSize(empScan);
     List<Double> columnSizes = mq.getAverageColumnSizes(empScan);
 
-    assertThat(columnSizes,
-        hasSize(empScan.getRowType().getFieldCount()));
+    assertThat(columnSizes.size(),
+        equalTo(empScan.getRowType().getFieldCount()));
     assertThat(columnSizes,
         equalTo(Arrays.asList(4.0, 40.0, 20.0, 4.0, 8.0, 4.0, 4.0, 4.0, 1.0)));
     assertThat(rowSize, equalTo(89.0));
@@ -2258,8 +2230,8 @@ public class RelMetadataTest {
         LogicalValues.createEmpty(cluster, empTable.getRowType());
     rowSize = mq.getAverageRowSize(emptyValues);
     columnSizes = mq.getAverageColumnSizes(emptyValues);
-    assertThat(columnSizes,
-        hasSize(emptyValues.getRowType().getFieldCount()));
+    assertThat(columnSizes.size(),
+        equalTo(emptyValues.getRowType().getFieldCount()));
     assertThat(columnSizes,
         equalTo(Arrays.asList(4.0, 40.0, 20.0, 4.0, 8.0, 4.0, 4.0, 4.0, 1.0)));
     assertThat(rowSize, equalTo(89.0));
@@ -2279,8 +2251,8 @@ public class RelMetadataTest {
         LogicalValues.create(cluster, rowType, tuples.build());
     rowSize = mq.getAverageRowSize(values);
     columnSizes = mq.getAverageColumnSizes(values);
-    assertThat(columnSizes,
-        hasSize(values.getRowType().getFieldCount()));
+    assertThat(columnSizes.size(),
+        equalTo(values.getRowType().getFieldCount()));
     assertThat(columnSizes, equalTo(Arrays.asList(4.0, 8.0, 3.0)));
     assertThat(rowSize, equalTo(15.0));
 
@@ -2374,9 +2346,7 @@ public class RelMetadataTest {
     final Project rel = (Project) sql("select * from emp, dept").toRel();
     final Join join = (Join) rel.getInput();
     final RelOptTable empTable = join.getInput(0).getTable();
-    assertThat(empTable, notNullValue());
     final RelOptTable deptTable = join.getInput(1).getTable();
-    assertThat(deptTable, notNullValue());
     Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
       checkPredicates(cluster, empTable, deptTable);
       return null;
@@ -2594,88 +2564,6 @@ public class RelMetadataTest {
         anyOf(sortsAs("[=($0, 1), OR(AND(=($1, 2), =($2, 3)), =($1, 4))]"),
             sortsAs("[=($0, 1), OR(AND(=($2, 3), =($1, 2)), =($1, 4))]")));
 
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6599">[CALCITE-6599]
-   * RelMdPredicates should pull up more predicates from VALUES
-   * when there are several literals</a>. */
-  @Test void testPullUpPredicatesFromValues1() {
-    final String sql = "values(1, 2, 3)";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates,
-        sortsAs("[=($0, 1), =($1, 2), =($2, 3)]"));
-  }
-
-  @Test void testPullUpPredicatesFromValues2() {
-    final String sql = "values(cast(null as integer), null)";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates, sortsAs("[IS NULL($0), IS NULL($1)]"));
-  }
-
-  @Test void testPullUpPredicatesFromValues3() {
-    final String sql = "values(1, 2, 3, null)";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates,
-        sortsAs("[=($0, 1), =($1, 2), =($2, 3), IS NULL($3)]"));
-  }
-
-  @Test void testPullUpPredicatesFromValues4() {
-    final String sql = "values(1, 2, 3, null), (1, 2, null, null), (5, 2, 3, null)";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates,
-        sortsAs("[=($1, 2), IS NULL($3), "
-            + "SEARCH($0, Sarg[1, 5]), SEARCH($2, Sarg[3; NULL AS TRUE])]"));
-  }
-
-  @Test void testPullUpPredicatesFromValues5() {
-    final String sql =
-        "values(TIMESTAMP '2005-01-03 12:34:56',\n"
-            + "TIMESTAMP WITH LOCAL TIME ZONE '2012-12-30 12:30:00',\n"
-            + "DATE '2005-01-03',\n"
-            + "TIME '12:34:56.7')";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates,
-        sortsAs("[=($0, 2005-01-03 12:34:56), "
-            + "=($1, 2012-12-30 12:30:00), "
-            + "=($2, 2005-01-03), "
-            + "=($3, 12:34:56.7)]"));
-  }
-
-  @Test void testPullUpPredicatesFromValues6() {
-    final String sql =
-        "values(TIMESTAMP '2005-01-03 12:34:56',\n"
-            + "TIMESTAMP WITH LOCAL TIME ZONE '2012-12-30 12:30:00',\n"
-            + "DATE '2005-01-03',\n"
-            + "TIME '12:34:56.7'), (TIMESTAMP '2005-01-03 12:35:56',\n"
-            + "TIMESTAMP WITH LOCAL TIME ZONE '2012-11-30 12:30:00',\n"
-            + "DATE '2005-01-04',\n"
-            + "TIME '12:35:56.7')";
-    final Values values = (Values) sql(sql).toRel();
-    final RelMetadataQuery mq = values.getCluster().getMetadataQuery();
-    RelOptPredicateList inputSet = mq.getPulledUpPredicates(values);
-    ImmutableList<RexNode> pulledUpPredicates = inputSet.pulledUpPredicates;
-    assertThat(pulledUpPredicates,
-        sortsAs("[SEARCH($0, Sarg[2005-01-03 12:34:56, 2005-01-03 12:35:56]), "
-            + "SEARCH($1, Sarg[2012-11-30 12:30:00:TIMESTAMP_WITH_LOCAL_TIME_ZONE(0), "
-            + "2012-12-30 12:30:00:TIMESTAMP_WITH_LOCAL_TIME_ZONE(0)]:TIMESTAMP_WITH_LOCAL_TIME_ZONE(0)), "
-            + "SEARCH($2, Sarg[2005-01-03, 2005-01-04]), "
-            + "SEARCH($3, Sarg[12:34:56.7:TIME(1), 12:35:56.7:TIME(1)]:TIME(1))]"));
   }
 
   @Test void testPullUpPredicatesFromIntersect0() {
@@ -3182,9 +3070,7 @@ public class RelMetadataTest {
     final Project rel = (Project) sql("select * from emp, dept").toRel();
     final Join join = (Join) rel.getInput();
     final RelOptTable empTable = join.getInput(0).getTable();
-    assertThat(empTable, notNullValue());
     final RelOptTable deptTable = join.getInput(1).getTable();
-    assertThat(deptTable, notNullValue());
     Frameworks.withPlanner((cluster, relOptSchema, rootSchema) -> {
       checkAllPredicates(cluster, empTable, deptTable);
       return null;
@@ -3280,7 +3166,7 @@ public class RelMetadataTest {
     assertThat(call.getOperands(), hasSize(2));
     final RexTableInputRef inputRef1 =
         (RexTableInputRef) call.getOperands().get(0);
-    assertThat(inputRef1.getQualifiedName(), is(EMP_QNAME));
+    assertTrue(inputRef1.getQualifiedName().equals(EMP_QNAME));
     assertThat(inputRef1.getIndex(), is(0));
     final RexLiteral constant = (RexLiteral) call.getOperands().get(1);
     assertThat(constant, hasToString("5"));
@@ -3699,8 +3585,8 @@ public class RelMetadataTest {
     final String sql = "select * from emp order by ename limit 10";
     sql(sql)
         .assertThatNodeTypeCountIs(TableScan.class, 1,
-            Project.class, 1,
-            Sort.class, 1);
+        Project.class, 1,
+        Sort.class, 1);
   }
 
   @Test void testNodeTypeCountSortLimitOffset() {
@@ -3817,7 +3703,7 @@ public class RelMetadataTest {
     Double popSize =
         populationSize.getPopulationSize((Values) rel, rel.getCluster().getMetadataQuery(),
             bitSetOf(0, 1, 2));
-    assertThat(popSize, is(2.0));
+    assertEquals(2.0, popSize);
 
     // If we use a custom RelMetadataQuery and override the row count, the population size
     // should be half the reported row count. In this case we will have the RelMetadataQuery say
@@ -3829,7 +3715,7 @@ public class RelMetadataTest {
     };
 
     popSize = populationSize.getPopulationSize((Values) rel, customQuery, bitSetOf(0, 1, 2));
-    assertThat(popSize, is(6.0));
+    assertEquals(6.0, popSize);
   }
 
   private static final SqlOperator NONDETERMINISTIC_OP =
@@ -3864,13 +3750,13 @@ public class RelMetadataTest {
         .scan("EMP")
         .scan("DEPT")
         .join(JoinRelType.INNER,
-            builder.call(SqlStdOperatorTable.EQUALS,
-                builder.field(2, 0, 0),
-                builder.field(2, 1, 0)))
+          builder.call(SqlStdOperatorTable.EQUALS,
+            builder.field(2, 0, 0),
+            builder.field(2, 1, 0)))
         .build();
     assertThat(mq.getPulledUpPredicates(join1)
-            .pulledUpPredicates
-            .get(0),
+        .pulledUpPredicates
+        .get(0),
         hasToString("=($0, $8)"));
   }
 
@@ -3886,9 +3772,9 @@ public class RelMetadataTest {
     RelNode filter1 = builder
         .scan("EMP")
         .filter(
-            builder.call(SqlStdOperatorTable.EQUALS,
-                builder.field(1, 0, 0),
-                builder.field(1, 0, 1)))
+          builder.call(SqlStdOperatorTable.EQUALS,
+            builder.field(1, 0, 0),
+            builder.field(1, 0, 1)))
         .build();
     assertThat(mq.getPulledUpPredicates(filter1)
             .pulledUpPredicates

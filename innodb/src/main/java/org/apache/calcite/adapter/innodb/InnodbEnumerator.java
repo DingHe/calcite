@@ -26,8 +26,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import com.alibaba.innodb.java.reader.page.index.GenericRecord;
 import com.alibaba.innodb.java.reader.util.Utils;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -41,7 +39,7 @@ import java.util.TimeZone;
  */
 class InnodbEnumerator implements Enumerator<Object> {
   private final Iterator<GenericRecord> iterator;
-  private @Nullable GenericRecord current;
+  private GenericRecord current;
   private final List<RelDataTypeField> fieldTypes;
 
   /**
@@ -78,10 +76,7 @@ class InnodbEnumerator implements Enumerator<Object> {
   /**
    * Get a field for the current row from the underlying object.
    */
-  private @Nullable Object currentRowField(RelDataTypeField relDataTypeField) {
-    if (current == null) {
-      throw new IllegalStateException();
-    }
+  private Object currentRowField(RelDataTypeField relDataTypeField) {
     final Object o = current.get(relDataTypeField.getName());
     return convertToEnumeratorObject(o, relDataTypeField.getType());
   }
@@ -92,8 +87,7 @@ class InnodbEnumerator implements Enumerator<Object> {
    * @param obj         object to convert, if needed
    * @param relDataType data type
    */
-  private static @Nullable Object convertToEnumeratorObject(
-      @Nullable Object obj, RelDataType relDataType) {
+  private static Object convertToEnumeratorObject(Object obj, RelDataType relDataType) {
     if (obj == null) {
       return null;
     }
@@ -137,12 +131,18 @@ class InnodbEnumerator implements Enumerator<Object> {
   }
 
   private static Timestamp shift(Timestamp v) {
+    if (v == null) {
+      return null;
+    }
     long time = v.getTime();
     int offset = TimeZone.getDefault().getOffset(time);
     return new Timestamp(time + offset);
   }
 
   private static Time shift(Time v) {
+    if (v == null) {
+      return null;
+    }
     long time = v.getTime();
     int offset = TimeZone.getDefault().getOffset(time);
     return new Time((time + offset) % DateTimeUtils.MILLIS_PER_DAY);

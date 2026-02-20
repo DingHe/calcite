@@ -34,7 +34,7 @@ public interface AggImplementor {
   /**
    * Returns the types of the intermediate variables used by the aggregate
    * implementation.
-   *
+   * 中间状态数据类型
    * <p>For instance, for "concatenate to string" this can be
    * {@link java.lang.StringBuilder}.
    * Calcite calls this method before all other {@code implement*} methods.
@@ -50,7 +50,7 @@ public interface AggImplementor {
    * {@link AggResetContext#accumulator()} should be used to reference
    * the state variables.
    * For instance, to zero the count, use the following code:
-   *
+   * 重置中间状态
    * <blockquote><code>reset.currentBlock().add(<br>
    *   Expressions.statement(<br>
    *     Expressions.assign(reset.accumulator().get(0),<br>
@@ -65,7 +65,7 @@ public interface AggImplementor {
    * Updates intermediate values to account for the newly added value.
    * {@link AggResetContext#accumulator()} should be used to reference
    * the state variables.
-   *
+   * 更新中间状态
    * @param info Aggregate context
    * @param add Add context
    */
@@ -77,7 +77,7 @@ public interface AggImplementor {
    * calcite might reuse the state when calculating sliding aggregates.
    * {@link AggResetContext#accumulator()} should be used to reference
    * the state variables.
-   *
+   * 计算最终的结果
    * @param info Aggregate context
    * @param result Result context
    * @return Expression that is a result of calculating final value of

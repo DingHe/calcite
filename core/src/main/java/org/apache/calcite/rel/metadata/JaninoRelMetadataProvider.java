@@ -36,11 +36,13 @@ import org.codehaus.commons.compiler.CompilerFactoryFactory;
 import org.codehaus.commons.compiler.ICompilerFactory;
 import org.codehaus.commons.compiler.ISimpleCompiler;
 
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -61,7 +63,10 @@ public class JaninoRelMetadataProvider implements RelMetadataProvider, MetadataH
 
   /** Cache of pre-generated handlers by provider and kind of metadata.
    * For the cache to be effective, providers should implement identity
-   * correctly. */
+   * correctly.
+   * CacheLoader.from：创建一个 CacheLoader，定义如何生成缺失的值。
+   * LoadingCache：这是一个扩展的缓存，它支持自动加载未缓存的值。通过调用 get 方法，可以获取缓存的值，如果值不存在，则会调用 CacheLoader 加载它。
+   * */
   private static final LoadingCache<Key, MetadataHandler<?>> HANDLERS =
       maxSize(CacheBuilder.newBuilder(),
           CalciteSystemProperty.METADATA_HANDLER_CACHE_MAXIMUM_SIZE.value())
@@ -122,6 +127,8 @@ public class JaninoRelMetadataProvider implements RelMetadataProvider, MetadataH
     return provider.handlers(handlerClass);
   }
 
+  //handlerClass是元数据定义的Handler接口，例如PercentageOriginalRows里面的Handler接口
+  //handlers是以RelMd开头的元数据的实现类，例如RelMdPercentageOriginalRowsHandler类
   private static <MH extends MetadataHandler<?>> MH generateCompileAndInstantiate(
       Class<MH> handlerClass,
       List<? extends MetadataHandler<? extends Metadata>> handlers) {
@@ -135,7 +142,7 @@ public class JaninoRelMetadataProvider implements RelMetadataProvider, MetadataH
     try {
       return compile(handlerNameAndGeneratedCode.getHandlerName(),
           handlerNameAndGeneratedCode.getGeneratedCode(), handlerClass, uniqueHandlers);
-    } catch (CompileException e) {
+    } catch (CompileException | IOException e) {
       throw new RuntimeException("Error compiling:\n"
           + handlerNameAndGeneratedCode.getGeneratedCode(), e);
     }
@@ -144,11 +151,10 @@ public class JaninoRelMetadataProvider implements RelMetadataProvider, MetadataH
 
   static  <MH extends MetadataHandler<?>> MH compile(String className,
       String generatedCode, Class<MH> handlerClass,
-      List<? extends Object> argList) throws CompileException {
+      List<? extends Object> argList) throws CompileException, IOException {
     final ICompilerFactory compilerFactory;
     ClassLoader classLoader =
-        requireNonNull(JaninoRelMetadataProvider.class.getClassLoader(),
-            "classLoader");
+        Objects.requireNonNull(JaninoRelMetadataProvider.class.getClassLoader(), "classLoader");
     try {
       compilerFactory = CompilerFactoryFactory.getDefaultCompilerFactory(classLoader);
     } catch (Exception e) {

@@ -24,10 +24,11 @@ import org.hamcrest.Matcher;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
-import static org.apache.calcite.test.Matchers.isListOf;
-
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 /**
@@ -36,7 +37,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 public class FormatModelTest {
 
   private void assertThatFormatElementParse(String formatString,
-      Matcher<? super List<String>> matcher) {
+      Matcher<List<String>> matcher) {
     List<FormatElement> elements = FormatModels.BIG_QUERY.parse(formatString);
     List<String> stringResults = new ArrayList<>();
     for (FormatElement element : elements) {
@@ -46,21 +47,21 @@ public class FormatModelTest {
   }
 
   @Test void testSingleElement() {
-    assertThatFormatElementParse("%j", isListOf("DDD"));
+    assertThatFormatElementParse("%j", is(Collections.singletonList("DDD")));
   }
 
   @Test void testMultipleElements() {
     assertThatFormatElementParse("%b-%d-%Y",
-        isListOf("Mon", "-", "DD", "-", "pctY"));
+        is(Arrays.asList("Mon", "-", "DD", "-", "pctY")));
   }
 
   @Test void testArbitraryText() {
     assertThatFormatElementParse("%jtext%b",
-        isListOf("DDD", "text", "Mon"));
+        is(Arrays.asList("DDD", "text", "Mon")));
   }
 
   @Test void testAliasText() {
     assertThatFormatElementParse("%R",
-        isListOf("HH24", ":", "MI"));
+        is(Arrays.asList("HH24", ":", "MI")));
   }
 }

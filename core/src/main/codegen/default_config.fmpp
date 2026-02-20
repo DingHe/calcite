@@ -384,12 +384,13 @@ parser: {
   # List of methods for parsing custom SQL statements.
   # Return type of method implementation should be 'SqlNode'.
   # Example: "SqlShowDatabases()", "SqlShowTables()".
+  # 自定义语句解析函数，会在Parser.jj文件的1143行加入处理
   statementParserMethods: [
   ]
 
   # List of methods for parsing custom literals.
   # Return type of method implementation should be "SqlNode".
-  # Example: ParseJsonLiteral().
+  # Example: ParseJsonLiteral().在4529行处理，主要是解析特定的字面量
   literalParserMethods: [
   ]
 
@@ -401,31 +402,32 @@ parser: {
 
   # List of methods for parsing builtin function calls.
   # Return type of method implementation should be "SqlNode".
-  # Example: "DateTimeConstructorCall()".
+  # Example: "DateTimeConstructorCall()".在6466行加入处理，内置函数的调用
   builtinFunctionCallMethods: [
   ]
 
   # List of methods for parsing extensions to "ALTER <scope>" calls.
   # Each must accept arguments "(SqlParserPos pos, String scope)".
-  # Example: "SqlAlterTable".
+  # Example: "SqlAlterTable".在4382行加入处理
   alterStatementParserMethods: [
   ]
 
   # List of methods for parsing extensions to "CREATE [OR REPLACE]" calls.
   # Each must accept arguments "(SqlParserPos pos, boolean replace)".
   # Example: "SqlCreateForeignSchema".
+  # sql创建语句，会在Parser.jj文件的1151和4412行加入处理，默认会自动添加上SqlCreate
   createStatementParserMethods: [
   ]
 
   # List of methods for parsing extensions to "DROP" calls.
   # Each must accept arguments "(SqlParserPos pos)".
-  # Example: "SqlDropSchema".
+  # Example: "SqlDropSchema".在4442行加入处理
   dropStatementParserMethods: [
   ]
 
   # List of methods for parsing extensions to "TRUNCATE" calls.
   # Each must accept arguments "(SqlParserPos pos)".
-  # Example: "SqlTruncate".
+  # Example: "SqlTruncate".在4471行加入处理
   truncateStatementParserMethods: [
   ]
 

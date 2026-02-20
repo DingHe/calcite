@@ -37,7 +37,7 @@ import org.apache.calcite.sql.SqlOperator;
  * @see SqlBasicVisitor
  * @see SqlNode#accept(SqlVisitor)
  * @see SqlOperator#acceptCall
- *
+ * R代表返回值的类型
  * @param <R> Return type
  */
 public interface SqlVisitor<R> {

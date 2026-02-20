@@ -41,8 +41,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Planner rule that converts a {@link Project}
  * on a {@link org.apache.calcite.rel.core.TableScan}
@@ -104,7 +102,7 @@ public class ProjectTableScanRule
 
   protected void apply(RelOptRuleCall call, Project project, TableScan scan) {
     final RelOptTable table = scan.getTable();
-    requireNonNull(table.unwrap(ProjectableFilterableTable.class));
+    assert table.unwrap(ProjectableFilterableTable.class) != null;
 
     final List<Integer> selectedColumns = new ArrayList<>();
     final RexVisitorImpl<Void> visitor = new RexVisitorImpl<Void>(true) {

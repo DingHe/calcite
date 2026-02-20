@@ -106,7 +106,7 @@ public class AggregateMergeRule
     final List<AggregateCall> finalCalls = new ArrayList<>();
     for (AggregateCall topCall : topAgg.getAggCallList()) {
       if (!isAggregateSupported(topCall)
-          || topCall.getArgList().isEmpty()) {
+          || topCall.getArgList().size() == 0) {
         return;
       }
       // Make sure top aggregate argument refers to one of the aggregate

@@ -19,9 +19,8 @@ package org.apache.calcite.sql.type;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Interface that defines rules within type mappings.
@@ -42,8 +41,8 @@ public interface SqlTypeMappingRule {
   /** Returns whether it is valid to apply the defined rules from type {@code from} to
    * type {@code to}. */
   default boolean canApplyFrom(SqlTypeName to, SqlTypeName from) {
-    requireNonNull(to, "to");
-    requireNonNull(from, "from");
+    Objects.requireNonNull(to, "to");
+    Objects.requireNonNull(from, "from");
 
     if (to == SqlTypeName.NULL || to == SqlTypeName.UNKNOWN) {
       return false;

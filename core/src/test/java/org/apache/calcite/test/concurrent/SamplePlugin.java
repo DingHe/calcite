@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.test.concurrent;
 
+import java.io.IOException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -46,7 +47,7 @@ public class SamplePlugin extends ConcurrentTestPlugin {
 
   /** Command that describes a result set. */
   static class DescribeResultSet implements ConcurrentTestPluginCommand {
-    public void execute(TestContext testContext) {
+    public void execute(TestContext testContext) throws IOException {
       Statement stmt = testContext.getCurrentStatement();
       if (stmt == null) {
         testContext.storeMessage("No current statement");

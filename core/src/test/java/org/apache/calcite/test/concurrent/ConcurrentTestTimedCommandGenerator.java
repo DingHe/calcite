@@ -37,7 +37,7 @@ import java.util.NoSuchElementException;
 public class ConcurrentTestTimedCommandGenerator
     extends ConcurrentTestCommandGenerator {
 
-  private final int runTimeSeconds;
+  private int runTimeSeconds;
   private long endTimeMillis;
 
   /**
@@ -96,9 +96,9 @@ public class ConcurrentTestTimedCommandGenerator
    *
    * @param <E> element type
    */
-  private static class TimedIterator<E> implements Iterator<E> {
+  private class TimedIterator<E> implements Iterator<E> {
     private final List<E> commands;
-    private final long endTimeMillis;
+    private long endTimeMillis;
     private int commandIndex;
 
     private TimedIterator(
@@ -116,7 +116,7 @@ public class ConcurrentTestTimedCommandGenerator
 
       if (System.currentTimeMillis() < endTimeMillis) {
         commandIndex = 0;
-        return !commands.isEmpty(); // handle empty array
+        return commands.size() > 0; // handle empty array
       }
 
       return false;

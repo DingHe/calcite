@@ -21,21 +21,21 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFamily;
 import org.apache.calcite.rel.type.RelDataTypeField;
 
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Function type.
  * The type of lambda expression can be represented by a function type.
  */
 public class FunctionSqlType extends AbstractSqlType {
-  private final RelDataType parameterType;
-  private final RelDataType returnType;
+  private final RelDataType parameterType; //函数参数
+  private final RelDataType returnType; //返回值
 
   public FunctionSqlType(
       RelDataType parameterType, RelDataType returnType) {
     super(SqlTypeName.FUNCTION, true, null);
-    this.parameterType = requireNonNull(parameterType, "parameterType");
-    this.returnType = requireNonNull(returnType, "returnType");
+    this.parameterType = Objects.requireNonNull(parameterType, "parameterType");
+    this.returnType = Objects.requireNonNull(returnType, "returnType");
     computeDigest();
   }
 

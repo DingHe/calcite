@@ -75,7 +75,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class ReflectiveSchema
     extends AbstractSchema {
-  private final Class<?> clazz;
+  private final Class clazz;
   private final Object target;
   private @MonotonicNonNull Map<String, Table> tableMap;
   private @MonotonicNonNull Multimap<String, Function> functionMap;
@@ -134,10 +134,9 @@ public class ReflectiveSchema
               "Error while accessing field " + field, e);
         }
         requireNonNull(rc, () -> "field must not be null: " + field);
-        FieldTable<?> table =
-            (FieldTable<?>)
-                requireNonNull(
-                    tableMap.get(Util.last(rc.getSourceQualifiedName())));
+        FieldTable table =
+            (FieldTable) tableMap.get(Util.last(rc.getSourceQualifiedName()));
+        assert table != null;
         List<RelReferentialConstraint> referentialConstraints =
             table.getStatistic().getReferentialConstraints();
         if (referentialConstraints == null) {
@@ -200,6 +199,8 @@ public class ReflectiveSchema
     }
     Object o;
     try {
+      //Returns the value of the field represented by this Field, on the specified object.
+      // The value is automatically wrapped in an object if it has a primitive type
       o = field.get(target);
     } catch (IllegalAccessException e) {
       throw new RuntimeException(
@@ -215,9 +216,9 @@ public class ReflectiveSchema
     return new FieldTable<>(field, elementType, enumerable, statistic);
   }
 
-  /** Deduces a collection's element type;
+  /** Deduces the element type of a collection;
    * same logic as {@link #toEnumerable}. */
-  private static @Nullable Type getElementType(Class<?> clazz) {
+  private static @Nullable Type getElementType(Class clazz) {
     if (clazz.isArray()) {
       return clazz.getComponentType();
     }
@@ -227,17 +228,16 @@ public class ReflectiveSchema
     return null; // not a collection/array/iterable
   }
 
-  @SuppressWarnings("unchecked")
-  private static <T> Enumerable<T> toEnumerable(final Object o) {
+  private static Enumerable toEnumerable(final Object o) {
     if (o.getClass().isArray()) {
       if (o instanceof Object[]) {
-        return Linq4j.asEnumerable((T[]) o);
+        return Linq4j.asEnumerable((Object[]) o);
       } else {
-        return Linq4j.asEnumerable((List<T>) Primitive.asList(o));
+        return Linq4j.asEnumerable(Primitive.asList(o));
       }
     }
     if (o instanceof Iterable) {
-      return Linq4j.asEnumerable((Iterable<T>) o);
+      return Linq4j.asEnumerable((Iterable) o);
     }
     throw new RuntimeException(
         "Cannot convert " + o.getClass() + " into a Enumerable");
@@ -258,7 +258,7 @@ public class ReflectiveSchema
       implements Table, ScannableTable {
     private final Enumerable enumerable;
 
-    ReflectiveTable(Type elementType, Enumerable<?> enumerable) {
+    ReflectiveTable(Type elementType, Enumerable enumerable) {
       super(elementType);
       this.enumerable = enumerable;
     }

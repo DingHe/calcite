@@ -30,7 +30,8 @@ import org.apache.calcite.tools.RelBuilder;
  * {@link org.apache.calcite.rel.core.Join cartesian inner join}.
  *
  * <p>One benefit of this transformation is that after it, the join condition
- * can be combined with conditions and expressions above the join.
+ * can be combined with conditions and expressions above the join. It also makes
+ * the <code>FennelCartesianJoinRule</code> applicable.
  *
  * <p>The constructor is parameterized to allow any sub-class of
  * {@link org.apache.calcite.rel.core.Join}.

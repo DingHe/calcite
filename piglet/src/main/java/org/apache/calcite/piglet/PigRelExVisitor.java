@@ -73,10 +73,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
-
 /**
  * Visits pig expression plans and converts them into corresponding RexNodes.
  */
@@ -252,46 +248,42 @@ class PigRelExVisitor extends LogicalExpressionVisitor {
     }
   }
 
-  @Override public void visit(NegativeExpression op) {
+  @Override public void visit(NegativeExpression op) throws FrontendException {
     final RexNode operand = stack.pop();
     if (operand instanceof RexLiteral) {
       final Comparable value = ((RexLiteral) operand).getValue();
-      if (value instanceof BigDecimal) {
-        stack.push(builder.literal(((BigDecimal) value).negate()));
-      } else {
-        assert value instanceof Double;
-        stack.push(builder.literal(- (Double) value));
-      }
+      assert value instanceof BigDecimal;
+      stack.push(builder.literal(((BigDecimal) value).negate()));
     } else {
       stack.push(builder.call(SqlStdOperatorTable.UNARY_MINUS, operand));
     }
   }
 
-  @Override public void visit(EqualExpression op) {
+  @Override public void visit(EqualExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.EQUALS, buildBinaryOperands()));
   }
 
-  @Override public void visit(NotEqualExpression op) {
+  @Override public void visit(NotEqualExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.NOT_EQUALS, buildBinaryOperands()));
   }
 
-  @Override public void visit(LessThanExpression op) {
+  @Override public void visit(LessThanExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.LESS_THAN, buildBinaryOperands()));
   }
 
-  @Override public void visit(LessThanEqualExpression op) {
+  @Override public void visit(LessThanEqualExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, buildBinaryOperands()));
   }
 
-  @Override public void visit(GreaterThanExpression op) {
+  @Override public void visit(GreaterThanExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.GREATER_THAN, buildBinaryOperands()));
   }
 
-  @Override public void visit(GreaterThanEqualExpression op) {
+  @Override public void visit(GreaterThanEqualExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL, buildBinaryOperands()));
   }
 
-  @Override public void visit(RegexExpression op) {
+  @Override public void visit(RegexExpression op) throws FrontendException {
     RexNode operand1 = replacePatternIfPossible(stack.pop());
     RexNode operand2 = replacePatternIfPossible(stack.pop());
     stack.push(builder.call(SqlStdOperatorTable.LIKE, ImmutableList.of(operand2, operand1)));
@@ -310,43 +302,43 @@ class PigRelExVisitor extends LogicalExpressionVisitor {
     return rexNode;
   }
 
-  @Override public void visit(IsNullExpression op) {
+  @Override public void visit(IsNullExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.IS_NULL, stack.pop()));
   }
 
-  @Override public void visit(NotExpression op) {
+  @Override public void visit(NotExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.NOT, stack.pop()));
   }
 
-  @Override public void visit(AndExpression op) {
+  @Override public void visit(AndExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.AND, buildBinaryOperands()));
   }
 
-  @Override public void visit(OrExpression op) {
+  @Override public void visit(OrExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.OR, buildBinaryOperands()));
   }
 
-  @Override public void visit(AddExpression op) {
+  @Override public void visit(AddExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.PLUS, buildBinaryOperands()));
   }
 
-  @Override public void visit(SubtractExpression op) {
+  @Override public void visit(SubtractExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.MINUS, buildBinaryOperands()));
   }
 
-  @Override public void visit(MultiplyExpression op) {
+  @Override public void visit(MultiplyExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.MULTIPLY, buildBinaryOperands()));
   }
 
-  @Override public void visit(ModExpression op) {
+  @Override public void visit(ModExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.MOD, buildBinaryOperands()));
   }
 
-  @Override public void visit(DivideExpression op) {
+  @Override public void visit(DivideExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.DIVIDE, buildBinaryOperands()));
   }
 
-  @Override public void visit(BinCondExpression op) {
+  @Override public void visit(BinCondExpression op) throws FrontendException {
     stack.push(builder.call(SqlStdOperatorTable.CASE, buildOperands(3)));
   }
 
@@ -378,11 +370,10 @@ class PigRelExVisitor extends LogicalExpressionVisitor {
     return list != null ? list.size() : 0;
   }
 
-  @Override public void visit(DereferenceExpression op) {
+  @Override public void visit(DereferenceExpression op) throws FrontendException {
     final RexNode parentField = stack.pop();
     List<Integer> cols = op.getBagColumns();
-    requireNonNull(cols, "cols");
-    checkArgument(!cols.isEmpty());
+    assert cols != null && cols.size() > 0;
 
     if (parentField.getType() instanceof MultisetSqlType) {
       // Calcite does not support projection on Multiset type. We build
@@ -431,13 +422,13 @@ class PigRelExVisitor extends LogicalExpressionVisitor {
     }
   }
 
-  @Override public void visit(MapLookupExpression op) {
+  @Override public void visit(MapLookupExpression op) throws FrontendException {
     final RexNode relKey = builder.literal(op.getLookupKey());
     final RexNode relMap = stack.pop();
     stack.push(builder.call(SqlStdOperatorTable.ITEM, relMap, relKey));
   }
 
-  @Override public void visit(ScalarExpression op) {
+  @Override public void visit(ScalarExpression op) throws FrontendException {
     // First operand is the path to the materialized view
     RexNode operand1 = stack.pop();
     assert operand1 instanceof RexLiteral

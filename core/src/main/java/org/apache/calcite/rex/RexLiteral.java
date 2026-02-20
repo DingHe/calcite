@@ -55,7 +55,6 @@ import org.locationtech.jts.geom.Geometry;
 
 import java.io.PrintWriter;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
@@ -113,11 +112,9 @@ import static java.util.Objects.requireNonNull;
  * <td>{@link BigDecimal}</td>
  * </tr>
  * <tr>
- * <td>{@link SqlTypeName#DOUBLE},
- *     {@link SqlTypeName#REAL},
- *     {@link SqlTypeName#FLOAT}</td>
+ * <td>{@link SqlTypeName#DOUBLE}</td>
  * <td>Approximate number, for example <code>6.023E-23</code>.</td>
- * <td>{@link Double}.</td>
+ * <td>{@link BigDecimal}</td>
  * </tr>
  * <tr>
  * <td>{@link SqlTypeName#DATE}</td>
@@ -196,26 +193,28 @@ public class RexLiteral extends RexNode {
   /**
    * The value of this literal. Must be consistent with its type, as per
    * {@link #valueMatchesType}. For example, you can't store an
-   * {@link Integer} value here just because you feel like it -- all exact numbers are
+   * {@link Integer} value here just because you feel like it -- all numbers are
    * represented by a {@link BigDecimal}. But since this field is private, it
    * doesn't really matter how the values are stored.
    */
-  private final @Nullable Comparable value;
+  private final @Nullable Comparable value; //实际的值
 
   /**
    * The real type of this literal, as reported by {@link #getType}.
    */
-  private final RelDataType type;
+  private final RelDataType type; //类型
 
+  // TODO jvs 26-May-2006:  Use SqlTypeFamily instead; it exists
+  // for exactly this purpose (to avoid the confusion which results
+  // from overloading SqlTypeName).
   /**
    * An indication of the broad type of this literal -- even if its type isn't
-   * a SQL type. Sometimes this will be different from the SQL type; for
+   * a SQL type. Sometimes this will be different than the SQL type; for
    * example, all exact numbers, including integers have typeName
    * {@link SqlTypeName#DECIMAL}. See {@link #valueMatchesType} for the
    * definitive story.
    */
-  private final SqlTypeName typeName;
-
+  private final SqlTypeName typeName; //sql中的类型
   private static final ImmutableList<TimeUnit> TIME_UNITS =
       ImmutableList.copyOf(TimeUnit.values());
 
@@ -294,10 +293,10 @@ public class RexLiteral extends RexNode {
   }
 
   /**
-   * Returns whether {@link RexDigestIncludeType} digest would include data type.
+   * Returns true if {@link RexDigestIncludeType#OPTIONAL} digest would include data type.
    *
    * @see RexCall#computeDigest(boolean)
-   * @return whether {@link RexDigestIncludeType} digest would include data type
+   * @return true if {@link RexDigestIncludeType#OPTIONAL} digest would include data type
    */
   @RequiresNonNull("type")
   RexDigestIncludeType digestIncludesType(
@@ -328,12 +327,11 @@ public class RexLiteral extends RexNode {
       }
       // fall through
     case DECIMAL:
-    case BIGINT:
-      return value instanceof BigDecimal;
     case DOUBLE:
     case FLOAT:
     case REAL:
-      return value instanceof Double;
+    case BIGINT:
+      return value instanceof BigDecimal;
     case DATE:
       return value instanceof DateString;
     case TIME:
@@ -653,27 +651,21 @@ public class RexLiteral extends RexNode {
       break;
     case BOOLEAN:
       assert value instanceof Boolean;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case DECIMAL:
       assert value instanceof BigDecimal;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case DOUBLE:
     case FLOAT:
-      if (value instanceof BigDecimal) {
-        sb.append(Util.toScientificNotation((BigDecimal) value));
-      } else {
-        assert value instanceof Double;
-        Double d = (Double) value;
-        String repr = Util.toScientificNotation(d);
-        sb.append(repr);
-      }
+      assert value instanceof BigDecimal;
+      sb.append(Util.toScientificNotation((BigDecimal) value));
       break;
     case BIGINT:
       assert value instanceof BigDecimal;
       long narrowLong = ((BigDecimal) value).longValue();
-      sb.append(narrowLong);
+      sb.append(String.valueOf(narrowLong));
       sb.append('L');
       break;
     case BINARY:
@@ -695,17 +687,17 @@ public class RexLiteral extends RexNode {
     case SYMBOL:
       assert value instanceof Enum;
       sb.append("FLAG(");
-      sb.append(value);
+      sb.append(value.toString());
       sb.append(")");
       break;
     case DATE:
       assert value instanceof DateString;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case TIME:
     case TIME_WITH_LOCAL_TIME_ZONE:
       assert value instanceof TimeString;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case TIME_TZ:
       assert value instanceof TimeWithTimeZoneString;
@@ -714,7 +706,7 @@ public class RexLiteral extends RexNode {
     case TIMESTAMP:
     case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
       assert value instanceof TimestampString;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case TIMESTAMP_TZ:
       assert value instanceof TimestampWithTimeZoneString;
@@ -734,7 +726,7 @@ public class RexLiteral extends RexNode {
     case INTERVAL_MINUTE_SECOND:
     case INTERVAL_SECOND:
       assert value instanceof BigDecimal;
-      sb.append(value);
+      sb.append(value.toString());
       break;
     case MULTISET:
     case ROW:
@@ -879,7 +871,7 @@ public class RexLiteral extends RexNode {
         break;
       default:
         // Allow fractional seconds for times and timestamps
-        requireNonNull(format, "format");
+        assert format != null;
         final DateTimeUtils.PrecisionTime ts =
             DateTimeUtils.parsePrecisionDateTimeLiteral(literal,
                 new SimpleDateFormat(format, Locale.ROOT), tz, -1);
@@ -1082,48 +1074,22 @@ public class RexLiteral extends RexNode {
     case BIGINT:
     case INTEGER:
     case SMALLINT:
-    case TINYINT: {
-      BigDecimal bd = (BigDecimal) value;
-      if (clazz == Long.class) {
-        return clazz.cast(bd.longValue());
-      } else if (clazz == Integer.class) {
-        return clazz.cast(bd.intValue());
-      } else if (clazz == Short.class) {
-        return clazz.cast(bd.shortValue());
-      } else if (clazz == Byte.class) {
-        return clazz.cast(bd.byteValue());
-      } else if (clazz == Double.class) {
-        return clazz.cast(bd.doubleValue());
-      } else if (clazz == Float.class) {
-        return clazz.cast(bd.floatValue());
-      }
-      break;
-    }
+    case TINYINT:
     case DOUBLE:
     case REAL:
     case FLOAT:
-      if (value instanceof Double) {
-        Double d = (Double) value;
-        if (clazz == Long.class) {
-          return clazz.cast(d.longValue());
-        } else if (clazz == Integer.class) {
-          return clazz.cast(d.intValue());
-        } else if (clazz == Short.class) {
-          return clazz.cast(d.shortValue());
-        } else if (clazz == Byte.class) {
-          return clazz.cast(d.byteValue());
-        } else if (clazz == Double.class) {
-          // Cast still needed, since the Java compiler does not understand
-          // that T is double.
-          return clazz.cast(d);
-        } else if (clazz == Float.class) {
-          return clazz.cast(d.floatValue());
-        } else if (clazz == BigDecimal.class) {
-          // This particular conversion is lossy, since in general BigDecimal cannot
-          // represent accurately FP values.  However, this is the best we can do.
-          // This conversion used to be in RexBuilder, used when creating a RexLiteral.
-          return clazz.cast(new BigDecimal(d, MathContext.DECIMAL64).stripTrailingZeros());
-        }
+      if (clazz == Long.class) {
+        return clazz.cast(((BigDecimal) value).longValue());
+      } else if (clazz == Integer.class) {
+        return clazz.cast(((BigDecimal) value).intValue());
+      } else if (clazz == Short.class) {
+        return clazz.cast(((BigDecimal) value).shortValue());
+      } else if (clazz == Byte.class) {
+        return clazz.cast(((BigDecimal) value).byteValue());
+      } else if (clazz == Double.class) {
+        return clazz.cast(((BigDecimal) value).doubleValue());
+      } else if (clazz == Float.class) {
+        return clazz.cast(((BigDecimal) value).floatValue());
       }
       break;
     case DATE:
@@ -1246,18 +1212,9 @@ public class RexLiteral extends RexNode {
     return findValue(node);
   }
 
-  /** Returns the value of a literal, cast, or unary minus, as a number;
-   * never null. */
-  public static Number numberValue(RexNode node) {
-    final Comparable value = castNonNull(findValue(node));
-    return (Number) value;
-  }
-
-  /** Returns the value of a literal, cast, or unary minus, as an int;
-   * never null. */
   public static int intValue(RexNode node) {
-    final Number number = numberValue(node);
-    return number.intValue();
+    final Comparable value = castNonNull(findValue(node));
+    return ((Number) value).intValue();
   }
 
   public static @Nullable String stringValue(RexNode node) {

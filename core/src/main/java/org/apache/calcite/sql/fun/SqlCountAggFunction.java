@@ -41,7 +41,7 @@ import java.util.List;
 
 /**
  * Definition of the SQL <code>COUNT</code> aggregation function.
- *
+ * 聚合的count函数
  * <p><code>COUNT</code> is an aggregator which returns the number of rows which
  * have gone into it. With one argument (or more), it returns the number of rows
  * for which that argument (or all) is not <code>null</code>.

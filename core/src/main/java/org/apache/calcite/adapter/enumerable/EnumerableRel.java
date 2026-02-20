@@ -29,7 +29,7 @@ import java.util.List;
 /**
  * A relational expression of one of the
  * {@link org.apache.calcite.adapter.enumerable.EnumerableConvention} calling
- * conventions.
+ * conventions.EnumerableConvention调用约定的根节点
  */
 public interface EnumerableRel
     extends PhysicalNode {
@@ -61,15 +61,15 @@ public interface EnumerableRel
 
   /** Preferred physical type. */
   enum Prefer {
-    /** Records must be represented as arrays. */
+    /** Records must be represented as arrays. 记录是数组的形式*/
     ARRAY,
     /** Consumer would prefer that records are represented as arrays, but can
-     * accommodate records represented as objects. */
+     * accommodate records represented as objects. 记录是数组的形式，但是可以接受对象的形式*/
     ARRAY_NICE,
     /** Records must be represented as objects. */
     CUSTOM,
     /** Consumer would prefer that records are represented as objects, but can
-     * accommodate records represented as arrays. */
+     * accommodate records represented as arrays. 记录是对象的形式，但也可以接受数组*/
     CUSTOM_NICE,
     /** Consumer has no preferred representation. */
     ANY;

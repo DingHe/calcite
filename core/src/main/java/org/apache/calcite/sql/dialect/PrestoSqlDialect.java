@@ -161,7 +161,7 @@ public class PrestoSqlDialect extends SqlDialect {
   /**
    * change map open/close symbol from default [] to ().
    */
-  private static void unparseMapValue(SqlWriter writer, SqlCall call,
+  private void unparseMapValue(SqlWriter writer, SqlCall call,
       int leftPrec, int rightPrec) {
     call = convertMapValueCall(call);
     writer.keyword(call.getOperator().getName());
@@ -174,11 +174,10 @@ public class PrestoSqlDialect extends SqlDialect {
   }
 
   /**
-   * Converts a Presto MapValue call
-   * from {@code MAP['k1', 'v1', 'k2', 'v2']}
-   * to {@code MAP[ARRAY['k1', 'k2'], ARRAY['v1', 'v2']]}.
+   * Convert Presto MapValue call
+   * From MAP['k1','v1','k2','v2'] to MAP[ARRAY['k1', 'k2'],ARRAY['v1', 'v2']].
    */
-  private static SqlCall convertMapValueCall(SqlCall call) {
+  private SqlCall convertMapValueCall(SqlCall call) {
     boolean unnestMap = call.operandCount() > 0
         && call.getOperandList().stream().allMatch(operand -> operand instanceof SqlLiteral);
     if (!unnestMap) {

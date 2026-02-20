@@ -27,15 +27,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Unit test cases for Kafka adapter.
  */
 class KafkaAdapterTest {
-  protected static final URL MODEL =
-      requireNonNull(KafkaAdapterTest.class.getResource("/kafka.model.json"));
+  protected static final URL MODEL = KafkaAdapterTest.class.getResource("/kafka.model.json");
 
   private CalciteAssert.AssertThat assertModel(String model) {
     // ensure that Schema from this instance is being used
@@ -46,7 +44,7 @@ class KafkaAdapterTest {
   }
 
   private CalciteAssert.AssertThat assertModel(URL url) {
-    requireNonNull(url, "url");
+    Objects.requireNonNull(url, "url");
     try {
       return assertModel(Resources.toString(url, StandardCharsets.UTF_8));
     } catch (IOException e) {

@@ -25,8 +25,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /** A nondeterministic finite-state automaton (NFA).
  *
  * <p>It is used to implement the {@link Match}
@@ -48,12 +46,11 @@ public class Automaton {
       ImmutableList<SymbolTransition> transitions,
       ImmutableList<EpsilonTransition> epsilonTransitions,
       ImmutableList<String> symbolNames) {
-    this.startState = requireNonNull(startState, "startState");
-    this.endState = requireNonNull(endState, "endState");
-    this.transitions = requireNonNull(transitions, "transitions");
-    this.epsilonTransitions =
-        requireNonNull(epsilonTransitions, "epsilonTransitions");
-    this.symbolNames = requireNonNull(symbolNames, "symbolNames");
+    this.startState = Objects.requireNonNull(startState, "startState");
+    this.endState = Objects.requireNonNull(endState, "endState");
+    this.transitions = Objects.requireNonNull(transitions, "transitions");
+    this.epsilonTransitions = epsilonTransitions;
+    this.symbolNames = Objects.requireNonNull(symbolNames, "symbolNames");
   }
 
   /** Returns the set of states, represented as a bit set, that the graph is
@@ -125,8 +122,8 @@ public class Automaton {
     final State toState;
 
     Transition(State fromState, State toState) {
-      this.fromState = requireNonNull(fromState, "fromState");
-      this.toState = requireNonNull(toState, "toState");
+      this.fromState = Objects.requireNonNull(fromState, "fromState");
+      this.toState = Objects.requireNonNull(toState, "toState");
     }
   }
 

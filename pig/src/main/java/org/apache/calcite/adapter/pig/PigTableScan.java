@@ -33,8 +33,7 @@ import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /** Implementation of {@link org.apache.calcite.rel.core.TableScan} in
  * {@link PigRel#CONVENTION Pig calling convention}. */
@@ -58,7 +57,7 @@ public class PigTableScan extends TableScan implements PigRel {
 
   private PigTable getPigTable(String name) {
     final CalciteSchema schema = getTable().unwrapOrThrow(CalciteSchema.class);
-    return (PigTable) requireNonNull(schema.getTable(name, false))
+    return (PigTable) Objects.requireNonNull(schema.getTable(name, false))
         .getTable();
   }
 

@@ -64,6 +64,7 @@ import static org.apache.calcite.test.Matchers.relIsValid;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import static java.util.Objects.requireNonNull;
@@ -185,7 +186,7 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
       final RelDataType rowType =
           validator.getValidatedNodeType(validatedNode);
       final List<RelDataTypeField> fields = rowType.getFieldList();
-      assertThat("expected query to return 1 field", fields, hasSize(1));
+      assertEquals(1, fields.size(), "expected query to return 1 field");
       final RelDataType actualType = fields.get(0).getType();
       String actual = SqlTests.getTypeString(actualType);
       assertThat(actual, matcher);
@@ -238,8 +239,8 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
     typeChecker.checkType(() -> "Query: " + query, actualType);
 
     Pair<SqlValidator, SqlNode> p = parseAndValidate(factory, query);
-    SqlValidator validator = p.left;
-    SqlNode n = p.right;
+    SqlValidator validator = requireNonNull(p.left);
+    SqlNode n = requireNonNull(p.right);
     final RelDataType parameterRowType = validator.getParameterRowType(n);
     parameterChecker.checkParameters(parameterRowType);
   }
@@ -247,16 +248,16 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
   @Override public void validateAndThen(SqlTestFactory factory,
       StringAndPos sap, ValidatedNodeConsumer consumer) {
     Pair<SqlValidator, SqlNode> p = parseAndValidate(factory, sap.sql);
-    SqlValidator validator = p.left;
-    SqlNode rewrittenNode = p.right;
+    SqlValidator validator = requireNonNull(p.left);
+    SqlNode rewrittenNode = requireNonNull(p.right);
     consumer.accept(sap, validator, rewrittenNode);
   }
 
   @Override public <R> R validateAndApply(SqlTestFactory factory,
       StringAndPos sap, ValidatedNodeFunction<R> function) {
     Pair<SqlValidator, SqlNode> p = parseAndValidate(factory, sap.sql);
-    SqlValidator validator = p.left;
-    SqlNode rewrittenNode = p.right;
+    SqlValidator validator = requireNonNull(p.left);
+    SqlNode rewrittenNode = requireNonNull(p.right);
     return function.apply(sap, validator, rewrittenNode);
   }
 
@@ -361,7 +362,7 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
             return literal;
           }
 
-          @Override public @Nullable SqlNode visit(SqlCall call) {
+          @Override public SqlNode visit(SqlCall call) {
             SqlOperator operator = call.getOperator();
             if (operator.getKind() == SqlKind.LAMBDA) {
               return call;
@@ -372,7 +373,7 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
               final SqlOperator lookup =
                   SqlValidatorUtil.lookupSqlFunctionByID(
                       SqlStdOperatorTable.instance(),
-                      requireNonNull(unresolvedFunction.getSqlIdentifier()),
+                      unresolvedFunction.getSqlIdentifier(),
                       unresolvedFunction.getFunctionType());
               if (lookup != null) {
                 operator = lookup;
@@ -483,8 +484,8 @@ public abstract class AbstractSqlTester implements SqlTester, AutoCloseable {
     String sql2 = diffRepos.expand("sql", sql);
     final Pair<SqlValidator, RelRoot> pair =
         convertSqlToRel2(factory, sql2, decorrelate, trim);
-    final RelRoot root = pair.right;
-    final SqlValidator validator = pair.left;
+    final RelRoot root = requireNonNull(pair.right);
+    final SqlValidator validator = requireNonNull(pair.left);
     RelNode rel = root.project();
 
     assertNotNull(rel);

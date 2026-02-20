@@ -27,8 +27,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Relational expression that uses Elasticsearch calling convention.
@@ -101,24 +100,24 @@ public interface ElasticsearchRel extends RelNode {
     }
 
     void addGroupBy(String field) {
-      requireNonNull(field, "field");
+      Objects.requireNonNull(field, "field");
       groupBy.add(field);
     }
 
     void addSort(String field, RelFieldCollation.Direction direction) {
-      requireNonNull(field, "field");
-      sort.add(Pair.of(field, direction));
+      Objects.requireNonNull(field, "field");
+      sort.add(new Pair<>(field, direction));
     }
 
     void addAggregation(String field, String expression) {
-      requireNonNull(field, "field");
-      requireNonNull(expression, "expression");
-      aggregations.add(Pair.of(field, expression));
+      Objects.requireNonNull(field, "field");
+      Objects.requireNonNull(expression, "expression");
+      aggregations.add(new Pair<>(field, expression));
     }
 
     void addExpressionItemMapping(String expressionId, String item) {
-      requireNonNull(expressionId, "expressionId");
-      requireNonNull(item, "item");
+      Objects.requireNonNull(expressionId, "expressionId");
+      Objects.requireNonNull(item, "item");
       expressionItemMap.put(expressionId, item);
     }
 

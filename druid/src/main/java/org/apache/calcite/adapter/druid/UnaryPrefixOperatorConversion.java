@@ -23,8 +23,6 @@ import org.apache.calcite.sql.SqlOperator;
 
 import com.google.common.collect.Iterables;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.List;
 
 /**
@@ -45,8 +43,8 @@ public class UnaryPrefixOperatorConversion implements DruidSqlOperatorConverter 
     return operator;
   }
 
-  @Override public @Nullable String toDruidExpression(RexNode rexNode,
-      RelDataType rowType, DruidQuery druidQuery) {
+  @Override public String toDruidExpression(RexNode rexNode, RelDataType rowType,
+      DruidQuery druidQuery) {
 
     final RexCall call = (RexCall) rexNode;
 

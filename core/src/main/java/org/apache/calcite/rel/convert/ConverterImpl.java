@@ -34,8 +34,8 @@ public abstract class ConverterImpl extends SingleRel
     implements Converter {
   //~ Instance fields --------------------------------------------------------
 
-  protected final RelTraitSet inTraits;
-  protected final @Nullable RelTraitDef traitDef;
+  protected RelTraitSet inTraits; //输入关系表达式的特征集
+  protected final @Nullable RelTraitDef traitDef; //converter要转换的特征定义
 
   //~ Constructors -----------------------------------------------------------
 
@@ -50,10 +50,10 @@ public abstract class ConverterImpl extends SingleRel
   protected ConverterImpl(
       RelOptCluster cluster,
       @Nullable RelTraitDef traitDef,
-      RelTraitSet traits,
+      RelTraitSet traits, //该节点的特征集
       RelNode child) {
     super(cluster, traits, child);
-    this.inTraits = child.getTraitSet();
+    this.inTraits = child.getTraitSet(); //子节点的特征集
     this.traitDef = traitDef;
   }
 

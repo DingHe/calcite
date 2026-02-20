@@ -65,7 +65,7 @@ public interface RelWriter {
    */
   RelWriter item(String term, @Nullable Object value);
 
-  /**
+  /** 如果条件成立，添加对应的item
    * Adds an input to the explanation of the current node, if a condition
    * holds.
    */
@@ -78,7 +78,7 @@ public interface RelWriter {
    */
   RelWriter done(RelNode node);
 
-  /**
+  /** 嵌套的方式输出，但是平铺的方式
    * Returns whether the writer prefers nested values. Traditional explain
    * writers prefer flattened values.
    */

@@ -50,18 +50,19 @@ import static java.util.Objects.requireNonNull;
  * <p>The function returns a result set.
  * It can appear as a leaf in a query tree,
  * or can be applied to relational inputs.
- *
+ *  表函数返回一个包含多行多列的结果集，例如将一行数据拆分成多行，生成一系列连续的数字，例如SELECT *
+ * FROM split_name('John Doe')
  * @see org.apache.calcite.rel.logical.LogicalTableFunctionScan
  */
 public abstract class TableFunctionScan extends AbstractRelNode
     implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  private final RexNode rexCall;
+  private final RexNode rexCall; //函数调用
 
-  private final @Nullable Type elementType;
+  private final @Nullable Type elementType; //表函数的元素类型
 
-  private ImmutableList<RelNode> inputs;
+  private ImmutableList<RelNode> inputs; //输入的关系节点
 
   protected final @Nullable ImmutableSet<RelColumnMapping> columnMappings;
 
@@ -194,7 +195,7 @@ public abstract class TableFunctionScan extends AbstractRelNode
     // for a no-input UDX, behave like an AbstractRelNode; for a one-input
     // UDX, behave like a SingleRel; for a multi-input UDX, behave like
     // UNION ALL.  TODO jvs 10-Sep-2007: UDX-supplied costing metadata.
-    if (inputs.isEmpty()) {
+    if (inputs.size() == 0) {
       return super.estimateRowCount(mq);
     }
     double nRows = 0.0;

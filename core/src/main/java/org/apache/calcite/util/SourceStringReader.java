@@ -17,8 +17,7 @@
 package org.apache.calcite.util;
 
 import java.io.StringReader;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Extension to {@link StringReader} that allows the original string to be
@@ -33,8 +32,8 @@ public class SourceStringReader extends StringReader {
    * @param s String providing the character stream
    */
   public SourceStringReader(String s) {
-    super(s);
-    this.s = requireNonNull(s, "s");
+    super(Objects.requireNonNull(s, "s"));
+    this.s = s;
   }
 
   /** Returns the source string. */

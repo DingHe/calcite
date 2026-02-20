@@ -31,8 +31,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /** Edge in the join graph.
  *
  * <p>It is directed: the "parent" must be the "many" side containing the
@@ -53,7 +51,7 @@ class Step extends DefaultEdge {
       List<IntPair> keys, String keyString) {
     super(source, target);
     this.keys = ImmutableList.copyOf(keys);
-    this.keyString = requireNonNull(keyString, "keyString");
+    this.keyString = Objects.requireNonNull(keyString, "keyString");
     assert IntPair.ORDERING.isStrictlyOrdered(keys); // ordered and unique
   }
 
@@ -149,7 +147,7 @@ class Step extends DefaultEdge {
 
     @SuppressWarnings("type.argument.type.incompatible")
     Factory(@UnderInitialization LatticeSpace space) {
-      this.space = requireNonNull(space, "space");
+      this.space = Objects.requireNonNull(space, "space");
     }
 
     @Override public Step createEdge(LatticeTable source, LatticeTable target) {

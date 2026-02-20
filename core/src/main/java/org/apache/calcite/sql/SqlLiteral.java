@@ -50,12 +50,9 @@ import java.nio.charset.UnsupportedCharsetException;
 import java.util.Calendar;
 import java.util.Objects;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 import static org.apache.calcite.util.Static.RESOURCE;
 
-import static java.lang.Integer.parseInt;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -161,13 +158,13 @@ public class SqlLiteral extends SqlNode {
    * {@link SqlTypeName#DECIMAL}, but on validation may become
    * {@link SqlTypeName#INTEGER}.
    */
-  private final SqlTypeName typeName;
+  private final SqlTypeName typeName; //数据类型
 
   /**
    * The value of this literal. The type of the value must be appropriate for
    * the typeName, as defined by the {@link #valueMatchesType} method.
    */
-  protected final @Nullable Object value;
+  protected final @Nullable Object value; //值
 
   //~ Constructors -----------------------------------------------------------
 
@@ -180,8 +177,9 @@ public class SqlLiteral extends SqlNode {
       SqlParserPos pos) {
     super(pos);
     this.value = value;
-    this.typeName = requireNonNull(typeName, "typeName");
-    checkArgument(valueMatchesType(value, typeName));
+    this.typeName = typeName;
+    assert typeName != null;
+    assert valueMatchesType(value, typeName);
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -756,7 +754,8 @@ public class SqlLiteral extends SqlNode {
       int rightPrec) {
     switch (typeName) {
     case BOOLEAN:
-      writer.getDialect().unparseBoolLiteral(writer, this, leftPrec, rightPrec);
+      writer.keyword(
+          value == null ? "UNKNOWN" : (Boolean) value ? "TRUE" : "FALSE");
       break;
     case NULL:
       writer.keyword("NULL");
@@ -836,7 +835,7 @@ public class SqlLiteral extends SqlNode {
     case VARBINARY: // should never happen
 
     default:
-      throw Util.needToImplement(this + ", operand=" + value);
+      throw Util.needToImplement(toString() + ", operand=" + value);
     }
   }
 
@@ -1103,7 +1102,7 @@ public class SqlLiteral extends SqlNode {
         final String u = s.substring(i + 1, i + 5);
         final int v;
         try {
-          v = parseInt(u, 16);
+          v = Integer.parseInt(u, 16);
         } catch (NumberFormatException ex) {
           throw SqlUtil.newContextException(getParserPosition(),
               RESOURCE.unicodeEscapeMalformed(i));

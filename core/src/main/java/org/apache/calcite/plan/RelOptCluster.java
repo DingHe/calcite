@@ -35,22 +35,21 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
-import static java.util.Objects.requireNonNull;
-
-/**
+/** Cluster是指一个“逻辑计划集群”。具体来说，RelOptCluster 是一个用于优化过程中的上下文容器
  * An environment for related relational expressions during the
  * optimization of a query.
  */
 public class RelOptCluster {
   //~ Instance fields --------------------------------------------------------
 
-  private final RelDataTypeFactory typeFactory;
-  private final RelOptPlanner planner;
+  private final RelDataTypeFactory typeFactory; //主要用于创建关系数据类型
+  private final RelOptPlanner planner; //优化器
   private final AtomicInteger nextCorrel;
   private final Map<String, RelNode> mapCorrelToRel;
   private RexNode originalExpression;
@@ -88,8 +87,8 @@ public class RelOptCluster {
       Map<String, RelNode> mapCorrelToRel) {
     this.nextCorrel = nextCorrel;
     this.mapCorrelToRel = mapCorrelToRel;
-    this.planner = requireNonNull(planner, "planner");
-    this.typeFactory = requireNonNull(typeFactory, "typeFactory");
+    this.planner = Objects.requireNonNull(planner, "planner");
+    this.typeFactory = Objects.requireNonNull(typeFactory, "typeFactory");
     this.rexBuilder = rexBuilder;
     this.originalExpression = rexBuilder.makeLiteral("?");
 
@@ -229,7 +228,7 @@ public class RelOptCluster {
    * @param hintStrategies The specified hint strategies to override the default one(empty)
    */
   public void setHintStrategies(HintStrategyTable hintStrategies) {
-    requireNonNull(hintStrategies, "hintStrategies");
+    Objects.requireNonNull(hintStrategies, "hintStrategies");
     this.hintStrategies = hintStrategies;
   }
 

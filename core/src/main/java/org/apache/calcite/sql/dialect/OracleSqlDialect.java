@@ -85,10 +85,6 @@ public class OracleSqlDialect extends SqlDialect {
     return false;
   }
 
-  @Override public boolean supportBooleanCaseWhen() {
-    return majorVersion >= 23;
-  }
-
   @Override public boolean supportsDataType(RelDataType type) {
     switch (type.getSqlTypeName()) {
     case BOOLEAN:
@@ -128,21 +124,6 @@ public class OracleSqlDialect extends SqlDialect {
 
   @Override public boolean supportsAliasedValues() {
     return false;
-  }
-
-  @Override public void unparseBoolLiteral(SqlWriter writer,
-      SqlLiteral literal, int leftPrec, int rightPrec) {
-    Boolean value = (Boolean) literal.getValue();
-    if (value == null || majorVersion >= 23) {
-      super.unparseBoolLiteral(writer, literal, leftPrec, rightPrec);
-      return;
-    }
-    // low version oracle not support bool literal
-    final SqlWriter.Frame frame = writer.startList("(", ")");
-    writer.literal("1");
-    writer.sep(SqlStdOperatorTable.EQUALS.getName());
-    writer.literal(value ? "1" : "0");
-    writer.endList(frame);
   }
 
   @Override public void unparseDateTimeLiteral(SqlWriter writer,

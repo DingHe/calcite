@@ -59,14 +59,14 @@ public abstract class RelDataTypeImpl
 
   //~ Instance fields --------------------------------------------------------
 
-  protected final @Nullable List<RelDataTypeField> fieldList;
+  protected final @Nullable List<RelDataTypeField> fieldList; //结构化类型的字段
   protected @Nullable String digest;
 
   //~ Constructors -----------------------------------------------------------
 
   /**
    * Creates a RelDataTypeImpl.
-   *
+   * 结构化类型提供field列表
    * @param fieldList List of fields
    */
   protected RelDataTypeImpl(@Nullable List<? extends RelDataTypeField> fieldList) {
@@ -91,7 +91,7 @@ public abstract class RelDataTypeImpl
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  //根据field name
   @Override public @Nullable RelDataTypeField getField(String fieldName,
       boolean caseSensitive, boolean elideRecord) {
     if (fieldList == null) {
@@ -127,7 +127,7 @@ public abstract class RelDataTypeImpl
       }
     }
     // Extra field
-    if (!fieldList.isEmpty()) {
+    if (fieldList.size() > 0) {
       final RelDataTypeField lastField = Iterables.getLast(fieldList);
       if (lastField.getName().equals("_extra")) {
         return new RelDataTypeFieldImpl(
@@ -189,26 +189,20 @@ public abstract class RelDataTypeImpl
   }
 
   @Override public List<RelDataTypeField> getFieldList() {
-    if (fieldList == null) {
-      throw new AssertionError("fieldList must not be null, type = " + this);
-    }
+    assert fieldList != null : "fieldList must not be null, type = " + this;
     return fieldList;
   }
 
   @Override public List<String> getFieldNames() {
-    if (fieldList == null) {
-      throw new AssertionError("fieldList must not be null, type = " + this);
-    }
+    assert fieldList != null : "fieldList must not be null, type = " + this;
     return Pair.left(fieldList);
   }
 
   @Override public int getFieldCount() {
-    if (fieldList == null) {
-      throw new AssertionError("fieldList must not be null, type = " + this);
-    }
+    assert fieldList != null : "fieldList must not be null, type = " + this;
     return fieldList.size();
   }
-
+  //结构化类型默认为FULLY_QUALIFIED，其他为NONE
   @Override public StructKind getStructKind() {
     return isStruct() ? StructKind.FULLY_QUALIFIED : StructKind.NONE;
   }
@@ -235,7 +229,7 @@ public abstract class RelDataTypeImpl
   @Override public boolean equals(@Nullable Object obj) {
     return this == obj
         || obj instanceof RelDataTypeImpl
-        && Objects.equals(this.digest, ((RelDataTypeImpl) obj).digest);
+          && Objects.equals(this.digest, ((RelDataTypeImpl) obj).digest);
   }
 
   @Override public int hashCode() {
@@ -293,7 +287,7 @@ public abstract class RelDataTypeImpl
 
   @Override public RelDataTypeFamily getFamily() {
     // by default, put each type into its own family
-    return this;
+    return this; //默认每种类型是自己的family
   }
 
   /**
@@ -356,7 +350,7 @@ public abstract class RelDataTypeImpl
    * that copies a given type using the given type factory.
    */
   public static RelProtoDataType proto(final RelDataType protoType) {
-    requireNonNull(protoType, "protoType");
+    assert protoType != null;
     return typeFactory -> typeFactory.copyType(protoType);
   }
 
@@ -372,7 +366,7 @@ public abstract class RelDataTypeImpl
    */
   public static RelProtoDataType proto(final SqlTypeName typeName,
       final boolean nullable) {
-    requireNonNull(typeName, "typeName");
+    assert typeName != null;
     return typeFactory -> {
       final RelDataType type = typeFactory.createSqlType(typeName);
       return typeFactory.createTypeWithNullability(type, nullable);
@@ -392,7 +386,7 @@ public abstract class RelDataTypeImpl
    */
   public static RelProtoDataType proto(final SqlTypeName typeName,
       final int precision, final boolean nullable) {
-    requireNonNull(typeName, "typeName");
+    assert typeName != null;
     return typeFactory -> {
       final RelDataType type = typeFactory.createSqlType(typeName, precision);
       return typeFactory.createTypeWithNullability(type, nullable);

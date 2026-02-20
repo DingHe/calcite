@@ -186,14 +186,14 @@ public class HepPlanner extends AbstractRelOptPlanner {
   }
 
   @Override public RelNode findBestExp() {
-    requireNonNull(root, "'root' must not be null");
+    requireNonNull(root, "root");
 
     executeProgram(mainProgram);
 
     // Get rid of everything except what's in the final plan.
     collectGarbage();
     dumpRuleAttemptsInfo();
-    return buildFinalPlan(requireNonNull(root, "'root' must not be null"));
+    return buildFinalPlan(requireNonNull(root, "root"));
   }
 
   /** Top-level entry point for a program. Initializes state and then invokes
@@ -269,7 +269,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
     if (ruleSet == null) {
       state.ruleSet = ruleSet = new LinkedHashSet<>();
       Class<?> ruleClass = instruction.ruleClass;
-      for (RelOptRule rule : mapDescToRule.values()) {
+      for (RelOptRule rule : mapDescToRule.values()) { //判断HepPlanner中的规则是否属于RuleClass里面定义的类，属于才加入进来
         if (ruleClass.isInstance(rule)) {
           ruleSet.add(rule);
         }
@@ -401,7 +401,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
     }
 
     LOGGER.trace("Applying rule set {}", rules);
-
+    //ARBITRARY和DEPTH_FIRST匹配顺序当匹配后不需要从root开始匹配
     final boolean fullRestartAfterTransformation =
         programState.matchOrder != HepMatchOrder.ARBITRARY
             && programState.matchOrder != HepMatchOrder.DEPTH_FIRST;
@@ -610,7 +610,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
     }
     return parents;
   }
-
+  //判断关系节点的结构是否跟rule匹配
   private static boolean matchOperands(
       RelOptRuleOperand operand,
       RelNode rel,
@@ -678,7 +678,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
       return true;
     }
   }
-
+  //应用转换的结果
   private HepRelVertex applyTransformationResults(
       HepRelVertex vertex,
       HepRuleCall call,

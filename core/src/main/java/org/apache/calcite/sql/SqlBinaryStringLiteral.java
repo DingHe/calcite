@@ -22,8 +22,7 @@ import org.apache.calcite.util.BitString;
 import org.apache.calcite.util.Util;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * A binary (or hexadecimal) string literal.
@@ -53,7 +52,7 @@ public class SqlBinaryStringLiteral extends SqlAbstractStringLiteral {
   }
 
   private BitString getValueNonNull() {
-    return (BitString) requireNonNull(value, "value");
+    return (BitString) Objects.requireNonNull(value, "value");
   }
 
   @Override public SqlBinaryStringLiteral clone(SqlParserPos pos) {

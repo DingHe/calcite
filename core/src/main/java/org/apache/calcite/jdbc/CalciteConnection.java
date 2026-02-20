@@ -22,15 +22,13 @@ import org.apache.calcite.jdbc.CalcitePrepare.Context;
 import org.apache.calcite.linq4j.QueryProvider;
 import org.apache.calcite.schema.SchemaPlus;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
 
 /**
  * Extension to Calcite's implementation of
- * {@link java.sql.Connection JDBC connection} allows schemas to be defined
+// * {@link java.sql.Connection JDBC connection} allows schemas to be defined
  * dynamically.
  *
  * <p>You can start off with an empty connection (no schemas), define one
@@ -43,7 +41,7 @@ import java.util.Properties;
 public interface CalciteConnection extends Connection, QueryProvider {
   /**
    * Returns the root schema.
-   *
+   * calcite添加的方法
    * <p>You can define objects (such as relations) in this schema, and
    * also nested schemas.
    *
@@ -53,14 +51,14 @@ public interface CalciteConnection extends Connection, QueryProvider {
 
   /**
    * Returns the type factory.
-   *
+   *calcite添加的方法
    * @return Type factory
    */
   JavaTypeFactory getTypeFactory();
 
   /**
    * Returns an instance of the connection properties.
-   *
+   * 连接属性
    * <p>NOTE: The resulting collection of properties is same collection used
    * by the connection, and is writable, but behavior if you modify the
    * collection is undefined. Some implementations might, for example, see
@@ -71,15 +69,15 @@ public interface CalciteConnection extends Connection, QueryProvider {
    * @return properties
    */
   Properties getProperties();
-
+  //设置schema
   // in java.sql.Connection from JDK 1.7, but declare here to allow other JDKs
   @Override void setSchema(String schema) throws SQLException;
-
+ //返回schema
   // in java.sql.Connection from JDK 1.7, but declare here to allow other JDKs
-  @Override @Nullable String getSchema() throws SQLException;
-
+  @Override String getSchema() throws SQLException;
+  //连接配置
   CalciteConnectionConfig config();
-
+  //连接的上下文
   /** Creates a context for preparing a statement for execution. */
   Context createPrepareContext();
 }

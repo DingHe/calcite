@@ -69,7 +69,7 @@ import static java.util.Objects.requireNonNull;
 public abstract class Project extends SingleRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  protected final ImmutableList<RexNode> exps;
+  protected final ImmutableList<RexNode> exps; //字段表达式
 
   protected final ImmutableList<RelHint> hints;
 
@@ -99,9 +99,10 @@ public abstract class Project extends SingleRel implements Hintable {
       RelDataType rowType,
       Set<CorrelationId> variableSet) {
     super(cluster, traits, input);
+    assert rowType != null;
     this.exps = ImmutableList.copyOf(projects);
     this.hints = ImmutableList.copyOf(hints);
-    this.rowType = requireNonNull(rowType, "rowType");
+    this.rowType = rowType; //返回的行类型
     this.variablesSet = ImmutableSet.copyOf(variableSet);
     assert isValid(Litmus.THROW, null);
   }
@@ -203,7 +204,7 @@ public abstract class Project extends SingleRel implements Hintable {
    */
   public List<RexNode> getProjects() {
     return exps;
-  }
+  } //返回project的表达式
 
   /**
    * Returns a list of (expression, name) pairs. Convenient for various
@@ -227,8 +228,9 @@ public abstract class Project extends SingleRel implements Hintable {
   // TODO: replace calls to getNamedProjects
   public final List<RexNode> getAliasedProjects(RelBuilder b) {
     final ImmutableList.Builder<RexNode> builder = ImmutableList.builder();
-    Pair.forEach(exps, getRowType().getFieldList(), (e, f) ->
-        builder.add(b.alias(e, f.getName())));
+    Pair.forEach(exps, getRowType().getFieldList(), (e, f) -> {
+      builder.add(b.alias(e, f.getName()));
+    });
     return builder.build();
   }
 

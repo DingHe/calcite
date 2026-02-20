@@ -33,8 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * RelTraitSet represents an ordered set of {@link RelTrait}s.
  */
@@ -43,8 +41,8 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
 
   //~ Instance fields --------------------------------------------------------
 
-  private final Cache cache;
-  private final RelTrait[] traits;
+  private final Cache cache; //封装了一个map结构，用于快速检索
+  private final RelTrait[] traits; //Trait数组
   private @Nullable String string;
   /** Caches the hash code for the traits. */
   private int hash; // Default to 0
@@ -53,7 +51,7 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
 
   /**
    * Constructs a RelTraitSet with the given set of RelTraits.
-   *
+   * 封装了一个map结构，用于快速检索
    * @param cache  Trait set cache (and indirectly cluster) that this set
    *               belongs to
    * @param traits Traits
@@ -88,7 +86,7 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
    */
   public RelTrait getTrait(int index) {
     return traits[index];
-  }
+  } //获取第index个Trait
 
   /**
    * Retrieves a list of traits from the set.
@@ -181,7 +179,7 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
    *
    * <p>If the set does not contain a trait of the same {@link RelTraitDef},
    * the trait is ignored, and this trait set is returned.
-   *
+   * 找到对应的特征，然后替换
    * @param trait the new trait
    * @return New set
    * @see #plus(RelTrait)
@@ -640,7 +638,7 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
       return replace(i, trait);
     }
     final RelTrait canonizedTrait = canonize(trait);
-    requireNonNull(canonizedTrait, "canonizedTrait");
+    assert canonizedTrait != null;
     RelTrait[] newTraits = new RelTrait[traits.length + 1];
     System.arraycopy(traits, 0, newTraits, 0, traits.length);
     newTraits[traits.length] = canonizedTrait;

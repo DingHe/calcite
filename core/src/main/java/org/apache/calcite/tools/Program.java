@@ -27,7 +27,7 @@ import java.util.List;
 /**
  * Program that transforms a relational expression into another relational
  * expression.
- *
+ * Program是负责把一个关系表达式转为另一个
  * <p>A planner is a sequence of programs, each of which is sometimes called
  * a "phase".
  *

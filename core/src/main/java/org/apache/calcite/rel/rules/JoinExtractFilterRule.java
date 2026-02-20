@@ -29,7 +29,8 @@ import org.immutables.value.Value;
  * {@link org.apache.calcite.rel.logical.LogicalJoin cartesian inner join}.
  *
  * <p>One benefit of this transformation is that after it, the join condition
- * can be combined with conditions and expressions above the join.
+ * can be combined with conditions and expressions above the join. It also makes
+ * the <code>FennelCartesianJoinRule</code> applicable.
  *
  * <p>Can be configured to match any sub-class of
  * {@link org.apache.calcite.rel.core.Join}, not just

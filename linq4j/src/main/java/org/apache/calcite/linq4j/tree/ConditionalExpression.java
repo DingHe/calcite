@@ -22,8 +22,6 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * Represents an expression that has a conditional operator.
  *
@@ -40,7 +38,8 @@ public class ConditionalExpression extends AbstractNode {
 
   public ConditionalExpression(List<Node> expressionList, Type type) {
     super(ExpressionType.Conditional, type);
-    this.expressionList = requireNonNull(expressionList, "expressionList");
+    assert expressionList != null : "expressionList should not be null";
+    this.expressionList = expressionList;
   }
 
   @Override public <R> R accept(Visitor<R> visitor) {

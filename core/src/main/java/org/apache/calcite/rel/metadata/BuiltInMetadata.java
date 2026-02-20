@@ -23,13 +23,10 @@ import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.type.RelDataTypeFactory;
-import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexTableInputRef;
 import org.apache.calcite.rex.RexTableInputRef.RelTableRef;
 import org.apache.calcite.sql.SqlExplainLevel;
-import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.BuiltInMethod;
 import org.apache.calcite.util.ImmutableBitSet;
 
@@ -45,6 +42,20 @@ import java.util.Set;
  * Contains the interfaces for several common forms of metadata.
  */
 public abstract class BuiltInMetadata {
+  /*
+在 Apache Calcite 中，元数据的定义与处理的分离有助于实现更好的灵活性和可扩展性。这种设计模式使得元数据的接口和具体的处理逻辑（即 handler）可以独立演化，同时保持一致性。
+主要原因包括：
+职责分离：
+Selectivity 接口定义了元数据的契约，指定了需要实现的方法，比如 getSelectivity。这个接口表示元数据的结构和用途。
+Handler 接口则负责实现具体的逻辑，这样可以在不同的上下文中使用相同的元数据接口，但有不同的处理实现。
+灵活性和扩展性：
+通过定义 handler 接口，Calcite 允许不同的实现类提供对同一元数据的不同处理。这使得系统可以在不修改元数据接口的情况下添加新功能或修改现有功能。
+如果未来需要对 getSelectivity 方法进行扩展或调整，可以创建新的 handler 实现，而不必改变原有的元数据接口。
+一致性：
+在 handler 接口中，方法名称与元数据接口中的方法名称相同，这提供了一种清晰的映射，使得实现者能够很容易地理解如何从元数据接口到具体的处理逻辑。这种一致性有助于提高可读性和可维护性。
+利用功能接口：
+使用功能接口（如 @FunctionalInterface）允许更方便地使用 Lambda 表达式，提供更简洁的代码，同时也使得将 handler 作为参数传递变得更简单。
+   */
 
   /** Metadata about the selectivity of a predicate. */
   public interface Selectivity extends Metadata {
@@ -240,7 +251,7 @@ public abstract class BuiltInMetadata {
   }
 
   /** Metadata about the number of rows returned by a relational expression. */
-  public interface RowCount extends Metadata {
+  public interface  RowCount extends Metadata {
     MetadataDef<RowCount> DEF =
         MetadataDef.of(RowCount.class, RowCount.Handler.class,
             BuiltInMethod.ROW_COUNT.method);
@@ -840,64 +851,7 @@ public abstract class BuiltInMetadata {
       @Override default MetadataDef<Memory> getDef() {
         return DEF;
       }
-    }
-  }
 
-  /** Metadata about whether a column is a measure and, if so, what is the
-   * expression to evaluate that measure in the current context. */
-  public interface Measure extends Metadata {
-    MetadataDef<Measure> DEF =
-        MetadataDef.of(Measure.class, Measure.Handler.class,
-            BuiltInMethod.MEASURE_EXPAND.method,
-            BuiltInMethod.IS_MEASURE.method);
-
-    /** Returns whether a given column is a measure.
-     *
-     * @param column Column ordinal (0-based) */
-    Boolean isMeasure(int column);
-
-    /** Expands a measure to an expression.
-     *
-     * @param column Column ordinal (0-based)
-     * @param context Evaluation context */
-    RexNode expand(int column, Context context);
-
-    /** Handler API. */
-    interface Handler extends MetadataHandler<Measure> {
-      Boolean isMeasure(RelNode r, RelMetadataQuery mq, int column);
-
-      RexNode expand(RelNode r, RelMetadataQuery mq, int column,
-          Context context);
-
-      @Override default MetadataDef<Measure> getDef() {
-        return DEF;
-      }
-    }
-
-    /** Context for a use of a measure at a call site. */
-    interface Context {
-      RelBuilder getRelBuilder();
-
-      default RexBuilder getRexBuilder() {
-        return getRelBuilder().getRexBuilder();
-      }
-
-      default RelDataTypeFactory getTypeFactory() {
-        return getRelBuilder().getTypeFactory();
-      }
-
-      /** Returns a (conjunctive) list of filters.
-       *
-       * <p>The filters represent the "filter context"
-       * and will become the {@code WHERE} clause of the subquery.
-       *
-       * <p>If the relation defining the measure has {@code N} dimensions then
-       * the dimensions can be referenced using
-       * {@link org.apache.calcite.rex.RexInputRef} 0 through N-1. */
-      List<RexNode> getFilters(RelBuilder b);
-
-      /** Returns the number of dimension columns. */
-      int getDimensionCount();
     }
   }
 

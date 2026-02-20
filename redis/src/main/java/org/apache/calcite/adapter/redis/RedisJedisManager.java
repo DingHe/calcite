@@ -44,6 +44,11 @@ public class RedisJedisManager implements AutoCloseable {
   private final LoadingCache<String, JedisPool> jedisPoolCache;
   private final JedisPoolConfig jedisPoolConfig;
 
+  private final int maxTotal = GenericObjectPoolConfig.DEFAULT_MAX_TOTAL;
+  private final int maxIdle = GenericObjectPoolConfig.DEFAULT_MAX_IDLE;
+  private final int minIdle = GenericObjectPoolConfig.DEFAULT_MIN_IDLE;
+  private final int timeout = Protocol.DEFAULT_TIMEOUT;
+
   private final String host;
   private final String password;
   private final int port;
@@ -51,9 +56,9 @@ public class RedisJedisManager implements AutoCloseable {
 
   public RedisJedisManager(String host, int port, int database, String password) {
     JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
-    jedisPoolConfig.setMaxTotal(GenericObjectPoolConfig.DEFAULT_MAX_TOTAL);
-    jedisPoolConfig.setMaxIdle(GenericObjectPoolConfig.DEFAULT_MAX_IDLE);
-    jedisPoolConfig.setMinIdle(GenericObjectPoolConfig.DEFAULT_MIN_IDLE);
+    jedisPoolConfig.setMaxTotal(maxTotal);
+    jedisPoolConfig.setMaxIdle(maxIdle);
+    jedisPoolConfig.setMinIdle(minIdle);
     this.host = host;
     this.port = port;
     this.database = database;
@@ -78,20 +83,17 @@ public class RedisJedisManager implements AutoCloseable {
     if (StringUtils.isEmpty(pwd)) {
       pwd = null;
     }
-    return new JedisPool(jedisPoolConfig, host, port, Protocol.DEFAULT_TIMEOUT,
-        pwd, database);
+    return new JedisPool(jedisPoolConfig, host, port, timeout, pwd, database);
   }
 
   /**
    * JedisPoolRemovalListener for remove elements from cache.
    */
-  private static class JedisPoolRemovalListener
-      implements RemovalListener<String, JedisPool> {
-    @Override public void onRemoval(
-        RemovalNotification<String, JedisPool> notification) {
-      final JedisPool value = requireNonNull(notification.getValue());
+  private static class JedisPoolRemovalListener implements RemovalListener<String, JedisPool> {
+    @Override public void onRemoval(RemovalNotification<String, JedisPool> notification) {
+      assert notification.getValue() != null;
       try {
-        value.destroy();
+        notification.getValue().destroy();
       } catch (Exception e) {
         LOGGER.warn("While destroying JedisPool {}", notification.getKey());
       }

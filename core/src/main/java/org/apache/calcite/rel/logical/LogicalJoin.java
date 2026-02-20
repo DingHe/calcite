@@ -35,6 +35,7 @@ import com.google.common.collect.ImmutableSet;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -51,6 +52,10 @@ import static java.util.Objects.requireNonNull;
  * <li>{@link org.apache.calcite.rel.rules.JoinExtractFilterRule} converts an
  * {@link LogicalJoin inner join} to a {@link LogicalFilter filter} on top of a
  * {@link LogicalJoin cartesian inner join}.
+ *
+ * <li>{@code net.sf.farrago.fennel.rel.FennelCartesianJoinRule}
+ * implements a LogicalJoin as a cartesian product.
+ *
  * </ul>
  */
 public final class LogicalJoin extends Join {
@@ -61,7 +66,7 @@ public final class LogicalJoin extends Join {
   // semijoin optimizations, it's pretty much required.
   private final boolean semiJoinDone;
 
-  private final ImmutableList<RelDataTypeField> systemFieldList;
+  private final ImmutableList<RelDataTypeField> systemFieldList; //系统默认字段
 
   //~ Constructors -----------------------------------------------------------
 
@@ -91,9 +96,9 @@ public final class LogicalJoin extends Join {
       RelOptCluster cluster,
       RelTraitSet traitSet,
       List<RelHint> hints,
-      RelNode left,
-      RelNode right,
-      RexNode condition,
+      RelNode left, //左节点
+      RelNode right, //右节点
+      RexNode condition, //关联条件
       Set<CorrelationId> variablesSet,
       JoinRelType joinType,
       boolean semiJoinDone,
@@ -144,7 +149,7 @@ public final class LogicalJoin extends Join {
    */
   public LogicalJoin(RelInput input) {
     this(input.getCluster(), input.getCluster().traitSetOf(Convention.NONE),
-        ImmutableList.of(),
+        new ArrayList<>(),
         input.getInputs().get(0), input.getInputs().get(1),
         requireNonNull(input.getExpression("condition"), "condition"),
         ImmutableSet.of(),

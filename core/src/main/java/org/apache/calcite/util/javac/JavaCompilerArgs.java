@@ -34,8 +34,8 @@ import static java.util.Objects.requireNonNull;
 public class JavaCompilerArgs {
   //~ Instance fields --------------------------------------------------------
 
-  final List<String> argsList = new ArrayList<>();
-  final List<String> fileNameList = new ArrayList<>();
+  List<String> argsList = new ArrayList<>();
+  List<String> fileNameList = new ArrayList<>();
 
   ClassLoader classLoader;
 

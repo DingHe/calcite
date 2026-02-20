@@ -48,6 +48,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -55,8 +56,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 
 import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Factory that creates an {@link ElasticsearchSchema}.
@@ -196,7 +195,7 @@ public class ElasticsearchSchemaFactory implements SchemaFactory {
                                     String username, String password,
                                     boolean disableSSLVerification) {
 
-    requireNonNull(hosts, "hosts or coordinates");
+    Objects.requireNonNull(hosts, "hosts or coordinates");
     checkArgument(!hosts.isEmpty(), "no ES hosts specified");
     // Two lists are considered equal when all of their corresponding elements are equal
     // making a list of RestClient params a suitable cache key.

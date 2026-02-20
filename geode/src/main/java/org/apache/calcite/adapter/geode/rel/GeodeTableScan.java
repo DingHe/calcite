@@ -27,13 +27,7 @@ import org.apache.calcite.rel.type.RelDataType;
 
 import com.google.common.collect.ImmutableList;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 import java.util.List;
-
-import static com.google.common.base.Preconditions.checkArgument;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Relational expression representing a scan of a Geode collection.
@@ -41,7 +35,7 @@ import static java.util.Objects.requireNonNull;
 public class GeodeTableScan extends TableScan implements GeodeRel {
 
   final GeodeTable geodeTable;
-  final @Nullable RelDataType projectRowType;
+  final RelDataType projectRowType;
 
   /**
    * Creates a GeodeTableScan.
@@ -53,13 +47,13 @@ public class GeodeTableScan extends TableScan implements GeodeRel {
    * @param projectRowType Fields and types to project; null to project raw row
    */
   GeodeTableScan(RelOptCluster cluster, RelTraitSet traitSet,
-      RelOptTable table, GeodeTable geodeTable,
-      @Nullable RelDataType projectRowType) {
+      RelOptTable table, GeodeTable geodeTable, RelDataType projectRowType) {
     super(cluster, traitSet, ImmutableList.of(), table);
-    this.geodeTable = requireNonNull(geodeTable, "geodeTable");
+    this.geodeTable = geodeTable;
     this.projectRowType = projectRowType;
 
-    checkArgument(getConvention() == GeodeRel.CONVENTION);
+    assert geodeTable != null;
+    assert getConvention() == GeodeRel.CONVENTION;
   }
 
   @Override public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {

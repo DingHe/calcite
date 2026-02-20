@@ -94,9 +94,9 @@ public class RexProgram {
    */
   private final @Nullable RexLocalRef condition;
 
-  private final RelDataType inputRowType;
+  private final RelDataType inputRowType; //输入数据类型
 
-  private final RelDataType outputRowType;
+  private final RelDataType outputRowType; //输出数据类型
 
   /**
    * Reference counts for each expression, computed on demand.
@@ -218,8 +218,8 @@ public class RexProgram {
    */
   public static RexProgram create(
       RelDataType inputRowType,
-      List<? extends RexNode> projectExprs,
-      @Nullable RexNode conditionExpr,
+      List<? extends RexNode> projectExprs, //投影表达式
+      @Nullable RexNode conditionExpr,  //条件表达式
       @Nullable List<? extends @Nullable String> fieldNames,
       RexBuilder rexBuilder) {
     if (fieldNames == null) {

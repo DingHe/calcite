@@ -75,7 +75,7 @@ public enum RexUnknownAs {
    *
    * <p>If you are unsure, use UNKNOWN. It is the safest option. */
   UNKNOWN;
-
+  //如果把unknow当作false，则参数传入true
   /** Returns {@link #FALSE} if {@code unknownAsFalse} is true,
    * {@link #UNKNOWN} otherwise. */
   public static RexUnknownAs falseIf(boolean unknownAsFalse) {

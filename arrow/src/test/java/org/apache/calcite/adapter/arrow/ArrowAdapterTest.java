@@ -25,6 +25,7 @@ import org.apache.calcite.test.CalciteAssert;
 import org.apache.calcite.util.Bug;
 import org.apache.calcite.util.Sources;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -42,12 +43,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.Objects;
 
-import static org.apache.calcite.test.Matchers.isListOf;
-
-import static org.hamcrest.MatcherAssert.assertThat;
-
-import static java.util.Objects.requireNonNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for the Apache Arrow adapter.
@@ -59,11 +57,9 @@ class ArrowAdapterTest {
   private static File arrowDataDirectory;
 
   @BeforeAll
-  static void initializeArrowState(@TempDir Path sharedTempDir)
-      throws IOException, SQLException {
+  static void initializeArrowState(@TempDir Path sharedTempDir) throws IOException, SQLException {
     URL modelUrl =
-        requireNonNull(
-            ArrowAdapterTest.class.getResource("/arrow-model.json"), "url");
+        Objects.requireNonNull(ArrowAdapterTest.class.getResource("/arrow-model.json"), "url");
     Path sourceModelFilePath = Sources.of(modelUrl).file().toPath();
     Path modelFileTarget = sharedTempDir.resolve("arrow-model.json");
     Files.copy(sourceModelFilePath, modelFileTarget);
@@ -88,8 +84,8 @@ class ArrowAdapterTest {
         new JavaTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
     RelDataType relDataType = tableMap.get("ARROWDATA").getRowType(typeFactory);
 
-    assertThat(relDataType.getFieldNames(),
-        isListOf("intField", "stringField", "floatField", "longField"));
+    assertEquals(relDataType.getFieldNames(),
+        ImmutableList.of("intField", "stringField", "floatField", "longField"));
   }
 
   @Test void testArrowProjectAllFields() {
@@ -298,70 +294,54 @@ class ArrowAdapterTest {
         .explainContains(plan);
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6295">[CALCITE-6295]
-   * Support IS NOT NULL in Arrow adapter</a>. */
   @Test void testArrowProjectFieldsWithIsNotNullFilter() {
     String sql = "select \"intField\", \"stringField\"\n"
         + "from arrowdata\n"
-        + "where \"intField\" is not null\n";
-    String plan = "PLAN=ArrowToEnumerableConverter\n"
-          + "  ArrowProject(intField=[$0], stringField=[$1])\n"
-          + "    ArrowFilter(condition=[IS NOT NULL($0)])\n"
-          + "      ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
+        + "where \"intField\" is not null\n"
+        + "order by \"intField\"\n"
+        + "limit 1";
+    String plan;
+    if (Bug.CALCITE_6295_FIXED) {
+      plan = "PLAN=EnumerableLimit(fetch=[1])\n"
+          + "  EnumerableSort(sort0=[$0], dir0=[ASC])\n"
+          + "    ArrowToEnumerableConverter\n"
+          + "      ArrowProject(intField=[$0], stringField=[$1])\n"
+          + "        ArrowFilter(condition=[IS NOT NULL($0)])\n"
+          + "          ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
+    } else {
+      plan = "PLAN=EnumerableCalc(expr#0..3=[{inputs}], proj#0..1=[{exprs}])\n"
+          + "  EnumerableLimit(fetch=[1])\n"
+          + "    EnumerableSort(sort0=[$0], dir0=[ASC])\n"
+          + "      EnumerableCalc(expr#0..3=[{inputs}], expr#4=[IS NOT NULL($t0)], proj#0..3=[{exprs}], $condition=[$t4])\n"
+          + "        ArrowToEnumerableConverter\n"
+          + "          ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
+    }
+    String result = "intField=0; stringField=0\n";
 
     CalciteAssert.that()
         .with(arrow)
         .query(sql)
-        .returnsCount(50)
+        .returns(result)
         .explainContains(plan);
   }
 
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6295">[CALCITE-6295]
-   * Support IS NOT NULL in Arrow adapter</a>. */
-  @Test void testConjunctiveIsNotNullFilters() {
-    String sql = "select * from arrowdata\n"
-        + "where \"intField\" is not null and \"stringField\" is not null";
-    String plan = "PLAN=ArrowToEnumerableConverter\n"
-        + "  ArrowFilter(condition=[AND(IS NOT NULL($0), IS NOT NULL($1))])\n"
-        + "    ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
-
-    CalciteAssert.that()
-        .with(arrow)
-        .query(sql)
-        .returnsCount(50)
-        .explainContains(plan);
-  }
-
-  /** Test case for
-  * <a href="https://issues.apache.org/jira/browse/CALCITE-6296">[CALCITE-6296]
-  * Support IS NULL in Arrow adapter</a>. */
   @Test void testArrowProjectFieldsWithIsNullFilter() {
     String sql = "select \"intField\", \"stringField\"\n"
         + "from arrowdata\n"
         + "where \"intField\" is null";
-    String plan = "ArrowToEnumerableConverter\n"
+    String plan;
+    if (Bug.CALCITE_6296_FIXED) {
+      plan = "ArrowToEnumerableConverter\n"
           + "  ArrowProject(intField=[$0], stringField=[$1])\n"
-          + "    ArrowFilter(condition=[IS NULL($0)])\n"
+          + "    ArrowFilter(condition=[IS NOT NULL($0)])\n"
           + "      ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
-
-    CalciteAssert.that()
-        .with(arrow)
-        .query(sql)
-        .returnsCount(0)
-        .explainContains(plan);
-  }
-
-  /** Test case for
-   * <a href="https://issues.apache.org/jira/browse/CALCITE-6296">[CALCITE-6296]
-   * Support IS NULL in Arrow adapter</a>. */
-  @Test void testConjunctiveIsNullFilters() {
-    String sql = "select * from arrowdata\n"
-        + "where \"intField\" is null and \"stringField\" is null";
-    String plan = "PLAN=ArrowToEnumerableConverter\n"
-        + "  ArrowFilter(condition=[AND(IS NULL($0), IS NULL($1))])\n"
-        + "    ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
+    } else {
+      plan = "PLAN=EnumerableCalc(expr#0..1=[{inputs}],"
+          + " expr#2=[IS NULL($t0)], proj#0..1=[{exprs}], $condition=[$t2])\n"
+          + "  ArrowToEnumerableConverter\n"
+          + "    ArrowProject(intField=[$0], stringField=[$1])\n"
+          + "      ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
+    }
 
     CalciteAssert.that()
         .with(arrow)
@@ -374,7 +354,7 @@ class ArrowAdapterTest {
     String sql = "select * from arrowdata\n"
         + " where \"floatField\"=15.0";
     String plan = "PLAN=ArrowToEnumerableConverter\n"
-        + "  ArrowFilter(condition=[=($2, 15.0E0)])\n"
+        + "  ArrowFilter(condition=[=(CAST($2):DOUBLE, 15.0)])\n"
         + "    ArrowTableScan(table=[[ARROW, ARROWDATA]], fields=[[0, 1, 2, 3]])\n\n";
     String result = "intField=15; stringField=15; floatField=15.0; longField=15\n";
 
@@ -666,7 +646,7 @@ class ArrowAdapterTest {
   @Test void testFilteredAgg() {
     String sql = "select SUM(SAL) FILTER (WHERE COMM > 400) as SALESSUM from EMP";
     String plan = "PLAN=EnumerableAggregate(group=[{}], SALESSUM=[SUM($0) FILTER $1])\n"
-        + "  EnumerableCalc(expr#0..7=[{inputs}], expr#8=[400:DECIMAL(19, 0)], expr#9=[>($t6, $t8)], "
+        + "  EnumerableCalc(expr#0..7=[{inputs}], expr#8=[400], expr#9=[>($t6, $t8)], "
         + "expr#10=[IS TRUE($t9)], SAL=[$t5], $f1=[$t10])\n"
         + "    ArrowToEnumerableConverter\n"
         + "      ArrowTableScan(table=[[ARROW, EMP]], fields=[[0, 1, 2, 3, 4, 5, 6, 7]])\n\n";
@@ -684,7 +664,7 @@ class ArrowAdapterTest {
     String sql = "select SUM(SAL) FILTER (WHERE COMM > 400) as SALESSUM from EMP group by EMPNO";
     String plan = "PLAN=EnumerableCalc(expr#0..1=[{inputs}], SALESSUM=[$t1])\n"
         + "  EnumerableAggregate(group=[{0}], SALESSUM=[SUM($1) FILTER $2])\n"
-        + "    EnumerableCalc(expr#0..7=[{inputs}], expr#8=[400:DECIMAL(19, 0)], expr#9=[>($t6, $t8)], "
+        + "    EnumerableCalc(expr#0..7=[{inputs}], expr#8=[400], expr#9=[>($t6, $t8)], "
         + "expr#10=[IS TRUE($t9)], EMPNO=[$t0], SAL=[$t5], $f2=[$t10])\n"
         + "      ArrowToEnumerableConverter\n"
         + "        ArrowTableScan(table=[[ARROW, EMP]], fields=[[0, 1, 2, 3, 4, 5, 6, 7]])\n\n";

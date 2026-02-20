@@ -93,7 +93,8 @@ public interface TypeCoercion {
       @Nullable RelDataType type1, @Nullable RelDataType type2);
 
   /**
-   * Determines common type for a comparison operator.
+   * Determines common type for a comparison operator whose operands are STRING
+   * type and the other (non STRING) type.
    */
   @Nullable RelDataType commonTypeForBinaryComparison(
       @Nullable RelDataType type1, @Nullable RelDataType type2);

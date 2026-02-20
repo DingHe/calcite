@@ -35,15 +35,15 @@ public interface Convention extends RelTrait {
    * <p>Such expressions always have infinite cost.
    */
   Convention NONE = new Impl("NONE", RelNode.class);
-
+  //获取接口类
   Class getInterface();
-
+  //返回名字
   String getName();
 
   /**
    * Given an input and required traits, returns the corresponding
    * enforcer rel nodes, like physical Sort, Exchange etc.
-   *
+   * 根据给定的input和特征集，返回满足该特征集的关系节点
    * @param input The input RelNode
    * @param required The required traits
    * @return Physical enforcer that satisfies the required traitSet,
@@ -58,7 +58,7 @@ public interface Convention extends RelTrait {
   /**
    * Returns whether we should convert from this convention to
    * {@code toConvention}. Used by {@link ConventionTraitDef}.
-   *
+   * 是否可以把该convention转到toConvention
    * @param toConvention Desired convention to convert to
    * @return Whether we should convert from this convention to toConvention
    */
@@ -69,7 +69,7 @@ public interface Convention extends RelTrait {
   /**
    * Returns whether we should convert from this trait set to the other trait
    * set.
-   *
+   * 是否应该从fromTraits转换到toTraits
    * <p>The convention decides whether it wants to handle other trait
    * conversions, e.g. collation, distribution, etc.  For a given convention, we
    * will only add abstract converters to handle the trait (convention,

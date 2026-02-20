@@ -23,13 +23,13 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 import java.util.List;
 
-/**
+/** 聚合函数实现的内部表示
  * Represents internal state when implementing aggregate functions.
  */
 public class AggImpState {
-  public final int aggIdx;
-  public final AggregateCall call;
-  public final AggImplementor implementor;
+  public final int aggIdx; //id
+  public final AggregateCall call; //聚合函数调用
+  public final AggImplementor implementor; //聚合函数的实现
   public @MonotonicNonNull AggContext context;
   public @MonotonicNonNull Expression result;
   public @MonotonicNonNull List<Expression> state;

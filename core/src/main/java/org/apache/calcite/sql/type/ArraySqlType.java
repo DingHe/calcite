@@ -30,7 +30,7 @@ import static java.util.Objects.requireNonNull;
 public class ArraySqlType extends AbstractSqlType {
   //~ Instance fields --------------------------------------------------------
 
-  private final RelDataType elementType;
+  private final RelDataType elementType; //数组元素类型
 
   //~ Constructors -----------------------------------------------------------
 

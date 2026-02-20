@@ -24,8 +24,7 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Relational expression that iterates over its input and, in addition to
@@ -74,8 +73,8 @@ public abstract class Spool extends SingleRel {
   protected Spool(RelOptCluster cluster, RelTraitSet traitSet, RelNode input,
       Type readType, Type writeType) {
     super(cluster, traitSet, input);
-    this.readType = requireNonNull(readType, "readType");
-    this.writeType = requireNonNull(writeType, "writeType");
+    this.readType = Objects.requireNonNull(readType, "readType");
+    this.writeType = Objects.requireNonNull(writeType, "writeType");
   }
 
   @Override public final RelNode copy(RelTraitSet traitSet,

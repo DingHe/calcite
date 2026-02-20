@@ -25,8 +25,7 @@ import org.apache.calcite.util.Util;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * A character string literal.
@@ -55,7 +54,7 @@ public class SqlCharStringLiteral extends SqlAbstractStringLiteral {
   }
 
   private NlsString getValueNonNull() {
-    return (NlsString) requireNonNull(value, "value");
+    return (NlsString) Objects.requireNonNull(value, "value");
   }
   /**
    * Returns the collation.

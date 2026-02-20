@@ -50,10 +50,9 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Supplier;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Tools for invoking Calcite functionality without initializing a container /
@@ -281,23 +280,23 @@ public class Frameworks {
     }
 
     public ConfigBuilder context(Context c) {
-      this.context = requireNonNull(c, "c");
+      this.context = Objects.requireNonNull(c, "c");
       return this;
     }
 
     public ConfigBuilder executor(RexExecutor executor) {
-      this.executor = requireNonNull(executor, "executor");
+      this.executor = Objects.requireNonNull(executor, "executor");
       return this;
     }
 
     public ConfigBuilder convertletTable(
         SqlRexConvertletTable convertletTable) {
-      this.convertletTable = requireNonNull(convertletTable, "convertletTable");
+      this.convertletTable = Objects.requireNonNull(convertletTable, "convertletTable");
       return this;
     }
 
     public ConfigBuilder operatorTable(SqlOperatorTable operatorTable) {
-      this.operatorTable = requireNonNull(operatorTable, "operatorTable");
+      this.operatorTable = Objects.requireNonNull(operatorTable, "operatorTable");
       return this;
     }
 
@@ -316,24 +315,23 @@ public class Frameworks {
     }
 
     public ConfigBuilder parserConfig(SqlParser.Config parserConfig) {
-      this.parserConfig = requireNonNull(parserConfig, "parserConfig");
+      this.parserConfig = Objects.requireNonNull(parserConfig, "parserConfig");
       return this;
     }
 
     public ConfigBuilder sqlValidatorConfig(SqlValidator.Config sqlValidatorConfig) {
-      this.sqlValidatorConfig =
-          requireNonNull(sqlValidatorConfig, "sqlValidatorConfig");
+      this.sqlValidatorConfig = Objects.requireNonNull(sqlValidatorConfig, "sqlValidatorConfig");
       return this;
     }
 
     public ConfigBuilder sqlToRelConverterConfig(
         SqlToRelConverter.Config sqlToRelConverterConfig) {
       this.sqlToRelConverterConfig =
-          requireNonNull(sqlToRelConverterConfig, "sqlToRelConverterConfig");
+          Objects.requireNonNull(sqlToRelConverterConfig, "sqlToRelConverterConfig");
       return this;
     }
 
-    public ConfigBuilder defaultSchema(@Nullable SchemaPlus defaultSchema) {
+    public ConfigBuilder defaultSchema(SchemaPlus defaultSchema) {
       this.defaultSchema = defaultSchema;
       return this;
     }
@@ -348,7 +346,7 @@ public class Frameworks {
     }
 
     public ConfigBuilder ruleSets(List<RuleSet> ruleSets) {
-      return programs(Programs.listOf(requireNonNull(ruleSets, "ruleSets")));
+      return programs(Programs.listOf(Objects.requireNonNull(ruleSets, "ruleSets")));
     }
 
     public ConfigBuilder programs(List<Program> programs) {
@@ -362,7 +360,7 @@ public class Frameworks {
     }
 
     public ConfigBuilder typeSystem(RelDataTypeSystem typeSystem) {
-      this.typeSystem = requireNonNull(typeSystem, "typeSystem");
+      this.typeSystem = Objects.requireNonNull(typeSystem, "typeSystem");
       return this;
     }
 
@@ -373,8 +371,7 @@ public class Frameworks {
 
     public ConfigBuilder statisticProvider(
         SqlStatisticProvider statisticProvider) {
-      this.statisticProvider =
-          requireNonNull(statisticProvider, "statisticProvider");
+      this.statisticProvider = Objects.requireNonNull(statisticProvider, "statisticProvider");
       return this;
     }
 

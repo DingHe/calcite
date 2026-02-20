@@ -33,7 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
+/** RelOptRuleCall是以RelNode表达式为参数的rule调用
  * A <code>RelOptRuleCall</code> is an invocation of a {@link RelOptRule} with a
  * set of {@link RelNode relational expression}s as arguments.
  */
@@ -51,11 +51,11 @@ public abstract class RelOptRuleCall {
 
   public final int id;
   protected final RelOptRuleOperand operand0;
-  protected Map<RelNode, List<RelNode>> nodeInputs;
-  public final RelOptRule rule;
-  public final RelNode[] rels;
+  protected Map<RelNode, List<RelNode>> nodeInputs;//relNode和它的输入的映射  A map that associates each RelNode (relational expression node) with its list of inputs
+  public final RelOptRule rule; //代表被调用的rule  representing the specific rule that this call is invoking. Rules define transformations on parts of the relational tree.
+  public final RelNode[] rels; //代表匹配Operand的关系节点  the relational expression tree that match the rule’s pattern
   private final RelOptPlanner planner;
-  private final @Nullable List<RelNode> parents;
+  private final @Nullable List<RelNode> parents; //A list of parent RelNode objects associated with the first relational expression in rels
 
   //~ Constructors -----------------------------------------------------------
 
@@ -77,7 +77,7 @@ public abstract class RelOptRuleCall {
       RelOptPlanner planner,
       RelOptRuleOperand operand,
       RelNode[] rels,
-      Map<RelNode, List<RelNode>> nodeInputs,
+      Map<RelNode, List<RelNode>> nodeInputs,  //关系表达式跟它输入之间的关系
       @Nullable List<RelNode> parents) {
     this.id = nextId++;
     this.planner = planner;
@@ -197,7 +197,7 @@ public abstract class RelOptRuleCall {
 
   /**
    * Determines whether the rule is excluded by any root node hint.
-   *
+   * 确定规则是否被root节点的hint排除
    * @return true iff rule should be excluded
    */
   public boolean isRuleExcluded() {
@@ -232,7 +232,7 @@ public abstract class RelOptRuleCall {
 
   /**
    * Registers that a rule has produced an equivalent relational expression.
-   *
+   * 当规则匹配时调用，保证原始关系表达式this.rels[0]的特征集已经传播到新的关系表达式rel及其未注册的子节点。
    * <p>Called by the rule whenever it finds a match. The implementation of
    * this method guarantees that the original relational expression (that is,
    * <code>this.rels[0]</code>) has its traits propagated to the new
@@ -246,9 +246,9 @@ public abstract class RelOptRuleCall {
    * are copied to the new relational expression(<code>rel</code>)
    * with specified handler {@code handler}.
    *
-   * @param rel     Relational expression equivalent to the root relational
+   * @param rel    跟call.rels[0]的相等的新的根关系表达式 Relational expression equivalent to the root relational
    *                expression of the rule call, {@code call.rels(0)}
-   * @param equiv   Map of other equivalences
+   * @param equiv   其他相等关系映射 Map of other equivalences
    * @param handler Handler to customize the relational expression that registers
    *                into the planner, the first parameter is the root relational expression
    *                and the second parameter is the new relational expression

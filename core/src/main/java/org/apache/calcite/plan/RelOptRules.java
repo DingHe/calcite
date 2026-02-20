@@ -114,7 +114,6 @@ public class RelOptRules {
           CoreRules.UNION_MERGE,
           CoreRules.INTERSECT_MERGE,
           CoreRules.MINUS_MERGE,
-          CoreRules.PROJECT_OVER_SUM_TO_SUM0_RULE,
           CoreRules.PROJECT_TO_LOGICAL_PROJECT_AND_WINDOW,
           CoreRules.FILTER_MERGE,
           DateRangeRules.FILTER_INSTANCE,

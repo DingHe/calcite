@@ -22,8 +22,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * View schema element.
@@ -97,7 +96,7 @@ public class JsonView extends JsonTable {
       @JsonProperty("path") @Nullable List<String> path,
       @JsonProperty("modifiable") @Nullable Boolean modifiable) {
     super(name, stream);
-    this.sql = requireNonNull(sql, "sql");
+    this.sql = Objects.requireNonNull(sql, "sql");
     this.path = path;
     this.modifiable = modifiable;
   }

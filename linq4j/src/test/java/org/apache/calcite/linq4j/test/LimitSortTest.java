@@ -21,7 +21,6 @@ import org.apache.calcite.linq4j.EnumerableDefaults;
 import org.apache.calcite.linq4j.Linq4j;
 import org.apache.calcite.linq4j.function.Function1;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.Comparator;
@@ -30,8 +29,7 @@ import java.util.Random;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,7 +39,7 @@ class LimitSortTest {
 
   /** Row class. */
   private static class Row {
-    @Nullable String key;
+    String key;
     int index;
 
     @Override public String toString() {
@@ -110,8 +108,8 @@ class LimitSortTest {
     }
 
     // check offset and fetch size have been respected
-    @Nullable Row first;
-    @Nullable Row last;
+    Row first;
+    Row last;
     if (result.isEmpty()) {
       // may happen if the offset is bigger than the number of items
       first = null;
@@ -135,21 +133,18 @@ class LimitSortTest {
 
     // we can skip at most 'totalItems'
     int expOffset = Math.min(offset, totalItems);
-    assertThat("Offset has not been respected.", actOffset, is(expOffset));
+    assertEquals(expOffset, actOffset, "Offset has not been respected.");
     // we can only fetch items if there are enough
     int expFetch = Math.min(totalItems - expOffset, fetch);
-    assertThat("Fetch has not been respected.", actFetch, is(expFetch));
+    assertEquals(expFetch, actFetch, "Fetch has not been respected.");
   }
 
   /** A comparison function that takes the order of creation into account. */
-  private static boolean isSmaller(@Nullable Row left, @Nullable Row right,
-      Comparator<String> cmp) {
+  private static boolean isSmaller(Row left, Row right, Comparator<String> cmp) {
     if (right == null) {
       return true;
     }
-    if (left == null) {
-      return false;
-    }
+
     int c = cmp.compare(left.key, right.key);
     if (c != 0) {
       return c < 0;
@@ -158,14 +153,11 @@ class LimitSortTest {
   }
 
   /** See {@link #isSmaller(Row, Row, Comparator)}. */
-  private static boolean isSmallerEq(@Nullable Row left, @Nullable Row right,
-      Comparator<String> cmp) {
+  private static boolean isSmallerEq(Row left, Row right, Comparator<String> cmp) {
     if (right == null) {
       return true;
     }
-    if (left == null) {
-      return false;
-    }
+
     int c = cmp.compare(left.key, right.key);
     if (c != 0) {
       return c < 0;

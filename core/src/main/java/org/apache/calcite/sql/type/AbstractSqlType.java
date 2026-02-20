@@ -26,8 +26,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.io.Serializable;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /**
  * Abstract base class for SQL implementations of {@link RelDataType}.
@@ -37,8 +36,8 @@ public abstract class AbstractSqlType
     implements Cloneable, Serializable {
   //~ Instance fields --------------------------------------------------------
 
-  protected final SqlTypeName typeName;
-  protected final boolean isNullable;
+  protected final SqlTypeName typeName; //sql枚举值的名称
+  protected boolean isNullable; //是否可以为空
 
   //~ Constructors -----------------------------------------------------------
 
@@ -54,7 +53,7 @@ public abstract class AbstractSqlType
       boolean isNullable,
       @Nullable List<? extends RelDataTypeField> fields) {
     super(fields);
-    this.typeName = requireNonNull(typeName, "typeName");
+    this.typeName = Objects.requireNonNull(typeName, "typeName");
     this.isNullable = isNullable || (typeName == SqlTypeName.NULL);
   }
 

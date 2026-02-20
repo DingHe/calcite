@@ -36,12 +36,12 @@ import java.util.List;
  * type of the row (returned by {@link #getJavaRowType()}), and methods to
  * generate expressions to access fields, generate records, and so forth.
  * Together, the records encapsulate how the logical type maps onto the physical
- * type.
+ * type.总的来说，PhysType接口提供了一整套方法，用于管理和操作Apache Calcite中的物理行表示，从而实现高效的查询执行和数据处理。
  */
 public interface PhysType {
   /** Returns the Java type (often a Class) that represents a row. For
    * example, in one row format, always returns {@code Object[].class}. */
-  Type getJavaRowType();
+  Type getJavaRowType(); //返回表示整个行的Java类型，通常为数组类型，如Object[].class
 
   /**
    * Returns the Java class that is used to store the field with the given
@@ -49,24 +49,24 @@ public interface PhysType {
    *
    * <p>For instance, when the java row type is {@code Object[]}, the java
    * field type is {@code Object} even if the field is not nullable. */
-  Type getJavaFieldType(int field);
+  Type getJavaFieldType(int field); //返回指定字段（根据序号）的Java类型
 
   /** Returns the type factory. */
-  JavaTypeFactory getTypeFactory();
+  JavaTypeFactory getTypeFactory(); //关系类型的java工厂
 
   /** Returns the physical type of a field. */
-  PhysType field(int ordinal);
+  PhysType field(int ordinal); //返回某个字段的物理类型
 
   /** Returns the physical type of a given field's component type. */
-  PhysType component(int field);
+  PhysType component(int field); //返回指定字段的元素类型
 
   /** Returns the SQL row type. */
-  RelDataType getRowType();
+  RelDataType getRowType(); //返回SQL表示的行类型
 
-  /** Returns the Java class of the field with the given ordinal. */
+  /** Returns the Java class of the field with the given ordinal. 返回特定字段的Java类，用于类型检查*/
   Class fieldClass(int field);
 
-  /** Returns whether a given field allows null values. */
+  /** Returns whether a given field allows null values.指示特定字段是否可以接受null值 */
   boolean fieldNullable(int index);
 
   /** Generates a reference to a given field in an expression.
@@ -78,7 +78,7 @@ public interface PhysType {
    *
    * @param expression Expression
    * @param field Ordinal of field
-   * @return Expression to access the field of the expression
+   * @return Expression to access the field of the expression 生成一个表达式，用于访问给定行表达式的字段
    */
   Expression fieldReference(Expression expression, int field);
 
@@ -95,7 +95,7 @@ public interface PhysType {
    * @param expression Expression
    * @param field Ordinal of field
    * @param storageType optional hint for storage class
-   * @return Expression to access the field of the expression
+   * @return Expression to access the field of the expression  类似于上一个方法，但优化了存储类型以避免不必要的强制转换
    */
   Expression fieldReference(Expression expression, int field,
       @Nullable Type storageType);
@@ -112,7 +112,7 @@ public interface PhysType {
    *    public Object[] apply(Employee v1) {
    *        return FlatLists.of(v1.&lt;fieldN&gt;, v1.&lt;fieldM&gt;);
    *    }
-   * }</pre></blockquote>
+   * }</pre></blockquote>  生成一个访问器函数，从行对象中返回指定字段列表的表达式
    */
   Expression generateAccessor(List<Integer> fields);
 
@@ -132,7 +132,7 @@ public interface PhysType {
    *    }
    * }</pre></blockquote>
    */
-  Expression generateAccessorWithoutNulls(List<Integer> fields);
+  Expression generateAccessorWithoutNulls(List<Integer> fields); //跟上一个方法类似，但是如果有一个字段为null，则返回null
 
   /** Generates a selector for the given fields from an expression, with the
    * default row format. */
@@ -172,7 +172,7 @@ public interface PhysType {
 
   /** Projects a given collection of fields from this input record, into
    * a particular preferred output format. The output format is optimized
-   * if there are 0 or 1 fields. */
+   * if there are 0 or 1 fields.从输入记录中投影指定字段到所需的输出格式 */
   PhysType project(
       List<Integer> integers,
       JavaRowFormat format);
@@ -214,7 +214,7 @@ public interface PhysType {
    * field.
    *
    * @param expressions Expression to initialize each field
-   * @return Expression to create a row
+   * @return Expression to create a row  生成一个表达式，用于创建行对象，并使用提供的表达式初始化各个字段
    */
   Expression record(List<Expression> expressions);
 

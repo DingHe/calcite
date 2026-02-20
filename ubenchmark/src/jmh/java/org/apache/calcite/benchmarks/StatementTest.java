@@ -67,10 +67,10 @@ public class StatementTest {
   @State(Scope.Thread)
   @BenchmarkMode(Mode.AverageTime)
   public static class HrConnection {
-    final Connection con;
+    Connection con;
     int id;
-    final HrSchema hr = new HrSchema();
-    final Random rnd = new Random();
+    HrSchema hr = new HrSchema();
+    Random rnd = new Random();
     {
       try {
         Class.forName("org.apache.calcite.jdbc.Driver");
@@ -113,7 +113,7 @@ public class StatementTest {
    * Tests performance of reused execution of prepared statement.
    */
   public static class HrPreparedStatement extends HrConnection {
-    final PreparedStatement ps;
+    PreparedStatement ps;
     {
       try {
         ps = con.prepareStatement("select name from emps where empid = ?");
@@ -178,7 +178,7 @@ public class StatementTest {
   }
 
   @Benchmark
-  public String forEach(HrConnection state) {
+  public String forEach(HrConnection state) throws SQLException {
     final Employee[] emps = state.hr.emps;
     for (Employee emp : emps) {
       if (emp.empid == state.id) {

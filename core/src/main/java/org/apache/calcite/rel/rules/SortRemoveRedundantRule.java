@@ -127,7 +127,7 @@ public class SortRemoveRedundantRule
     }
   }
 
-  private static Optional<Integer> getRowCountThreshold(Sort sort) {
+  private Optional<Integer> getRowCountThreshold(Sort sort) {
     if (RelOptUtil.isLimit(sort)) {
       final int fetch =
           sort.fetch instanceof RexLiteral ? RexLiteral.intValue(sort.fetch) : 0;

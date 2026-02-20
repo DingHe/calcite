@@ -27,7 +27,7 @@ import org.apache.calcite.rel.PhysicalNode;
  * That means, in {@link HepPlanner}, the rule that implements
  * {@link TransformationRule} can still match with physical operator of
  * {@link PhysicalNode} and generate physical alternatives.
- *
+ * 逻辑转换的rule，逻辑rule -> 逻辑rule。
  * <p>But in {@link VolcanoPlanner}, {@link TransformationRule} doesn't match
  * with physical operator that implements {@link PhysicalNode}. It is not
  * allowed to generate physical operators in {@link TransformationRule},

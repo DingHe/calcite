@@ -79,6 +79,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -86,7 +87,6 @@ import java.util.TreeSet;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNullList;
-import static org.apache.calcite.sql.SqlUtil.deriveAliasFromOrdinal;
 import static org.apache.calcite.sql.type.NonNullableAccessors.getCharset;
 import static org.apache.calcite.sql.type.NonNullableAccessors.getCollation;
 import static org.apache.calcite.util.Static.RESOURCE;
@@ -369,7 +369,7 @@ public class SqlValidatorUtil {
       if (ordinal < 0) {
         return null;
       } else {
-        return deriveAliasFromOrdinal(ordinal);
+        return SqlUtil.deriveAliasFromOrdinal(ordinal);
       }
     }
   }
@@ -537,7 +537,6 @@ public class SqlValidatorUtil {
     requireNonNull(systemFieldList, "systemFieldList");
     switch (joinType) {
     case LEFT:
-    case LEFT_ASOF:
       rightType =
           typeFactory.createTypeWithNullability(
               requireNonNull(rightType, "rightType"), true);
@@ -653,7 +652,7 @@ public class SqlValidatorUtil {
     final Table t = table == null ? null : table.unwrap(Table.class);
     if (!(t instanceof CustomColumnResolvingTable)) {
       final SqlNameMatcher nameMatcher = catalogReader.nameMatcher();
-      return nameMatcher.field(rowType, Util.last(id.names));
+      return nameMatcher.field(rowType, id.getSimple());
     }
 
     final List<Pair<RelDataTypeField, List<String>>> entries =
@@ -678,7 +677,7 @@ public class SqlValidatorUtil {
   public static SqlValidatorNamespace lookup(
       SqlValidatorScope scope,
       List<String> names) {
-    assert !names.isEmpty();
+    assert names.size() > 0;
     final SqlNameMatcher nameMatcher =
         scope.getValidator().getCatalogReader().nameMatcher();
     final SqlValidatorScope.ResolvedImpl resolved =
@@ -687,7 +686,8 @@ public class SqlValidatorUtil {
     assert resolved.count() == 1;
     SqlValidatorNamespace namespace = resolved.only().namespace;
     for (String name : Util.skip(names)) {
-      namespace = requireNonNull(namespace.lookupChild(name));
+      namespace = namespace.lookupChild(name);
+      assert namespace != null;
     }
     return namespace;
   }
@@ -764,11 +764,8 @@ public class SqlValidatorUtil {
         new ArrayList<>(columnNameList.size());
     for (String name : columnNameList) {
       RelDataTypeField field = type.getField(name, caseSensitive, false);
-      if (field == null) {
-        throw new IllegalArgumentException("field " + name
-            + (caseSensitive ? " (caseSensitive)" : "") + " is not found in "
-            + type);
-      }
+      assert field != null : "field " + name + (caseSensitive ? " (caseSensitive)" : "")
+          + " is not found in " + type;
       fields.add(type.getFieldList().get(field.getIndex()));
     }
     return typeFactory.createStructType(fields);
@@ -900,7 +897,7 @@ public class SqlValidatorUtil {
               ((SqlCall) expandedGroupExpr).getOperandList()));
     case OTHER:
       if (expandedGroupExpr instanceof SqlNodeList
-          && ((SqlNodeList) expandedGroupExpr).isEmpty()) {
+          && ((SqlNodeList) expandedGroupExpr).size() == 0) {
         return ImmutableBitSet.of();
       }
       break;
@@ -1309,16 +1306,9 @@ public class SqlValidatorUtil {
    *
    * <p>For a measure, {@code selectItem} will have the form
    * {@code AS(MEASURE(exp), alias)} and this method returns {@code exp}. */
-  @SuppressWarnings({"SwitchStatementWithTooFewBranches", "MissingCasesInEnumSwitch"})
   public static @Nullable SqlNode getMeasure(SqlNode selectItem) {
-    switch (selectItem.getKind()) {
-    case AS:
-      final SqlBasicCall call = (SqlBasicCall) selectItem;
-      switch (call.operand(0).getKind()) {
-      case MEASURE:
-        return ((SqlBasicCall) call.operand(0)).operand(0);
-      }
-    }
+    // The implementation of this method will be extended when we add the
+    // 'AS MEASURE' construct in [CALCITE-4496].
     return null;
   }
 
@@ -1618,7 +1608,8 @@ public class SqlValidatorUtil {
 
     FlatAggregate(SqlCall aggregateCall, @Nullable SqlCall filterCall,
         @Nullable SqlCall distinctCall, @Nullable SqlCall orderCall) {
-      this.aggregateCall = requireNonNull(aggregateCall, "aggregateCall");
+      this.aggregateCall =
+          Objects.requireNonNull(aggregateCall, "aggregateCall");
       checkArgument(filterCall == null
           || filterCall.getKind() == SqlKind.FILTER);
       checkArgument(distinctCall == null

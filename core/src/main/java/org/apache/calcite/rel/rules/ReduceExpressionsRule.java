@@ -88,7 +88,7 @@ import java.util.stream.Collectors;
 /**
  * Collection of planner rules that apply various simplifying transformations on
  * RexNode trees. Currently, there are two transformations:
- *
+ * 常量简化，删除冗余的cast
  * <ul>
  * <li>Constant reduction, which evaluates constant subtrees, replacing them
  * with a corresponding RexLiteral
@@ -304,12 +304,12 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
     }
 
     @Override public void onMatch(RelOptRuleCall call) {
-      final Project project = call.rel(0);
+      final Project project = call.rel(0); //取到匹配该规则的节点
       final RelMetadataQuery mq = call.getMetadataQuery();
       final RelOptPredicateList predicates =
           mq.getPulledUpPredicates(project.getInput());
       final List<RexNode> expList =
-          Lists.newArrayList(project.getProjects());
+          Lists.newArrayList(project.getProjects()); //获得投影每列的表达式列表
       if (reduceExpressions(project, expList, predicates, false,
           config.matchNullability(), config.treatDynamicCallsAsConstant())) {
         assert !project.getProjects().equals(expList)
@@ -667,7 +667,7 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
 
   /**
    * Reduces a list of expressions.
-   *
+   * matchNullability 为 true，则转换后新的数据类型也许不能为空，false保留原样
    * <p>The {@code matchNullability} flag comes into play when reducing an
    * expression whose type is nullable. Suppose we are reducing an expression
    * {@code CASE WHEN 'a' = 'a' THEN 1 ELSE NULL END}. Before reduction the
@@ -798,7 +798,7 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
   /**
    * Locates expressions that can be reduced to literals or converted to
    * expressions with redundant casts removed.
-   *
+   *查找可约的常量表达式
    * @param typeFactory    Type factory
    * @param exps           list of candidate expressions to be examined for
    *                       reduction
@@ -844,13 +844,13 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
   }
 
   /** Pushes predicates into a CASE.
-   *
+   * 作用是将一个逻辑表达式中的谓词（通常是条件判断）推入到 CASE 表达式内部
    * <p>We have a loose definition of 'predicate': any boolean expression will
    * do, except CASE. For example '(CASE ...) = 5' or '(CASE ...) IS NULL'.
    */
   public static RexCall pushPredicateIntoCase(RexCall call) {
     if (call.getType().getSqlTypeName() != SqlTypeName.BOOLEAN) {
-      return call;
+      return call; //如果不是布尔类型，直接返回原表达式
     }
     switch (call.getKind()) {
     case CASE:
@@ -864,7 +864,7 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
       ImmutableBitSet left = RelOptUtil.InputFinder.bits(equalsOperands.get(0));
       ImmutableBitSet right = RelOptUtil.InputFinder.bits(equalsOperands.get(1));
       if (!left.isEmpty() && !right.isEmpty() && left.intersect(right).isEmpty()) {
-        return call;
+        return call; //如果 EQUALS 操作数的输入部分没有交集，说明它们没有共享输入，不会推入 CASE
       }
       break;
     }
@@ -977,15 +977,15 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
     /** Whether an expression is constant, and if so, whether it can be
      * reduced to a simpler constant. */
     enum Constancy {
-      NON_CONSTANT, REDUCIBLE_CONSTANT, IRREDUCIBLE_CONSTANT
+      NON_CONSTANT, REDUCIBLE_CONSTANT, IRREDUCIBLE_CONSTANT  //非常量、可约常量、不可约常量
     }
 
     private final boolean treatDynamicCallsAsConstant;
-
+    //记录每个RexNode的是否可约
     private final List<Constancy> stack = new ArrayList<>();
 
     private final ImmutableMap<RexNode, RexNode> constants;
-
+    //记录常量表达式
     private final List<RexNode> constExprs;
 
     private final List<Boolean> addCasts;
@@ -1187,7 +1187,7 @@ public abstract class ReduceExpressionsRule<C extends ReduceExpressionsRule.Conf
     }
   }
 
-  /** Shuttle that pushes predicates into a CASE. */
+  /** Shuttle that pushes predicates into a CASE. CaseShuttle类主要是重写vistCall的方法*/
   protected static class CaseShuttle extends RexShuttle {
     @Override public RexNode visitCall(RexCall call) {
       for (;;) {

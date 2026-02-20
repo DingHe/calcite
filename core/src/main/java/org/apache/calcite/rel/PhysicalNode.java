@@ -31,7 +31,7 @@ import java.util.List;
 /**
  * Physical node in a planner that is capable of doing
  * physical trait propagation and derivation.
- *
+ * 执行计划中的物理节点可以特征传播和派生
  * <p>How to use?
  *
  * <ol>
@@ -71,7 +71,7 @@ import java.util.List;
  */
 public interface PhysicalNode extends RelNode {
 
-  /**
+  /** 从父节点把特征集传递到子节点，返回新的节点
    * Pass required traitset from parent node to child nodes,
    * returns new node after traits is passed down.
    */
@@ -84,7 +84,7 @@ public interface PhysicalNode extends RelNode {
     assert size == p.right.size();
     List<RelNode> list = new ArrayList<>(size);
     for (int i = 0; i < size; i++) {
-      RelNode n = RelOptRule.convert(getInput(i), p.right.get(i));
+      RelNode n = RelOptRule.convert(getInput(i), p.right.get(i)); //对每个输入的特征做转换
       list.add(n);
     }
     return copy(p.left, list);
@@ -93,7 +93,7 @@ public interface PhysicalNode extends RelNode {
   /**
    * Pass required traitset from parent node to child nodes,
    * returns a pair of traits after traits is passed down.
-   *
+   * 从父节点把特征集传递给子节点，返回 <新的特征集，子节点要求的特征集>
    * <p>Pair.left: the new traitset;
    * Pair.right: the list of required traitsets for child nodes.
    */
@@ -103,7 +103,7 @@ public interface PhysicalNode extends RelNode {
         + "#passThroughTraits() is not implemented.");
   }
 
-  /**
+  /** 从子节点衍生特征集
    * Derive traitset from child node, returns new node after
    * traits derivation.
    */

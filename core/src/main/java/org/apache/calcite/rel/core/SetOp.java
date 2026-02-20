@@ -45,8 +45,8 @@ import static com.google.common.base.Preconditions.checkArgument;
 public abstract class SetOp extends AbstractRelNode implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
-  protected ImmutableList<RelNode> inputs;
-  public final SqlKind kind;
+  protected ImmutableList<RelNode> inputs; //输入节点
+  public final SqlKind kind; //sql类型，只能是并、交和差集操作
   public final boolean all;
   protected final ImmutableList<RelHint> hints;
 

@@ -747,7 +747,7 @@ public abstract class Mappings {
         sourceCount,
         mapping.getTargetCount() + offset);
   }
-
+   //校验字段的序号是否跟数量一致
   /** Returns whether a list of integers is the identity mapping
    * [0, ..., n - 1]. */
   public static boolean isIdentity(List<Integer> list, int count) {

@@ -55,10 +55,6 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 
-import static java.lang.Double.parseDouble;
-import static java.lang.Float.parseFloat;
-import static java.lang.Integer.parseInt;
-import static java.lang.Long.parseLong;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -126,16 +122,10 @@ public class ArrowTable extends AbstractTable
         treeNodes.add(
             TreeBuilder.makeField(schema.getFields()
                 .get(schema.getFields().indexOf(schema.findField(data[0])))));
-
-        // if the split condition has more than two parts it's a binary operator
-        // with an additional literal node
-        if (data.length > 2) {
-          treeNodes.add(makeLiteralNode(data[2], data[3]));
-        }
-
-        String operator = data[1];
+        treeNodes.add(makeLiteralNode(data[2], data[3]));
+        String equality = data[1];
         conditionNodes.add(
-            TreeBuilder.makeFunction(operator, treeNodes, new ArrowType.Bool()));
+            TreeBuilder.makeFunction(equality, treeNodes, new ArrowType.Bool()));
       }
       final Condition filterCondition;
       if (conditionNodes.size() == 1) {
@@ -187,13 +177,13 @@ public class ArrowTable extends AbstractTable
   private static TreeNode makeLiteralNode(String literal, String type) {
     switch (type) {
     case "integer":
-      return TreeBuilder.makeLiteral(parseInt(literal));
+      return TreeBuilder.makeLiteral(Integer.parseInt(literal));
     case "long":
-      return TreeBuilder.makeLiteral(parseLong(literal));
+      return TreeBuilder.makeLiteral(Long.parseLong(literal));
     case "float":
-      return TreeBuilder.makeLiteral(parseFloat(literal));
+      return TreeBuilder.makeLiteral(Float.parseFloat(literal));
     case "double":
-      return TreeBuilder.makeLiteral(parseDouble(literal));
+      return TreeBuilder.makeLiteral(Double.parseDouble(literal));
     case "string":
       return TreeBuilder.makeStringLiteral(literal.substring(1, literal.length() - 1));
     default:

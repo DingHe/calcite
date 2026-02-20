@@ -28,8 +28,7 @@ import com.google.common.collect.ImmutableList;
 
 import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Test for {@link org.apache.calcite.adapter.enumerable.PhysTypeImpl}.
@@ -51,7 +50,7 @@ public final class PhysTypeTest {
 
     PhysType rowPhysType =
         PhysTypeImpl.of(TYPE_FACTORY, rowType, JavaRowFormat.ARRAY);
-    assertThat(rowPhysType.fieldClass(0), is(Object[].class));
+    assertEquals(Object[].class, rowPhysType.fieldClass(0));
   }
 
   /** Test case for
@@ -69,7 +68,7 @@ public final class PhysTypeTest {
 
     PhysType rowPhysType =
         PhysTypeImpl.of(TYPE_FACTORY, rowType, JavaRowFormat.ARRAY);
-    assertThat(rowPhysType.fieldClass(0), is(Object[].class));
+    assertEquals(Object[].class, rowPhysType.fieldClass(0));
   }
 
   /** Test case for
@@ -96,6 +95,6 @@ public final class PhysTypeTest {
         + "  }\n"
         + "}\n"
         + ")";
-    assertThat(expected, is(Expressions.toString(e)));
+    assertEquals(Expressions.toString(e), expected);
   }
 }

@@ -130,7 +130,7 @@ public class RelMdPercentageOriginalRows {
       return null;
     }
 
-    if (rel.getInputs().isEmpty()) {
+    if (rel.getInputs().size() == 0) {
       // Assume no filtering happening at leaf.
       return 1.0;
     }

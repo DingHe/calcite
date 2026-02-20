@@ -34,7 +34,7 @@ public interface Compiler {
 
   /** Compiles an expression to an executable form. */
   Scalar compile(List<RexNode> nodes, @Nullable RelDataType inputRowType);
-
+  //合并多个输入
   RelDataType combinedRowType(List<RelNode> inputs);
 
   Source source(RelNode rel, int ordinal);
@@ -45,7 +45,7 @@ public interface Compiler {
    * <p>This method is generally called from the constructor of a {@link Node}.
    * But a constructor could instead call
    * {@link #enumerable(RelNode, Enumerable)}.
-   *
+   * 返回关系表达式的输出
    * @param rel Relational expression
    * @return Sink
    */

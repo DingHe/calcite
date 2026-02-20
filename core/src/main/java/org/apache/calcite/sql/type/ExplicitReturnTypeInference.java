@@ -21,8 +21,6 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelProtoDataType;
 import org.apache.calcite.sql.SqlOperatorBinding;
 
-import static java.util.Objects.requireNonNull;
-
 /**
  * A {@link SqlReturnTypeInference} which always returns the same SQL type.
  */
@@ -47,7 +45,8 @@ public class ExplicitReturnTypeInference implements SqlReturnTypeInference {
    * @param protoType Type object
    */
   protected ExplicitReturnTypeInference(RelProtoDataType protoType) {
-    this.protoType = requireNonNull(protoType, "protoType");
+    assert protoType != null;
+    this.protoType = protoType;
   }
 
   //~ Methods ----------------------------------------------------------------

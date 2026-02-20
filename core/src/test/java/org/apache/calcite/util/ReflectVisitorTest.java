@@ -20,11 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.closeTo;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -43,7 +39,9 @@ class ReflectVisitorTest {
 
     // verify that negater is capable of handling integers
     result = negater.negate(5);
-    assertThat(result.intValue(), is(-5));
+    assertEquals(
+        -5,
+        result.intValue());
   }
 
   /**
@@ -56,14 +54,18 @@ class ReflectVisitorTest {
     // verify that negater is capable of handling integers,
     // and that result comes back with same type
     result = negater.negate(5);
-    assertThat(result.intValue(), is(-5));
-    assertThat(result, instanceOf(Integer.class));
+    assertEquals(
+        -5,
+        result.intValue());
+    assertTrue(result instanceof Integer);
 
     // verify that negater is capable of handling longs;
     // even though it doesn't provide an explicit implementation,
     // it should inherit the one from CarelessNumberNegater
     result = negater.negate(5L);
-    assertThat(result.longValue(), is(-5L));
+    assertEquals(
+        -5L,
+        result.longValue());
   }
 
   /**
@@ -76,12 +78,14 @@ class ReflectVisitorTest {
     // verify that negater is capable of handling shorts,
     // and that result comes back with same type
     result = negater.negate((short) 5);
-    assertThat(result.shortValue(), is((short) -5));
-    assertThat(result, instanceOf(Short.class));
+    assertEquals(
+        -5,
+        result.shortValue());
+    assertTrue(result instanceof Short);
 
     // verify that negater is NOT capable of handling integers
     result = negater.negate(5);
-    assertThat(result, nullValue());
+    assertEquals(null, result);
   }
 
   /**
@@ -110,7 +114,10 @@ class ReflectVisitorTest {
     Number result;
 
     result = negater.negate(new SomewhatAmbiguousNumber());
-    assertThat(result.doubleValue(), closeTo(0.0, 0.001));
+    assertEquals(
+        0.0,
+        result.doubleValue(),
+        0.001);
   }
 
   //~ Inner Interfaces -------------------------------------------------------

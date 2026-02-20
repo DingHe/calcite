@@ -27,8 +27,7 @@ import com.google.common.collect.ImmutableList;
 
 import java.math.BigDecimal;
 import java.util.List;
-
-import static java.util.Objects.requireNonNull;
+import java.util.Objects;
 
 /** Abstract syntax tree.
  *
@@ -137,8 +136,8 @@ public class Ast {
     public final SqlParserPos pos;
 
     protected Node(SqlParserPos pos, Op op) {
-      this.op = requireNonNull(op, "op");
-      this.pos = requireNonNull(pos, "pos");
+      this.op = Objects.requireNonNull(op, "op");
+      this.pos = Objects.requireNonNull(pos, "pos");
     }
   }
 
@@ -155,7 +154,7 @@ public class Ast {
 
     protected Assignment(SqlParserPos pos, Op op, Identifier target) {
       super(pos, op);
-      this.target = requireNonNull(target, "target");
+      this.target = Objects.requireNonNull(target, "target");
     }
   }
 
@@ -165,7 +164,7 @@ public class Ast {
 
     public LoadStmt(SqlParserPos pos, Identifier target, Literal name) {
       super(pos, Op.LOAD, target);
-      this.name = requireNonNull(name, "name");
+      this.name = Objects.requireNonNull(name, "name");
     }
   }
 
@@ -334,7 +333,7 @@ public class Ast {
 
     public DumpStmt(SqlParserPos pos, Identifier relation) {
       super(pos, Op.DUMP);
-      this.relation = requireNonNull(relation, "relation");
+      this.relation = Objects.requireNonNull(relation, "relation");
     }
   }
 
@@ -344,7 +343,7 @@ public class Ast {
 
     public DescribeStmt(SqlParserPos pos, Identifier relation) {
       super(pos, Op.DESCRIBE);
-      this.relation = requireNonNull(relation, "relation");
+      this.relation = Objects.requireNonNull(relation, "relation");
     }
   }
 
@@ -354,7 +353,7 @@ public class Ast {
 
     public Literal(SqlParserPos pos, Object value) {
       super(pos, Op.LITERAL);
-      this.value = requireNonNull(value, "value");
+      this.value = Objects.requireNonNull(value, "value");
     }
 
     public static NumericLiteral createExactNumeric(String s,
@@ -409,7 +408,7 @@ public class Ast {
 
     public Identifier(SqlParserPos pos, String value) {
       super(pos, Op.IDENTIFIER);
-      this.value = requireNonNull(value, "value");
+      this.value = Objects.requireNonNull(value, "value");
     }
 
     public boolean isStar() {
@@ -467,8 +466,8 @@ public class Ast {
 
     public FieldSchema(SqlParserPos pos, Identifier id, Type type) {
       super(pos, Op.FIELD_SCHEMA);
-      this.id = requireNonNull(id, "id");
-      this.type = requireNonNull(type, "type");
+      this.id = Objects.requireNonNull(id, "id");
+      this.type = Objects.requireNonNull(type, "type");
     }
   }
 

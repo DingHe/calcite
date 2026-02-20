@@ -54,8 +54,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -72,21 +70,21 @@ public abstract class AbstractRelNode implements RelNode {
   /**
    * Cached type of this relational expression.
    */
-  protected @MonotonicNonNull RelDataType rowType;
+  protected @MonotonicNonNull RelDataType rowType; //行的类型
 
   /**
    * The digest that uniquely identifies the node.
    */
   @API(since = "1.24", status = API.Status.INTERNAL)
-  protected final RelDigest digest;
+  protected RelDigest digest;
 
-  private final RelOptCluster cluster;
+  private final RelOptCluster cluster; //上下文
 
   /** Unique id of this object, for debugging. */
-  protected final int id;
+  protected final int id; //该节点的唯一id
 
   /** RelTraitSet that describes the traits of this RelNode. */
-  protected final RelTraitSet traitSet;
+  protected RelTraitSet traitSet; //特征
 
   //~ Constructors -----------------------------------------------------------
 
@@ -95,8 +93,9 @@ public abstract class AbstractRelNode implements RelNode {
    */
   protected AbstractRelNode(RelOptCluster cluster, RelTraitSet traitSet) {
     super();
-    this.cluster = requireNonNull(cluster, "cluster");
-    this.traitSet = requireNonNull(traitSet, "traitSet");
+    assert cluster != null;
+    this.cluster = cluster;
+    this.traitSet = traitSet;
     this.id = NEXT_ID.getAndIncrement();
     this.digest = new InnerRelDigest();
   }
@@ -127,7 +126,7 @@ public abstract class AbstractRelNode implements RelNode {
     return cluster;
   }
 
-  @Pure
+  @Pure  //通过特征集返回调用约定
   @Override public final @Nullable Convention getConvention(
       @UnknownInitialization AbstractRelNode this) {
     return traitSet == null ? null : traitSet.getTrait(ConventionTraitDef.INSTANCE);
@@ -136,7 +135,7 @@ public abstract class AbstractRelNode implements RelNode {
   @Override public RelTraitSet getTraitSet() {
     return traitSet;
   }
-
+  //默认变量为空
   @Override public @Nullable String getCorrelVariable() {
     return null;
   }
@@ -149,7 +148,7 @@ public abstract class AbstractRelNode implements RelNode {
     List<RelNode> inputs = getInputs();
     return inputs.get(i);
   }
-
+  //实际上Util.discard啥没干，注册当前 RelNode 特有的优化规则
   @Override public void register(RelOptPlanner planner) {
     Util.discard(planner);
   }
@@ -172,17 +171,18 @@ public abstract class AbstractRelNode implements RelNode {
 
   @Override public final RelDataType getRowType() {
     if (rowType == null) {
-      rowType = checkNotNull(deriveRowType(), "null row type for %s", this);
+      rowType = deriveRowType();
+      assert rowType != null : this;
     }
     return rowType;
   }
-
+  //类型推断
   protected RelDataType deriveRowType() {
     // This method is only called if rowType is null, so you don't NEED to
     // implement it if rowType is always set.
     throw new UnsupportedOperationException();
   }
-
+  //希望输入的行类型，默认是行类型
   @Override public RelDataType getExpectedInputRowType(int ordinalInParent) {
     return getRowType();
   }
@@ -194,7 +194,7 @@ public abstract class AbstractRelNode implements RelNode {
   @Override public double estimateRowCount(RelMetadataQuery mq) {
     return 1.0;
   }
-
+  //默认为空
   @Override public Set<CorrelationId> getVariablesSet() {
     return ImmutableSet.of();
   }
@@ -202,7 +202,8 @@ public abstract class AbstractRelNode implements RelNode {
   @Override public void collectVariablesUsed(Set<CorrelationId> variableSet) {
     // for default case, nothing to do
   }
-
+  //表示当前节点是一个“enforcer”节点。
+  // 这意味着该节点的存在是为了满足某些特定的执行要求（如排序、哈希分区等），而不是直接实现数据处理的业务逻辑
   @Override public boolean isEnforcer() {
     return false;
   }
@@ -239,10 +240,11 @@ public abstract class AbstractRelNode implements RelNode {
       RelMetadataQuery mq) {
     final MetadataFactory factory = cluster.getMetadataFactory();
     final M metadata = factory.query(this, mq, metadataClass);
-    checkNotNull(metadata, "no provider found (rel=%s, m=%s); "
-        + "a backstop provider is recommended", this, metadataClass);
+    assert metadata != null
+        : "no provider found (rel=" + this + ", m=" + metadataClass
+        + "); a backstop provider is recommended";
     // Usually the metadata belongs to the rel that created it. RelSubset and
-    // HepRelVertex are notable exceptions, so disable the assertion. It's not
+    // HepRelVertex are notable exceptions, so disable the assert. It's not
     // worth the performance hit to override this method for them.
     //   assert metadata.rel() == this : "someone else's metadata";
     return metadata;
@@ -266,12 +268,12 @@ public abstract class AbstractRelNode implements RelNode {
   public RelWriter explainTerms(RelWriter pw) {
     return pw;
   }
-
+  //先注册子节点，然后用子节点更新此节点的输入，如果不变，则返回自身
   @Override public RelNode onRegister(RelOptPlanner planner) {
     List<RelNode> oldInputs = getInputs();
     List<RelNode> inputs = new ArrayList<>(oldInputs.size());
     for (final RelNode input : oldInputs) {
-      RelNode e = planner.ensureRegistered(input, null);
+      RelNode e = planner.ensureRegistered(input, null); //先注册子节点
       assert e == input || RelOptUtil.equal("rowtype of rel before registration",
           input.getRowType(),
           "rowtype of rel after registration",
@@ -281,7 +283,7 @@ public abstract class AbstractRelNode implements RelNode {
     }
     RelNode r = this;
     if (!Util.equalShallow(oldInputs, inputs)) {
-      r = copy(getTraitSet(), inputs);
+      r = copy(getTraitSet(), inputs); //如果注册后，新的inputs和oldInputs不一致，则拷贝新的输入
     }
     r.recomputeDigest();
     assert r.isValid(Litmus.THROW, null);

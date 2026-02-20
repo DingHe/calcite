@@ -68,7 +68,7 @@ import static java.util.Objects.requireNonNull;
 /**
  * Subset of an equivalence class where all relational expressions have the
  * same physical properties.
- *
+ * 具有相同物理属性的相等集
  * <p>Physical properties are instances of the {@link RelTraitSet}, and consist
  * of traits such as calling convention and collation (sort-order).
  *
@@ -90,16 +90,16 @@ public class RelSubset extends AbstractRelNode {
 
   //~ Instance fields --------------------------------------------------------
 
-  /** Optimization task state. */
+  /** Optimization task state. 优化状态分为优化中、已完成*/
   @Nullable OptimizeState taskState;
 
   /** Cost of best known plan (it may have improved since). */
   RelOptCost bestCost;
 
-  /** The set this subset belongs to. */
+  /** The set this subset belongs to. 记录RelSubset所属的RelSet*/
   final RelSet set;
 
-  /** Best known plan. */
+  /** Best known plan. 当前已知最优的关系节点*/
   @Nullable RelNode best;
 
   /** Timestamp for metadata validity. */
@@ -107,12 +107,12 @@ public class RelSubset extends AbstractRelNode {
 
   /**
    * Physical property state of current subset. Values:
-   *
+   * state 主要用于表示当前子集的物理属性状态（traitSet）
    * <ul>
-   * <li>0: logical operators, NONE convention is neither DELIVERED nor REQUIRED
-   * <li>1: traitSet DELIVERED from child operators or itself
-   * <li>2: traitSet REQUIRED from parent operators
-   * <li>3: both DELIVERED and REQUIRED
+   * <li>0: logical operators, NONE convention is neither DELIVERED nor REQUIRED  状态值 0：表示逻辑操作符（NONE 调用约定），该状态下没有交付（DELIVERED）或所需（REQUIRED）的物理属性
+   * <li>1: traitSet DELIVERED from child operators or itself  状态值 1：表示物理属性（traitSet）已经从子操作符或自身交付（DELIVERED
+   * <li>2: traitSet REQUIRED from parent operators  状态值 2：表示该子集的物理属性是由父操作符要求（REQUIRED）的
+   * <li>3: both DELIVERED and REQUIRED 状态值 3：表示该子集同时满足了交付（DELIVERED）和所需（REQUIRED）的物理属性，意味着该子集的物理属性已经完全满足了查询的需求
    * </ul>
    */
   private int state = 0;
@@ -150,7 +150,7 @@ public class RelSubset extends AbstractRelNode {
     super(cluster, traits);
     this.set = set;
     assert traits.allSimple();
-    computeBestCost(cluster, cluster.getPlanner());
+    computeBestCost(cluster, cluster.getPlanner());//计算RelSubset的成本
     upperBound = bestCost;
   }
 
@@ -158,7 +158,7 @@ public class RelSubset extends AbstractRelNode {
 
   /**
    * Computes the best {@link RelNode} in this subset.
-   *
+   * 计算该子集的bestCost
    * <p>Only necessary when a subset is created in a set that has subsets that
    * subsume it. Rationale:
    *
@@ -174,7 +174,7 @@ public class RelSubset extends AbstractRelNode {
       @UnderInitialization RelSubset this,
       RelOptCluster cluster,
       RelOptPlanner planner) {
-    bestCost = planner.getCostFactory().makeInfiniteCost();
+    bestCost = planner.getCostFactory().makeInfiniteCost(); //刚开始默认为最大
     final RelMetadataQuery mq = cluster.getMetadataQuery();
     @SuppressWarnings("method.invocation.invalid")
     Iterable<RelNode> rels = getRels();
@@ -194,7 +194,7 @@ public class RelSubset extends AbstractRelNode {
     triggerRule = !isDelivered();
     state |= DELIVERED;
   }
-
+  //REQUIRED表示父节点要求满足
   void setRequired() {
     triggerRule = false;
     state |= REQUIRED;
@@ -351,7 +351,7 @@ public class RelSubset extends AbstractRelNode {
     return set;
   }
 
-  /**
+  /** 把rel加入RelSubset所属的RelSet的rels里面
    * Adds expression <code>rel</code> to this subset.
    */
   void add(RelNode rel) {
@@ -388,7 +388,7 @@ public class RelSubset extends AbstractRelNode {
    */
   RelNode buildCheapestPlan(VolcanoPlanner planner) {
     CheapestPlanReplacer replacer = new CheapestPlanReplacer(planner);
-    final RelNode cheapest = replacer.visit(this, -1, null);
+    final RelNode cheapest = replacer.visit(this, -1, null);  //-1表示根节点无父节点
 
     if (planner.getListener() != null) {
       RelOptListener.RelChosenEvent event =
@@ -412,7 +412,7 @@ public class RelSubset extends AbstractRelNode {
   /**
    * Returns the rel nodes in this rel subset.  All rels must have the same
    * traits and are logically equivalent.
-   *
+   * 遍历RelSet中语意相等的RelSet，过滤满足当前子集特征的RelNode
    * @return all the rels in the subset
    */
   public Iterable<RelNode> getRels() {
@@ -475,16 +475,16 @@ public class RelSubset extends AbstractRelNode {
   }
 
   void startOptimize(RelOptCost ub) {
-    assert getWinnerCost() == null : this + " is already optimized";
+    assert getWinnerCost() == null : this + " is already optimized";  //如果不winnerCost不为null，则代表已经优化过
     if (upperBound.isLt(ub)) {
       upperBound = ub;
       if (bestCost.isLt(upperBound)) {
-        upperBound = bestCost;
+        upperBound = bestCost;  //如果有最优成本，则上限就是最优成本
       }
     }
-    taskState = OptimizeState.OPTIMIZING;
+    taskState = OptimizeState.OPTIMIZING;  //状态为优化中
   }
-
+  //标志优化完成
   void setOptimized() {
     taskState = OptimizeState.COMPLETED;
   }
@@ -510,7 +510,7 @@ public class RelSubset extends AbstractRelNode {
   }
 
   boolean isExplored() {
-    return set.exploringState == RelSet.ExploringState.EXPLORED;
+    return set.exploringState == RelSet.ExploringState.EXPLORED; //表示已经探索过
   }
 
   boolean explore() {
@@ -532,7 +532,7 @@ public class RelSubset extends AbstractRelNode {
    */
   static class DeadEndFinder {
     final Set<RelSubset> deadEnds = new HashSet<>();
-    // To save time
+    // To save time,已经访问过的节点
     private final Set<RelNode> visitedNodes = new HashSet<>();
     // For cycle detection
     private final Set<RelNode> activeNodes = new HashSet<>();
@@ -547,13 +547,13 @@ public class RelSubset extends AbstractRelNode {
 
     private void visitSubset(RelSubset subset) {
       RelNode cheapest = subset.getBest();
-      if (cheapest != null) {
+      if (cheapest != null) { //能找到最优计划
         // Subset is implementable, and we are looking for bad ones, so stop here
         return;
       }
 
       boolean isEmpty = true;
-      for (RelNode rel : subset.getRels()) {
+      for (RelNode rel : subset.getRels()) { //遍历RelSet中语意相等的RelSet，过滤满足当前子集特征的RelNode
         if (rel instanceof AbstractConverter) {
           // Converters are not implementable
           continue;
@@ -600,42 +600,44 @@ public class RelSubset extends AbstractRelNode {
     return "RelSubset#" + set.id + '.' + getTraitSet();
   }
 
-  /**
+  /** 从根节点开始递归遍历，每个关系节点的子集取最优计划节点，没取到就会报错
    * Visitor which walks over a tree of {@link RelSet}s, replacing each node
    * with the cheapest implementation of the expression.
    */
   static class CheapestPlanReplacer {
-    final VolcanoPlanner planner;
-    final Map<Integer, RelNode> visited = new HashMap<>();
+    VolcanoPlanner planner;
+    final Map<Integer, RelNode> visited = new HashMap<>(); //存储已经访问过的RelNode，防止重复计算或遍历
 
     CheapestPlanReplacer(VolcanoPlanner planner) {
       super();
-      this.planner = requireNonNull(planner, "planner");
+      this.planner = planner;
     }
 
     private static String traitDiff(RelTraitSet original, RelTraitSet desired) {
       return Pair.zip(original, desired)
           .stream()
-          .filter(p -> !p.left.satisfies(p.right))
+          .filter(p -> !p.left.satisfies(p.right)) //拆选出original 不满足 desired的特征集
           .map(p -> p.left.getTraitDef().getSimpleName() + ": " + p.left + " -> " + p.right)
-          .collect(Collectors.joining(", ", "[", "]"));
+          .collect(Collectors.joining(", ", "[", "]")); //只是转为文本输出？
     }
 
     public RelNode visit(
-        RelNode p,
-        int ordinal,
-        @Nullable RelNode parent) {
+        RelNode p, //当前要访问的 RelNode 节点
+        int ordinal, //当前节点在其父节点中的位置，-1表示无父节点
+        @Nullable RelNode parent) {  //当前节点的父节点，可能为 null
       final int pId = p.getId();
       RelNode prevVisit = visited.get(pId);
-      if (prevVisit != null) {
+      if (prevVisit != null) {  //如果已经访问过，则直接返回
         // return memoized result of previous visit if available
         return prevVisit;
       }
 
       if (p instanceof RelSubset) {
         RelSubset subset = (RelSubset) p;
-        RelNode cheapest = subset.best;
+        RelNode cheapest = subset.best;  //取最优的节点
         if (cheapest == null) {
+          //没找到，
+          //RelSubset 中有一个 best 属性，它保存了最优的执行计划。如果没有找到最优的计划，就会触发一段详细的错误处理代码，用于调试和输出为什么没有找到最优计划
           // Dump the planner's expression pool so we can figure
           // out why we reached impasse.
           StringWriter sw = new StringWriter();
@@ -722,7 +724,7 @@ public class RelSubset extends AbstractRelNode {
         }
         p = cheapest;
       }
-
+      //-1表示无父节点，这里表示当前节点有父节点
       if (ordinal != -1) {
         if (planner.getListener() != null) {
           RelOptListener.RelChosenEvent event =
@@ -732,7 +734,7 @@ public class RelSubset extends AbstractRelNode {
           planner.getListener().relChosen(event);
         }
       }
-
+      //对于每个输入节点，递归调用 visit 方法来计算其最优执行计划。
       List<RelNode> oldInputs = p.getInputs();
       List<RelNode> inputs = new ArrayList<>();
       for (int i = 0; i < oldInputs.size(); i++) {
@@ -740,7 +742,7 @@ public class RelSubset extends AbstractRelNode {
         RelNode input = visit(oldInput, i, p);
         inputs.add(input);
       }
-      if (!inputs.equals(oldInputs)) {
+      if (!inputs.equals(oldInputs)) {  //不想等表示
         final RelNode pOld = p;
         p = p.copy(p.getTraitSet(), inputs);
         planner.provenanceMap.put(

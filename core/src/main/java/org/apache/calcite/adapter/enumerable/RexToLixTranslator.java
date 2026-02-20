@@ -101,9 +101,22 @@ import static java.util.Objects.requireNonNull;
 /**
  * Translates {@link org.apache.calcite.rex.RexNode REX expressions} to
  * {@link Expression linq4j expressions}.
+ * 主要作用
+ * 表达式翻译：
+ *
+ * RexToLixTranslator 将抽象的 RexNode 表达式转换为相应的 Java 表达式，这样可以在执行时直接利用这些表达式进行计算。
+ * 代码生成：
+ *
+ * 在 Apache Calcite 中，RexToLixTranslator 通常用于代码生成过程，将逻辑查询转化为具体的执行代码。这对于在查询优化和执行引擎中实现高性能计算是非常重要的。
+ * 支持多种表达式：
+ *
+ * 该类支持多种类型的 RexNode，例如算术运算、逻辑运算、函数调用等，并能够根据上下文生成相应的 Java 代码。
+ * 上下文管理：
+ *
+ * RexToLixTranslator 维护了翻译过程中的上下文信息，例如当前的作用域、可用的变量等，确保生成的代码能够正确引用这些变量。
  */
 public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result> {
-  public static final Map<Method, SqlOperator> JAVA_TO_SQL_METHOD_MAP =
+  public static final Map<Method, SqlOperator> JAVA_TO_SQL_METHOD_MAP =    //java方法和Sql函数的映射
       ImmutableMap.<Method, SqlOperator>builder()
           .put(BuiltInMethod.STRING_TO_UPPER.method, UPPER)
           .put(BuiltInMethod.SUBSTRING.method, SUBSTRING)
@@ -116,7 +129,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   final RexBuilder builder;
   private final @Nullable RexProgram program;
   final SqlConformance conformance;
-  private final Expression root;
+  private final Expression root; //根表达式
   final RexToLixTranslator.@Nullable InputGetter inputGetter;
   private final BlockBuilder list;
   private final @Nullable BlockBuilder staticList;
@@ -456,51 +469,24 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
           && scale != RelDataType.SCALE_NOT_SPECIFIED) {
         if (sourceType.getFamily() == SqlTypeFamily.CHARACTER) {
           return Expressions.call(
-              BuiltInMethod.CHAR_DECIMAL_CAST_ROUNDING_MODE.method,
+              BuiltInMethod.CHAR_DECIMAL_CAST.method,
               operand,
               Expressions.constant(precision),
-              Expressions.constant(scale),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
+              Expressions.constant(scale));
         } else if (sourceType.getFamily() == SqlTypeFamily.INTERVAL_DAY_TIME) {
           return Expressions.call(
-              BuiltInMethod.SHORT_INTERVAL_DECIMAL_CAST_ROUNDING_MODE.method,
+              BuiltInMethod.SHORT_INTERVAL_DECIMAL_CAST.method,
               operand,
               Expressions.constant(precision),
               Expressions.constant(scale),
-              Expressions.constant(sourceType.getSqlTypeName().getEndUnit().multiplier),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
+              Expressions.constant(sourceType.getSqlTypeName().getEndUnit().multiplier));
         } else if (sourceType.getFamily() == SqlTypeFamily.INTERVAL_YEAR_MONTH) {
           return Expressions.call(
-              BuiltInMethod.LONG_INTERVAL_DECIMAL_CAST_ROUNDING_MODE.method,
+              BuiltInMethod.LONG_INTERVAL_DECIMAL_CAST.method,
               operand,
               Expressions.constant(precision),
               Expressions.constant(scale),
-              Expressions.constant(sourceType.getSqlTypeName().getEndUnit().multiplier),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
-        } else if (sourceType.getSqlTypeName() == SqlTypeName.DECIMAL) {
-          // Cast from DECIMAL to DECIMAL, may adjust scale and precision.
-          return Expressions.call(
-              BuiltInMethod.DECIMAL_DECIMAL_CAST_ROUNDING_MODE.method,
-              operand,
-              Expressions.constant(precision),
-              Expressions.constant(scale),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
-        } else if (SqlTypeName.INT_TYPES.contains(sourceType.getSqlTypeName())) {
-          // Cast from INTEGER to DECIMAL, check for overflow
-          return Expressions.call(
-              BuiltInMethod.INTEGER_DECIMAL_CAST_ROUNDING_MODE.method,
-              operand,
-              Expressions.constant(precision),
-              Expressions.constant(scale),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
-        }  else if (SqlTypeName.APPROX_TYPES.contains(sourceType.getSqlTypeName())) {
-          // Cast from FLOAT/DOUBLE to DECIMAL
-          return Expressions.call(
-              BuiltInMethod.FP_DECIMAL_CAST_ROUNDING_MODE.method,
-              operand,
-              Expressions.constant(precision),
-              Expressions.constant(scale),
-              Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
+              Expressions.constant(sourceType.getSqlTypeName().getEndUnit().multiplier));
         }
       }
       return defaultExpression.get();
@@ -511,9 +497,9 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     case SMALLINT: {
       if (SqlTypeName.NUMERIC_TYPES.contains(sourceType.getSqlTypeName())) {
         return Expressions.call(
-            BuiltInMethod.INTEGER_CAST_ROUNDING_MODE.method,
+            BuiltInMethod.INTEGER_CAST.method,
             Expressions.constant(Primitive.of(typeFactory.getJavaClass(targetType))),
-            operand, Expressions.constant(typeFactory.getTypeSystem().roundingMode()));
+            operand);
       }
       return defaultExpression.get();
     }
@@ -1777,7 +1763,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   /** Implementation of {@link InputGetter} that calls
    * {@link PhysType#fieldReference}. */
   public static class InputGetterImpl implements InputGetter {
-    private final ImmutableMap<Expression, PhysType> inputs;
+    private final ImmutableMap<Expression, PhysType> inputs; //表达式和物理类型的对饮关系
 
     @Deprecated // to be removed before 2.0
     public InputGetterImpl(List<Pair<Expression, PhysType>> inputs) {
