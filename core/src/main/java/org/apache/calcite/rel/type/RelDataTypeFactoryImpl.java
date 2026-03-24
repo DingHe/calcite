@@ -507,9 +507,14 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
     return t instanceof JavaType;
   }
 
+  // 逻辑简单却至关重要：利用 Java 反射机制，自动将一个 Java 类的成员变量（Field）转换为 SQL 表的列（Column）。
   private @Nullable List<RelDataTypeFieldImpl> fieldsOf(Class clazz) {
     final List<RelDataTypeFieldImpl> list = new ArrayList<>();
+    // 这是 Java 反射的标准方法。
+    // 它会获取该类及其所有父类中所有的 public 成员变量。
+    // 注意：非 public 字段（private/protected）会被忽略，除非它们有对应的 getter 方法并在其他地方被处理，但在当前这个 fieldsOf 实现中只看 public 字段。
     for (Field field : clazz.getFields()) {
+      // 静态变量属于类本身，而不属于数据行（Instance），因此在将其映射为数据库表结构时，必须跳过静态变量。
       if (isStatic(field)) {
         continue;
       }
@@ -617,10 +622,22 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
   /**
    * Type which is based upon a Java class.
    */
-  public class JavaType extends RelDataTypeImpl { //使用java的关系数据类型
-    private final Class clazz; //java类
-    private final boolean nullable; //是否可以为空
-    private @Nullable SqlCollation collation; //排序规则
+  // 在 Apache Calcite 中，JavaType 类扮演着“翻译官”的角色。
+  // 它的主要作用是将 Java 编程语言中的类（Class） 映射为 Calcite 关系代数中的数据类型（RelDataType）。
+  // 当你使用基于 Java 反射的 Schema（例如通过 ReflectiveSchema 将一个 Java Bean 集合映射为表）时，这个类就派上用场了。
+  // 桥接 Java 与 SQL：它允许 Calcite 识别 Java 原生类型（如 int.class, String.class）并将其视作 SQL 类型。
+  // 反射支持：它通过 Java 类的反射信息自动提取字段结构（通过 fieldsOf(clazz)）。
+  // 复杂容器映射：处理 Java 数组（Array）和集合（Map），并尝试将其转换为 SQL 对应的 ARRAY 或 MAP 逻辑。
+  public class JavaType extends RelDataTypeImpl {
+    // 该类型对应的底层 Java 类
+    // 示例：可以是 java.lang.Integer.class 或用户自定义的 UserBean.class。
+    private final Class clazz;
+    // 标记该类型是否可以为 null。
+    // 通常基本类型（如 int）为 false，包装类或对象（如 Integer, String）为 true。
+    private final boolean nullable;
+    // 字符排序规则。仅当该 Java 类属于字符族（如 String）时有效。
+    private @Nullable SqlCollation collation;
+    // 字符集（如 UTF-8）。
     private @Nullable Charset charset;
 
     public JavaType(Class clazz) {
@@ -713,7 +730,7 @@ public abstract class RelDataTypeFactoryImpl implements RelDataTypeFactory {
        //java 类型到 sql类型的转换
     @Override public SqlTypeName getSqlTypeName() {
       final SqlTypeName typeName =
-          JavaToSqlTypeConversionRules.instance().lookup(clazz); //就是一个映射表，然后根据类型查找
+          JavaToSqlTypeConversionRules.instance().lookup(clazz); // 就是一个映射表，然后根据类型查找
       if (typeName == null) {
         return SqlTypeName.OTHER;
       }

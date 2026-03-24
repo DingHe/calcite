@@ -37,12 +37,17 @@ import java.util.Locale;
 
 import static org.apache.calcite.util.Static.RESOURCE;
 
-/** SqlCollation 是 Apache Calcite 中表示 SQL 中 COLLATE 语句的类。
- * 它用于定义和处理字符集排序规则（Collation）及其强制类型（Coercibility）。
- * 排序规则用于控制字符串比较的顺序、大小写敏感性以及语言特定的排序方式。在 SQL 查询中，COLLATE 语句用于指定字符串的比较规则
+/**
  * A <code>SqlCollation</code> is an object representing a <code>Collate</code>
  * statement. It is immutable.
  */
+// 在 Apache Calcite 中，SqlCollation 是处理字符串比较、排序规则（Collation）和字符集的核心类。
+// 它严格遵循 SQL:1999 标准，用于解决“当两个不同排序规则的字符串相遇时，应该听谁的”这一复杂问题。
+// SqlCollation 的核心作用是定义字符串的“比较指纹”。
+// 定义排序规则：它规定了字符串在进行 =、<、> 比较或 ORDER BY 排序时，是否区分大小写、是否考虑重音符号以及遵循哪种语言（Locale）的习惯。
+// 不可变性：该类设计为不可变对象，确保在多线程和优化器转换过程中的元数据安全。
+// SqlCollation 是 Calcite 字符处理的“裁判”。它不仅记录了数据是怎么排序的（Locale/Strength），更重要的是通过 getCoercibilityDyadic 逻辑，在复杂的 SQL 表达式中自动协调不同来源数据的排序冲突。
+
 public class SqlCollation implements Serializable {
   public static final SqlCollation COERCIBLE =
       new SqlCollation(Coercibility.COERCIBLE);
@@ -64,22 +69,38 @@ public class SqlCollation implements Serializable {
    *
    * @see Glossary#SQL99 SQL:1999 Part 2 Section 4.2.3
    */
+  // Coercibility（强制性） 是一个决定 “当两个不同校对规则（Collation）的字符串进行比较或运算时，谁听谁的” 的优先级机制。
+  // 简单来说，当 SQL 语句中出现 WHERE column = 'string' 这种操作时，如果列的校对规则和字符串的校对规则不一致，数据库需要一个规则来决定使用哪种校对方式。
   public enum Coercibility {
     /** Strongest coercibility. */
-    EXPLICIT, //字段有明确的排序规则，并且强制要求使用指定的排序规则，例如SELECT name COLLATE 'utf8_general_ci'
-    IMPLICIT, //此类强制性表示排序规则是通过数据库结构或配置隐式推断的，例如，如果一个列的默认排序规则是 UTF-8，那么如果没有显式指定，查询会默认使用这个排序规则
-    COERCIBLE, //允许将字段转换为其他排序规则
+    // 手动显式指定的校对规则
+    // 例如 SELECT 'a' COLLATE utf8mb4_bin
+    EXPLICIT,
+    // 列（Column）定义的校对规则
+    // 例如 表结构中的字段：username
+    // 变量（Variable）的校对规则
+    // 例如 @my_var
+    IMPLICIT,
+    // 可强制转换。优先级低。
+    // 字符串字面量（Literal）或动态参数。
+    COERCIBLE,
     /** Weakest coercibility. */
-    NONE //意味着字段没有排序规则，或无法根据上下文推断出排序规则
+    // 无排序规则。
+    // 两个不同排序规则的隐式列操作后的结果。
+    NONE
   }
 
   //~ Instance fields --------------------------------------------------------
-
-  protected final String collationName; //排序规则的名称，表示当前排序规则的唯一标识符
-  protected final SerializableCharset wrappedCharset; //包装的字符集（Charset），用于存储排序规则所使用的字符集
-  protected final Locale locale; //语言环境（Locale），用于确定与排序规则相关的地区性设置
-  protected final String strength; //排序强度（strength），用于指定排序时考虑的优先级（如是否区分大小写）
-  private final Coercibility coercibility; //强制性（Coercibility），表示操作数之间的排序规则兼容性
+  // 排序规则的唯一标识符（如 UTF-8$en_US$primary）。
+  protected final String collationName;
+  // 包装后的字符集，确保序列化安全。
+  protected final SerializableCharset wrappedCharset;
+  // 地区设置（如 en_US），决定特定语言的排序行为。
+  protected final Locale locale;
+  // 排序强度。通常指 ICU 排序强度（Primary, Secondary, Tertiary 等），控制是否忽略大小写。
+  protected final String strength;
+  // 该对象的强制性级别，决定了在表达式计算中的胜出权。
+  private final Coercibility coercibility;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -142,7 +163,7 @@ public class SqlCollation implements Serializable {
   @Override public int hashCode() {
     return collationName.hashCode();
   }
-  //生成排序规则的名称，基于字符集的名称、语言环境和排序强度
+  // 生成格式为 字符集$地区$强度 的字符串
   protected String generateCollationName(
       @UnderInitialization SqlCollation this,
       Charset charset) {
@@ -157,9 +178,9 @@ public class SqlCollation implements Serializable {
    * @param col2 second operand for the dyadic operation
    * @return the resulting collation sequence. The "no collating sequence"
    * result is returned as null.
-   * //返回两个操作数进行二元操作时的排序规则。如果无法推断出排序规则，则返回 null
    * @see Glossary#SQL99 SQL:1999 Part 2 Section 4.2.3 Table 2
    */
+  // 用于二元操作符（如连接符 ||），推导出结果的排序规则。
   public static @Nullable SqlCollation getCoercibilityDyadicOperator(
       SqlCollation col1,
       SqlCollation col2) {
@@ -181,6 +202,7 @@ public class SqlCollation implements Serializable {
    *
    * @see Glossary#SQL99 SQL:1999 Part 2 Section 4.2.3 Table 2
    */
+  // 同上，但如果推导结果为 NONE，则抛出异常（报错提示排序规则不兼容）。
   public static SqlCollation getCoercibilityDyadicOperatorThrows(
       SqlCollation col1,
       SqlCollation col2) {
@@ -208,6 +230,7 @@ public class SqlCollation implements Serializable {
    *
    * @see Glossary#SQL99 SQL:1999 Part 2 Section 4.2.3 Table 3
    */
+  // 用于比较操作，返回胜出的排序规则名称字符串。
   public static String getCoercibilityDyadicComparison(
       SqlCollation col1,
       SqlCollation col2) {
@@ -218,6 +241,9 @@ public class SqlCollation implements Serializable {
    * Returns the result for {@link #getCoercibilityDyadicComparison} and
    * {@link #getCoercibilityDyadicOperator}.
    */
+  // 输入两个 SqlCollation，返回胜出的那一个。例如：
+  // EXPLICIT vs IMPLICIT -> 返回 EXPLICIT。
+  // IMPLICIT vs IMPLICIT (名称不同) -> 返回 NONE（冲突）。
   protected static @Nullable SqlCollation getCoercibilityDyadic(
       SqlCollation col1,
       SqlCollation col2) {
@@ -290,26 +316,26 @@ public class SqlCollation implements Serializable {
   @Override public String toString() {
     return "COLLATE " + collationName;
   }
-
+  // 将该对象写回到 SQL 方言字符串中。
   public void unparse(
       SqlWriter writer) {
     writer.keyword("COLLATE");
     writer.identifier(collationName, false);
   }
-
+  // 从包装类中还原 java.nio.charset.Charset
   @JsonIgnore
   public Charset getCharset() {
     return wrappedCharset.getCharset();
   }
-
+  // 获取名称。
   public final String getCollationName() {
     return collationName;
   }
-
+  // 获取强制性等级。
   public final SqlCollation.Coercibility getCoercibility() {
     return coercibility;
   }
-
+  // 获取地区
   public final Locale getLocale() {
     return locale;
   }

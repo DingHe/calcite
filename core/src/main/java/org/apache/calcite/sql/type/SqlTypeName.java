@@ -51,6 +51,12 @@ import java.util.Set;
  * the type carries precision and scale.
  * </ul>
  */
+// 在 Apache Calcite 中，SqlTypeName 是一个至关重要的枚举类。它定义了 Calcite 能够识别的所有 SQL 数据类型名称，并为每种类型绑定了元数据（如精度、比例、JDBC 映射等）。
+// 类型安全定义：它不仅提供了 SQL2003 标准类型的枚举，还包含了 Calcite 特有的内部类型（如 SYMBOL, ANY, DYNAMIC_STAR）。
+// 桥接 JDBC：它建立了 SQL 类型与 java.sql.Types 之间的映射关系，方便与底层数据库驱动交互。
+// 约束元数据：它规定了哪些类型允许带有精度（Precision）或比例（Scale），例如 VARCHAR(10) 是合法的，但 BOOLEAN(1) 则不是。
+// 数据极值计算：它内置了计算每种类型上限（Overflow）和下限（Underflow）的逻辑，用于常量折叠和验证。
+
 public enum SqlTypeName {
   BOOLEAN(PrecScale.NO_NO, false, Types.BOOLEAN, SqlTypeFamily.BOOLEAN),
   TINYINT(PrecScale.NO_NO, false, Types.TINYINT, SqlTypeFamily.NUMERIC),
@@ -233,6 +239,7 @@ public enum SqlTypeName {
       Sets.immutableEnumSet(
           Iterables.concat(INTERVAL_TYPES, ImmutableList.of(SYMBOL)));
 
+  // jdbc类型数值到calcite sql 类型的映射
   private static final Map<Integer, SqlTypeName> JDBC_TYPE_TO_NAME =
       ImmutableMap.<Integer, SqlTypeName>builder()
           .put(Types.TINYINT, TINYINT)
@@ -279,14 +286,20 @@ public enum SqlTypeName {
   /**
    * Bitwise-or of flags indicating allowable precision/scale combinations.
    */
+  // 这是一个位掩码（Bitmask），通过 PrecScale 类定义的常量来表示该类型支持的参数组合。
+  // 组合：包括是否支持“无精度无比例”、“有精度无比例”、“有精度有比例”。
   private final int signatures;
 
   /**
    * Returns true if not of a "pure" standard sql type. "Inpure" types are
    * {@link #ANY}, {@link #NULL} and {@link #SYMBOL}
    */
+  // 作用：标记该类型是否为非标准 SQL 类型。
+  // 例子：ANY, NULL, SYMBOL 被标记为 true。
   private final boolean special;
+  // 作用：存储对应的 java.sql.Types 中的整数值。
   private final int jdbcOrdinal;
+  // 作用：指向该类型所属的“类型族”（如 TINYINT 和 BIGINT 都属于 NUMERIC 族）。这在函数重载和类型转换推导中非常重要。
   private final @Nullable SqlTypeFamily family;
 
   SqlTypeName(int signatures, boolean special, int jdbcType,
@@ -302,6 +315,7 @@ public enum SqlTypeName {
    *
    * @return Type name, or null if not found
    */
+  // 通过名称字符串获取枚举实例，找不到返回 null。
   public static @Nullable SqlTypeName get(String name) {
     if (false) {
       // The following code works OK, but the spurious exceptions are
@@ -318,6 +332,7 @@ public enum SqlTypeName {
   /** Returns the SqlTypeName value whose name or {@link #getSpaceName()}
    * matches the given name, or throws {@link IllegalArgumentException}; never
    * returns null. */
+  // 更高级的查找，能处理带空格的类型名（如 TIMESTAMP WITH TIME ZONE 会被映射为 TIMESTAMP_TZ）。
   public static SqlTypeName lookup(String tag) {
     // Special handling for TIME WITH TIME ZONE and
     // TIMESTAMP WITH TIME ZONE, whose type names are TIME_TZ and TIMESTAMP_TZ.
@@ -327,20 +342,20 @@ public enum SqlTypeName {
     final String tag2 = tag1.replace(' ', '_');
     return valueOf(tag2);
   }
-
+  // 判断是否允许不带任何参数（如 INTEGER）。
   public boolean allowsNoPrecNoScale() {
     return (signatures & PrecScale.NO_NO) != 0;
   }
-
+  // 判断是否允许仅带精度（如 VARCHAR(50)）。
   public boolean allowsPrecNoScale() {
     return (signatures & PrecScale.YES_NO) != 0;
   }
-
+  // 判断是否在任何情况下允许精度。
   public boolean allowsPrec() {
     return allowsPrecScale(true, true)
         || allowsPrecScale(true, false);
   }
-
+  // 判断是否允许比例（如 DECIMAL(10, 2)）。
   public boolean allowsScale() {
     return allowsPrecScale(true, true);
   }
@@ -365,6 +380,7 @@ public enum SqlTypeName {
    * @param scale     Whether the scale field is part of the type specification
    * @return Whether this combination of precision/scale is valid
    */
+  // 通用的验证逻辑，传入是否有精度和比例，返回该组合是否合法。
   public boolean allowsPrecScale(
       boolean precision,
       boolean scale) {
@@ -380,10 +396,11 @@ public enum SqlTypeName {
 
   /** Returns the ordinal from {@link java.sql.Types} corresponding to this
    * SqlTypeName. */
+  // 返回 JDBC 整数值。
   public int getJdbcOrdinal() {
     return jdbcOrdinal;
   }
-
+  // 内部工具方法，用于合并多个类型列表。
   private static List<SqlTypeName> combine(
       List<SqlTypeName> list0,
       List<SqlTypeName> list1) {
@@ -395,6 +412,8 @@ public enum SqlTypeName {
 
   /** Returns the default scale for this type if supported, otherwise -1 if
    * scale is either unsupported or must be specified explicitly. */
+  // 获取类型的默认比例。
+  // 例如 DECIMAL 默认为 0，时间间隔类型默认为 6。
   public int getDefaultScale() {
     switch (this) {
     case DECIMAL:
@@ -433,6 +452,7 @@ public enum SqlTypeName {
    * @param jdbcType the JDBC type of interest
    * @return corresponding SqlTypeName, or null if the type is not known
    */
+  // 根据 JDBC 的整数标识符（如 4 代表 INTEGER）返回对应的 SqlTypeName。
   public static @Nullable SqlTypeName getNameForJdbcType(int jdbcType) {
     return JDBC_TYPE_TO_NAME.get(jdbcType);
   }
@@ -507,6 +527,9 @@ public enum SqlTypeName {
    * @param scale     Scale, or -1 if not applicable
    * @return Limit value
    */
+  // 计算类型的物理极限。
+  // 参数：sign（正负）、limit（零/下溢/上溢）、beyond（是否跨越边界）、precision/scale
+  // 示例：可以计算出 TINYINT 的上限是 127。
   public @Nullable Object getLimit(
       boolean sign,
       Limit limit,
@@ -782,6 +805,7 @@ public enum SqlTypeName {
    *
    * @return Minimum allowed precision
    */
+  // 返回该类型允许的最小值（通常为 1 或 0）。
   public int getMinPrecision() {
     switch (this) {
     case DECIMAL:
@@ -822,6 +846,7 @@ public enum SqlTypeName {
    *
    * @return Minimum allowed scale
    */
+  // 返回该类型允许的最小值（通常为 1 或 0）。
   public int getMinScale() {
     switch (this) {
     // TODO: Minimum numeric scale for decimal
@@ -915,7 +940,7 @@ public enum SqlTypeName {
   public enum Limit {
     ZERO, UNDERFLOW, OVERFLOW
   }
-
+  // 专门用于计算数值类型的基数幂限制。
   private static @Nullable BigDecimal getNumericLimit(
       int radix,
       int exponent,
@@ -951,7 +976,7 @@ public enum SqlTypeName {
       throw Util.unexpected(limit);
     }
   }
-
+  // 将一个 Java 对象（如 String 或 BigDecimal）转换为 Calcite 的 SqlLiteral（SQL 字面量对象）。
   public SqlLiteral createLiteral(Object o, SqlParserPos pos) {
     switch (this) {
     case BOOLEAN:
@@ -986,6 +1011,7 @@ public enum SqlTypeName {
   }
 
   /** Returns the name of this type. */
+  // 返回枚举名。
   public String getName() {
     return name();
   }

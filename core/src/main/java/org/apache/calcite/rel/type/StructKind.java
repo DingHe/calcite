@@ -62,7 +62,7 @@ public enum StructKind {
    * {@code SELECT address.zipcode FROM customer}
    * it not valid.
    */
-  FULLY_QUALIFIED, //传统的结构化类型，每个字段都需要显式引用，SELECT c.address.zipcode FROM customer AS c
+  FULLY_QUALIFIED, // 传统的结构化类型，每个字段都需要显式引用，SELECT c.address.zipcode FROM customer AS c
 
   /** As {@link #PEEK_FIELDS}, but takes priority if another struct-typed
    * field also has a field of the name being sought.

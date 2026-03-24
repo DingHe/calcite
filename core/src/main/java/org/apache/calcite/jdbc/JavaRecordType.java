@@ -31,6 +31,10 @@ import java.util.Objects;
  * <p><strong>NOTE: This class is experimental and subject to
  * change/removal without notice</strong>.
  */
+// JavaRecordType 的核心作用是建立 Java 类（POJO/Bean）与 SQL 行类型（Row/Record）之间的强绑定关系。
+// 结构化映射：它不仅像 RelRecordType 那样拥有命名的字段列表，还明确知道这些字段来源于哪一个具体的 Java Class。
+// 物理执行支持：在 Calcite 的 Enumerable 算子执行时，需要将 SQL 的行数据转换回 Java 对象。JavaRecordType 保存了原始的 clazz 信息，使得框架能够知道该将数据实例化为哪个类。
+// 身份识别：它比普通的 RelRecordType 更严格。两个字段完全相同的记录类型，如果对应的 Java 类不同，在 JavaRecordType 的视角下它们是不相等的。
 public class JavaRecordType extends RelRecordType {
   final Class clazz;
 

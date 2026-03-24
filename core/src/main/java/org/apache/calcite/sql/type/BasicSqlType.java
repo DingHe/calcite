@@ -33,16 +33,25 @@ import static com.google.common.base.Preconditions.checkArgument;
  *
  * <p>Instances of this class are immutable.
  */
+// 在 Apache Calcite 的类型系统中，BasicSqlType 是最常用的具体实现类。它代表了 SQL 标准中的原子数据类型（Atomic Types），例如 INTEGER、VARCHAR(10)、DECIMAL(18, 2) 等，但不包括集合类型或时间间隔（Interval）类型。
+// 具体化 SQL 类型：它是 AbstractSqlType 的具体实现，能够表达带有参数（如精度和标度）的 SQL 类型。
+// 不可变性（Immutable）：该类的实例一旦创建就不可更改，这保证了类型在优化器各个阶段的一致性。
+// 多维度描述：除了类型名称外，它还集成了精度（Precision）、标度（Scale）、字符集（Charset）和排序规则（Collation）。
+// 类型系统感知：它持有 RelDataTypeSystem 的引用，这意味着它可以根据不同的数据库策略（如不同数据库的最大精度限制）来调整自身的默认行为。
 public class BasicSqlType extends AbstractSqlType {
   //~ Static fields/initializers ---------------------------------------------
 
   //~ Instance fields --------------------------------------------------------
-
-  private final int precision; //精度
+  // 精度。对于数值类型指数字总数，对于字符/二进制类型指最大长度
+  private final int precision;
+  // 标度。主要用于 DECIMAL 等数值类型，指小数点后的位数。
   private final int scale;
+  // 关联的类型系统。用于获取当前系统环境下某种类型的默认精度、最大精度等元数据。
   protected final RelDataTypeSystem typeSystem;
-  private final @Nullable SqlCollation collation; //排序规则
-  private final @Nullable SerializableCharset wrappedCharset; //字符集
+  // 排序规则。定义了字符串比较和排序的逻辑。
+  private final @Nullable SqlCollation collation;
+  // 字符集。使用了包装类以支持 Java 序列化。
+  private final @Nullable SerializableCharset wrappedCharset;
 
   //~ Constructors -----------------------------------------------------------
 

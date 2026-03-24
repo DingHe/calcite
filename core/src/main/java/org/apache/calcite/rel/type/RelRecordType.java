@@ -33,14 +33,24 @@ import static java.util.Objects.requireNonNull;
 /**
  * RelRecordType represents a structured type having named fields.
  */
+// RelRecordType 代表了 SQL 中的 ROW 类型 或关系数据库中的行（Row）结构。
+// 定义表结构：它是表元数据（Table Metadata）的基础，定义了每一列的名称、类型和顺序。
+// 支持嵌套：它可以作为另一个 RelRecordType 的字段类型，从而支持复杂的嵌套结构。
+// 优化查找性能：对于字段数量极多的表，它内部通过 Map 索引来加速通过列名查找列信息的效率。
+// 管理引用规则：通过 StructKind 定义了在 SQL 查询中引用该结构字段时的可见性规则（例如是否可以省略父级前缀）。
 public class RelRecordType extends RelDataTypeImpl implements Serializable {
   /** Name resolution policy; usually {@link StructKind#FULLY_QUALIFIED}. */
-  private final StructKind kind; //结构字段的引用规则
+  // 定义结构体的类型种类。
+  private final StructKind kind;
+  // 标记整个记录（整行）是否可以为 null。
   private final boolean nullable;
-  private final @Nullable Map<String, RelDataTypeField> fieldNameMap; //字段名称和类型的映射
+  // 字段名称和类型的映射
+  // 字段名到字段对象的快速索引表。
+  private final @Nullable Map<String, RelDataTypeField> fieldNameMap;
 
   /** Minimum number of fields where it is worth populating {@link #fieldNameMap}
    * to accelerate lookups by field name. */
+  // 阈值常量。当字段数 > 20 时，启用 Map 查找优化；否则使用基类的线性遍历查找。
   private static final int THRESHOLD = 20;
 
   //~ Constructors -----------------------------------------------------------

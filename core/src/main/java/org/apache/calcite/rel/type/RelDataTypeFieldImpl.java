@@ -28,12 +28,20 @@ import static java.util.Objects.requireNonNull;
 /**
  * Default implementation of {@link RelDataTypeField}.
  */
+// RelDataTypeFieldImpl 是 Apache Calcite 中 RelDataTypeField 接口的标准默认实现类。
+// 数据载体：它是列元数据的具体存储实体。在 Calcite 构建逻辑执行计划（RelNode）的过程中，每当需要描述结果集的某一列时，都会实例化此类。
+// 不可变性保障：该类通过 final 关键字确保了字段在创建后不可修改，这符合函数式编程的思想，方便在多线程环境中共享元数据。
+// Map 语义实现：它具体实现了继承自 Map.Entry 的逻辑，使得开发者可以将表结构作为 KV 键值对进行遍历。
+//
 public class RelDataTypeFieldImpl implements RelDataTypeField, Serializable {
   //~ Instance fields --------------------------------------------------------
-
-  private final RelDataType type; //字段类型
-  private final String name; //字段名称
-  private final int index; //对应的索引
+  // 存储该列的数据类型。
+  private final RelDataType type;
+  // 存储字段的名称。
+  // 这是用户在 SQL 中引用该列时使用的标识符（如 "USER_ID"）
+  private final String name;
+  // 存储字段在行结构中的索引位置。
+  private final int index;
 
   //~ Constructors -----------------------------------------------------------
 

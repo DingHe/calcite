@@ -49,26 +49,37 @@ import static java.util.Objects.requireNonNull;
  * <p>Identity is based upon the {@link #digest} field, which each derived class
  * should set during construction.
  */
+// 在 Apache Calcite 的架构中，RelDataTypeImpl 是一个非常关键的抽象基类。它为所有的关系表达式数据类型（Relational Data Type）提供了基础实现。
+// RelDataTypeImpl 的核心作用是实现数据类型的标识与管理逻辑。
+// 统一的身份标识（Digest）：Calcite 是基于代价优化的，需要频繁比较两个类型是否一致。该类通过 digest 字段（摘要）确保了类型的唯一性标识。
+// 结构化类型支持：它实现了处理“行（Row）”或“结构体（Struct）”类型的逻辑，包括字段（Field）的查找、计数和递归搜索。
+// 默认行为定义：它为 RelDataType 接口中定义的大量方法（如是否可为空、字符集、精度等）提供了默认返回值，简化了子类（如 BasicSqlType）的实现。
+// 类型转换原型（Proto）：提供了一套静态工具方法，用于快速定义某种类型的“原型”，便于在 RelDataTypeFactory 中生成实际类型。
 public abstract class RelDataTypeImpl
     implements RelDataType, RelDataTypeFamily {
 
   /**
    * Suffix for the digests of non-nullable types.
    */
+  // 静态常量，值为 " NOT NULL"。
+  // 当类型不可为空时，会附加到摘要字符串后面。
   public static final String NON_NULLABLE_SUFFIX = " NOT NULL";
 
   //~ Instance fields --------------------------------------------------------
-
-  protected final @Nullable List<RelDataTypeField> fieldList; //结构化类型的字段
+  // 存储结构化类型（如表的行）的所有字段。
+  // 它是不可变的（Immutable），如果是标量类型（如 INT），则该值为 null。
+  protected final @Nullable List<RelDataTypeField> fieldList;
+  // 类型的“指纹”。
+  // 重要性：两个 RelDataType 对象如果 digest 相同，则认为它们在逻辑上是同一个类型。
   protected @Nullable String digest;
 
   //~ Constructors -----------------------------------------------------------
 
   /**
    * Creates a RelDataTypeImpl.
-   * 结构化类型提供field列表
    * @param fieldList List of fields
    */
+  // 结构化类型提供field列表
   protected RelDataTypeImpl(@Nullable List<? extends RelDataTypeField> fieldList) {
     if (fieldList != null) {
       // Create a defensive copy of the list.
@@ -86,18 +97,21 @@ public abstract class RelDataTypeImpl
    * even if its base class is not serializable, provided that the base class
    * has a public or protected zero-args constructor.)
    */
+  // 默认无参构造，初始化 fieldList 为 null，供序列化或标量类型子类使用。
   protected RelDataTypeImpl() {
     this(null);
   }
 
   //~ Methods ----------------------------------------------------------------
-  //根据field name
+  // 根据名称查找字段。
+  // 字段查找（Field Lookup）。它的任务是在一个结构化类型（如 SQL 表的一行）中，根据给定的名称定位具体的列信息。
   @Override public @Nullable RelDataTypeField getField(String fieldName,
       boolean caseSensitive, boolean elideRecord) {
     if (fieldList == null) {
       throw new IllegalStateException("Trying to access field " + fieldName
           + " in a type with no fields: " + this);
     }
+    // 尝试在当前层级寻找匹配的字段。
     final Map<String, RelDataTypeField> fieldMap = getFieldMap();
     if (caseSensitive && fieldMap != null) {
       RelDataTypeField field = fieldMap.get(fieldName);
@@ -111,23 +125,28 @@ public abstract class RelDataTypeImpl
         }
       }
     }
+    // 如果直接查找失败，且参数 elideRecord 为 true（意味着允许“隐去”中间层级直接访问子字段），则进入此阶段。
     if (elideRecord) {
       final List<Slot> slots = new ArrayList<>();
+      // 深度优先搜索。它会尝试在嵌套的 STRUCT 类型中寻找目标。
       getFieldRecurse(slots, this, 0, fieldName, caseSensitive);
     loop:
       for (Slot slot : slots) {
         switch (slot.count) {
         case 0:
           break; // no match at this depth; try deeper
-        case 1:
+        case 1: // 如果某一深度（Depth）只找到了 1个 匹配项，直接返回。
           return slot.field;
         default:
+          // 如果在同一深度找到了 多个 同名项（slot.count > 1），逻辑会立刻“放弃（abandon）”。这是为了防止歧义（Ambiguity），SQL 不允许在模糊匹配时存在多个候选者。
           break loop; // duplicate fields at this depth; abandon search
         }
       }
     }
     // Extra field
     if (fieldList.size() > 0) {
+      // _extra 标记：如果 fieldList 的最后一个字段名为 _extra，说明该类型支持“虚拟列”。
+      // 动态生成：即使当前字段列表中没有你要找的 fieldName，Calcite 也会为你实时创建一个同名的 RelDataTypeFieldImpl，其类型继承自这个 _extra 字段。
       final RelDataTypeField lastField = Iterables.getLast(fieldList);
       if (lastField.getName().equals("_extra")) {
         return new RelDataTypeFieldImpl(
@@ -136,10 +155,12 @@ public abstract class RelDataTypeImpl
     }
 
     // a dynamic * field will match any field name.
+
     if (fieldMap != null) {
       return fieldMap.get("");
     } else {
       for (RelDataTypeField field : fieldList) {
+        // Dynamic Star：如果字段被标记为 isDynamicStar()（通常对应 SQL 中的 ** 或动态表），它会匹配任何请求的字段名。
         if (field.isDynamicStar()) {
           // the requested field could be in the unresolved star
           return field;
@@ -164,20 +185,26 @@ public abstract class RelDataTypeImpl
   protected @Nullable Map<String, RelDataTypeField> getFieldMap() {
     return null;
   }
-
+  // 实现了 RelDataTypeImpl 中的递归字段查找逻辑。
+  // 它的核心任务是在嵌套的结构化数据（如多层嵌套的 JSON 或复杂的 SQL ROW 类型）中，寻找指定名称的字段，并记录每一层深度的匹配情况。
   private static void getFieldRecurse(List<Slot> slots, RelDataType type,
       int depth, String fieldName, boolean caseSensitive) {
+    // 方法首先确保 slots 列表的大小能够覆盖当前的 depth（深度）。
+    // Slot 的作用：Slot 是一个简单的内部辅助类，包含 count（匹配计数）和 field（匹配到的字段引用）。
     while (slots.size() <= depth) {
       slots.add(new Slot());
     }
     final Slot slot = slots.get(depth);
+    // 在当前传入的 type（类型）中，遍历其所有的 fieldList：
     for (RelDataTypeField field : type.getFieldList()) {
       if (Util.matches(caseSensitive, field.getName(), fieldName)) {
+        // 计数与存取：如果匹配成功，slot.count 加 1，并将该字段存入 slot.field。
         slot.count++;
         slot.field = field;
       }
     }
     // No point looking to depth + 1 if there is a hit at depth.
+    // if (slot.count == 0)：只有当在当前深度完全没有找到匹配项时，才会开启下一层的递归。
     if (slot.count == 0) {
       for (RelDataTypeField field : type.getFieldList()) {
         if (field.getType().isStruct()) {
