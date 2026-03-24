@@ -31,11 +31,19 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * <p>The default implementation is {@link #DEFAULT}.
  */
+// 在 Apache Calcite 中，RelDataTypeSystem 是一个定义类型系统规则和限制的核心接口。
+// 它的存在使得 Calcite 可以灵活地模拟不同数据库（如 Hive、MySQL、Oracle）的特定类型行为。
+// 定义类型限制：规定各种数据类型的最大精度（Max Precision）、最大标度（Max Scale）等。
+// 模拟特定数据库行为：不同的 SQL 方言对数值运算（如 DECIMAL 相除）的结果类型推导规则不同，通过实现该接口可以自定义这些逻辑。
+// 聚合函数类型推导：定义 SUM、AVG 等聚合函数在处理特定输入类型时应返回什么类型。
+// 计算精度策略：处理 SQL 算术运算（加减乘除模）时，计算结果的精度和标度。
 public interface RelDataTypeSystem {
   /** Default type system. */
+  // DEFAULT：默认的类型系统实现。它使用 RelDataTypeSystemImpl 的默认行为，通常遵循标准的 SQL:2003 规范。
   RelDataTypeSystem DEFAULT = new RelDataTypeSystemImpl() { };
 
   /** Returns the maximum scale of a given type. */
+  // 返回指定类型的最大标度。
   int getMaxScale(SqlTypeName typeName);
 
   /**
@@ -44,6 +52,7 @@ public interface RelDataTypeSystem {
    *
    * @return Default precision
    */
+  // 返回类型的默认精度（如果用户未指定）。
   int getDefaultPrecision(SqlTypeName typeName);
 
   /**
@@ -52,35 +61,44 @@ public interface RelDataTypeSystem {
    *
    * @return Maximum allowed precision
    */
+  // 返回类型允许的最大精度或长度。
   int getMaxPrecision(SqlTypeName typeName);
 
   /** Returns the maximum scale of a NUMERIC or DECIMAL type. */
+  // 专门返回数值/小数类型的全局最大标度。
   int getMaxNumericScale();
 
   /** Returns the maximum precision of a NUMERIC or DECIMAL type. */
+  // 专门返回数值/小数类型的全局最大精度。
   int getMaxNumericPrecision();
 
   /** Returns the LITERAL string for the type, either PREFIX/SUFFIX. */
+  // 返回类型的字面量前缀或后缀（如时间戳前面的 TIMESTAMP 关键字）。
   @Nullable String getLiteral(SqlTypeName typeName, boolean isPrefix);
 
   /** Returns whether the type is case sensitive. */
+  // 返回该类型是否对大小写敏感（主要针对字符类型）。
   boolean isCaseSensitive(SqlTypeName typeName);
 
   /** Returns whether the type can be auto increment. */
+  // 返回该类型是否支持自动增量。
   boolean isAutoincrement(SqlTypeName typeName);
 
   /** Returns the numeric type radix, typically 2 or 10.
    * 0 means "not applicable". */
+  // 返回数值类型的基数，通常是 2 或 10。
   int getNumTypeRadix(SqlTypeName typeName);
 
   /** Returns the return type of a call to the {@code SUM} aggregate function,
    * inferred from its argument type. */
+  // 根据输入参数类型推导 SUM 函数的返回类型。例如，SUM(INT) 可能返回 BIGINT 以防溢出。
   RelDataType deriveSumType(RelDataTypeFactory typeFactory,
       RelDataType argumentType);
 
   /** Returns the return type of a call to the {@code AVG}, {@code STDDEV} or
    * {@code VAR} aggregate functions, inferred from its argument type.
    */
+  // 推导 AVG、标准差（STDDEV）或方差（VAR）的返回类型。
   RelDataType deriveAvgAggType(RelDataTypeFactory typeFactory,
       RelDataType argumentType);
 
@@ -99,10 +117,12 @@ public interface RelDataTypeSystem {
 
   /** Whether two record types are considered distinct if their field names
    * are the same but in different cases. */
+  // 判断 Schema 里的字段名匹配是否大小写敏感。
   boolean isSchemaCaseSensitive();
 
   /** Whether the least restrictive type of a number of CHAR types of different
    * lengths should be a VARCHAR type. And similarly BINARY to VARBINARY. */
+  // 在执行 UNION 时，如果两个 CHAR 长度不等，是否应自动转换为 VARCHAR。
   boolean shouldConvertRaggedUnionTypesToVarying();
 
   /**
@@ -111,6 +131,7 @@ public interface RelDataTypeSystem {
    *
    * <p>Pre-condition: <code>createDecimalProduct(type1, type2) != null</code>
    */
+  // 判断小数乘法是否应通过先转为 Double 来实现。
   default boolean shouldUseDoubleMultiplication(RelDataTypeFactory typeFactory,
       RelDataType type1, RelDataType type2) {
     assert deriveDecimalMultiplyType(typeFactory, type1, type2) != null;
@@ -145,6 +166,7 @@ public interface RelDataTypeSystem {
    * @param type2       Type of the second operand
    * @return Result type for a decimal addition
    */
+  // 加法/减法
   default @Nullable RelDataType deriveDecimalPlusType(RelDataTypeFactory typeFactory,
       RelDataType type1, RelDataType type2) {
     if (SqlTypeUtil.isExactNumeric(type1)
@@ -405,6 +427,7 @@ public interface RelDataTypeSystem {
    *
    * @param frameSet Set of built-in time frames
    */
+  // 定义支持的时间窗口（如 YEAR, MONTH, HOUR）。用户可以重写此方法以支持自定义的时间周期。
   default TimeFrameSet deriveTimeFrameSet(TimeFrameSet frameSet) {
     return frameSet;
   }
