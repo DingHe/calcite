@@ -46,6 +46,12 @@ import java.util.Objects;
  * represented by the same Java object. This reduces memory consumption and
  * comparison cost.
  */
+// 在 Apache Calcite 中，RelDataTypeFactory 是整个类型系统的核心工厂接口。
+// 它遵循抽象工厂模式（Abstract Factory Pattern），负责创建、组合和管理所有的类型描述符（RelDataType）。
+// 统一入口：它是创建 SQL 类型、Java 类型、集合类型（Array/Map）以及结构化类型（Struct/Record）的唯一入口。
+// 规范化（Canonicalization）：这是该接口最重要的设计原则。实现类必须保证相同语义的类型对应同一个 Java 对象。这样可以通过 == 快速比较类型，并极大节省内存。
+// 桥接物理与逻辑：它提供了将 Java 类映射为 SQL 类型的方法，是内存数据源（如 Enumerable 算子）与 SQL 逻辑层之间的桥梁。
+// 辅助类型推导：提供加减乘除、Union 等操作后的结果类型计算建议。
 public interface RelDataTypeFactory {
   //~ Methods ----------------------------------------------------------------
 
@@ -54,6 +60,7 @@ public interface RelDataTypeFactory {
    *
    * @return Type system
    */
+  // 返回当前工厂绑定的 RelDataTypeSystem。工厂在创建类型（如 DECIMAL）时，需要参考类型系统的精度上限。
   RelDataTypeSystem getTypeSystem();
 
   /**
@@ -62,6 +69,7 @@ public interface RelDataTypeFactory {
    * @param clazz the Java class used to define the type
    * @return canonical Java type descriptor
    */
+  // 根据 Java 类反射信息创建类型（通常生成 JavaType 或 JavaRecordType）。
   RelDataType createJavaType(Class clazz);
 
   /**
@@ -70,6 +78,7 @@ public interface RelDataTypeFactory {
    * @return canonical join type descriptor
    * @param types array of types to be joined
    */
+  // 将多个记录类型合并为一个 RelCrossType（用于 Join 操作产生的中间类型）。
   RelDataType createJoinType(RelDataType... types);
 
   /**
@@ -81,6 +90,7 @@ public interface RelDataTypeFactory {
    * @param fieldNameList names of the fields
    * @return canonical struct type descriptor
    */
+  // 最基础的结构化创建方法，手动指定 StructKind（如 FULLY_QUALIFIED）。
   RelDataType createStructType(StructKind kind,
       List<RelDataType> typeList,
       List<String> fieldNameList);
@@ -88,6 +98,7 @@ public interface RelDataTypeFactory {
   /** Creates a type that represents a structured collection of fields.
    * Shorthand for <code>createStructType(StructKind.FULLY_QUALIFIED, typeList,
    * fieldNameList)</code>. */
+  // 便捷方法，默认创建标准结构体。
   RelDataType createStructType(
       List<RelDataType> typeList,
       List<String> fieldNameList);
@@ -109,6 +120,7 @@ public interface RelDataTypeFactory {
    * @param fieldList List of (name, type) pairs
    * @return canonical struct type descriptor
    */
+  // 通过 Map.Entry 列表（包含名和类型对）创建。
   RelDataType createStructType(
       List<? extends Map.Entry<String, RelDataType>> fieldList);
 
@@ -119,6 +131,7 @@ public interface RelDataTypeFactory {
    * @param maxCardinality maximum array size, or -1 for unlimited
    * @return canonical array type descriptor
    */
+  // 创建数组类型。maxCardinality 为 -1 表示无限制。
   RelDataType createArrayType(
       RelDataType elementType,
       long maxCardinality);
@@ -130,6 +143,7 @@ public interface RelDataTypeFactory {
    * @param valueType type of the values of the map
    * @return canonical map type descriptor
    */
+  // 创建键值对映射类型。
   RelDataType createMapType(
       RelDataType keyType,
       RelDataType valueType);
@@ -141,6 +155,7 @@ public interface RelDataTypeFactory {
    * @param returnType type of lambda expression return type
    * @return function type descriptor
    */
+  // 创建函数/Lambda 类型。
   RelDataType createFunctionSqlType(
       RelDataType parameterType,
       RelDataType returnType);
@@ -151,6 +166,7 @@ public interface RelDataTypeFactory {
    * @param valueType type of the values of the measure
    * @return canonical measure type descriptor
    */
+  // 创建度量类型（用于处理 SQL 聚合增强功能）。
   RelDataType createMeasureType(RelDataType valueType);
 
   /**
@@ -160,6 +176,7 @@ public interface RelDataTypeFactory {
    * @param maxCardinality maximum collection size, or -1 for unlimited
    * @return canonical multiset type descriptor
    */
+  // 创建多重集类型（类似于无序数组）。
   RelDataType createMultisetType(
       RelDataType elementType,
       long maxCardinality);
@@ -172,6 +189,7 @@ public interface RelDataTypeFactory {
    * @param type input type
    * @return output type, a new object equivalent to input type
    */
+  // 跨工厂复制类型，确保在新工厂中也是规范化的。
   RelDataType copyType(RelDataType type);
 
   /**
@@ -186,6 +204,7 @@ public interface RelDataTypeFactory {
    * @return output type, same as input type except with specified nullability
    * @throws NullPointerException if type is null
    */
+  // 克隆一个类型并改变其可为空性（这是 Calcite 中处理 NULL 的常用手段）。
   RelDataType createTypeWithNullability(
       RelDataType type,
       boolean nullable);
@@ -201,12 +220,14 @@ public interface RelDataTypeFactory {
    * @return output type, same as input type except with specified charset and
    * collation
    */
+  // 为字符类型分配字符集和排序规则。
   RelDataType createTypeWithCharsetAndCollation(
       RelDataType type,
       Charset charset,
       SqlCollation collation);
 
   /** Returns the default {@link Charset} (valid if this is a string type). */
+  // 获取工厂默认的字符集（通常是 UTF-16 或系统默认）。
   Charset getDefaultCharset();
 
   /**
@@ -218,6 +239,7 @@ public interface RelDataTypeFactory {
    * @param types input types to be combined using union (not null, not empty)
    * @return canonical union type descriptor
    */
+  // 在一组类型中寻找“最小泛化类型”。例如输入 INT 和 FLOAT，返回 FLOAT；输入不同长度的 VARCHAR，返回最长的一个。
   default @Nullable RelDataType leastRestrictive(List<RelDataType> types) {
     return leastRestrictive(types, SqlTypeMappingRules.instance(false));
   }
@@ -236,6 +258,7 @@ public interface RelDataTypeFactory {
    * @param mappingRule rule that determines whether types are convertible
    * @return canonical union type descriptor
    */
+  // 在一组类型中寻找“最小泛化类型”。例如输入 INT 和 FLOAT，返回 FLOAT；输入不同长度的 VARCHAR，返回最长的一个。
   @Nullable RelDataType leastRestrictive(List<RelDataType> types,
       SqlTypeMappingRule mappingRule);
 
@@ -246,6 +269,7 @@ public interface RelDataTypeFactory {
    *   never null
    * @return canonical type descriptor
    */
+  // 创建不带精度和标度的 SQL 类型（如 BOOLEAN, INTEGER）。
   RelDataType createSqlType(SqlTypeName typeName);
 
   /**
@@ -254,6 +278,7 @@ public interface RelDataTypeFactory {
    *
    * @return unknown type
    */
+  // 创建一个特殊的“未知”类型（通常用于解析阶段的 NULL 占位符）。
   RelDataType createUnknownType();
 
   /**
@@ -267,6 +292,7 @@ public interface RelDataTypeFactory {
    *                  {@link RelDataType#PRECISION_NOT_SPECIFIED}.
    * @return canonical type descriptor
    */
+  // 创建带长度/精度的类型（如 VARCHAR(20), CHAR(5)）。
   RelDataType createSqlType(
       SqlTypeName typeName,
       int precision);
@@ -285,6 +311,7 @@ public interface RelDataTypeFactory {
    *                  10^3). A negative scale <em>is</em> valid.
    * @return canonical type descriptor
    */
+  // 创建带精度和标度的类型（如 DECIMAL(10, 2)）。
   RelDataType createSqlType(
       SqlTypeName typeName,
       int precision,
@@ -297,6 +324,7 @@ public interface RelDataTypeFactory {
    *                          day-time interval along with precision information
    * @return canonical type descriptor
    */
+  // 根据间隔限定符（如 YEAR TO MONTH）创建时间间隔类型。
   RelDataType createSqlIntervalType(
       SqlIntervalQualifier intervalQualifier);
 
@@ -357,6 +385,7 @@ public interface RelDataTypeFactory {
    * @param type the numeric type to create decimal type with
    * @return decimal equivalence of the numeric type.
    */
+  // 将一个普通的数值类型强制转换为等价的 DECIMAL 类型。
   RelDataType decimalOf(RelDataType type);
 
   /**
@@ -403,6 +432,8 @@ public interface RelDataTypeFactory {
    * Implementation of {@link FieldInfo} that provides a fluid API to build
    * a list of fields.
    */
+  // 由于手动构建复杂的 RelRecordType 比较繁琐，接口内部提供了流式 API：
+  // 这是目前推荐的构建字段列表的方式：
   @Deprecated
   @SuppressWarnings("deprecation")
   class FieldInfoBuilder extends Builder implements FieldInfo {
