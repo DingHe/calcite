@@ -33,6 +33,12 @@ import java.util.RandomAccess;
 /**
  * Utility and factory methods for Linq4j.
  */
+// Linq4j 类是一个静态工具类和工厂类。它类似于 Java 标准库中的 java.util.Collections 或 java.util.Arrays，是整个 linq4j 框架的“瑞士军刀”。
+// 主要承担以下职责：
+// 适配器中心：将传统的 Java 集合（List, Iterable, Collection, 数组）转换为支持 LINQ 算子的 Enumerable 对象。
+// 桥接器：提供 Enumerator 与 Iterator 之间的相互转换，解决 linq4j 迭代模型与 Java 原生迭代模型的不一致问题。
+// 工厂方法：提供创建空集合、单元素集合、笛卡尔积（Product）和连接集合（Concat）的便捷方法。
+// 运行时辅助：提供反射工具方法（如 getMethod）和默认的查询提供者（DEFAULT_PROVIDER）。
 public abstract class Linq4j {
   private Linq4j() {}
 

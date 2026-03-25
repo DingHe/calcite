@@ -28,10 +28,19 @@ import java.util.Objects;
  * @param <K> Key type
  * @param <V> Value type
  */
+// GroupingImpl<K, V> 是接口 Grouping<K, V> 的标准参考实现。它不仅是一个数据容器，还巧妙地通过多重继承，让分组结果能够同时作为“可迭代序列”和“键值对映射单元”使用。
+// GroupingImpl 的核心作用是封装分组计算的产物。
+// 物理存储层：它是分组操作后的具体物理表现。当 groupBy 算子完成扫描后，它会将具有相同 Key 的所有元素存入 GroupingImpl 内部的 List 中。
+// 多身份适配：
+// 作为 Grouping：提供了获取分组键（Key）的能力。
+// 作为 Enumerable：通过继承 AbstractEnumerable，它允许用户直接对这一个小组的数据进行二次 LINQ 查询。
+// 作为 Map.Entry：它实现了标准 Java 的 Map.Entry 接口，这意味着它可以直接被放入 Map 中，或者作为 Map 迭代的一部分，极大方便了与 Java 集合框架的交互。
 @SuppressWarnings("type.argument.type.incompatible")
 class GroupingImpl<K extends Object, V> extends AbstractEnumerable<V>
     implements Grouping<K, V>, Map.Entry<K, Enumerable<V>> {
+  // 存储该分组的唯一键。
   private final K key;
+  // 在内存中存储该分组对应的所有元素列表。
   private final List<V> values;
 
   GroupingImpl(K key, List<V> values) {
