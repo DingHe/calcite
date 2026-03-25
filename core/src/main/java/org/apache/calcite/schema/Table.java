@@ -44,7 +44,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @see TableMacro
  */
 // 在 Calcite 的世界观里，Table 不仅仅是数据库里的一张物理表。
-// 抽象元数据层：它是对“数据源”的一种抽象。无论底层是 MySQL 的 B-Tree、CSV 文件、Elasticsearch 的索引，还是内存中的集合，只要实现了 Table 接口，Calcite 就能理解它的结构并对其执行 SQL。
+// 抽象元数据层：它是对“数据源”的一种抽象。无论底层是 MySQL 的 B-Tree、CSV 文件、Elasticsearch 的索引，还是内存中的集合，
+// 只要实现了 Table 接口，Calcite 就能理解它的结构并对其执行 SQL。
 // 解耦命名与实体：如源码注释所述，Table 实例本身不知道自己的名字（类似 Unix 的 i-node）。一个 Table 对象可以被挂载在不同的 Schema 下，或者在同一 Schema 下拥有多个别名。
 // 桥接逻辑与物理：它提供了 SQL 校验（Validation）所需的列信息、优化器（Optimizer）所需的统计信息，以及执行引擎所需的表类型信息。
 
