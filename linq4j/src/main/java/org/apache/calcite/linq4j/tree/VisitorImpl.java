@@ -26,12 +26,17 @@ import java.util.List;
  *
  * @param <R> Return type
  */
+// VisitorImpl<R> 是 Visitor<R> 接口的默认骨架实现（Skeleton Implementation）。
+// 它的核心逻辑是深度优先遍历（Depth-First Traversal），但默认不执行任何实际操作。
+// 默认遍历引擎：VisitorImpl 实现了遍历表达式树的递归逻辑。它会自动访问父节点下的所有子节点。
+// 开发者的便利基类：如果你只想处理树中的某种特定节点（例如只关心 MethodCallExpression），你不需要实现 Visitor 接口中的所有 30 多个方法。你只需继承 VisitorImpl 并重写你感兴趣的方法即可。
+// 只读扫描：它通常用于对树进行扫描、统计、查找或验证，而不改变树的结构（改变结构通常使用 Shuttle）。
 @SuppressWarnings("unused")
 public class VisitorImpl<@Nullable R> implements Visitor<R> {
   public VisitorImpl() {
     super();
   }
-
+  // 依次访问左操作数（expression0）和右操作数（expression1）。返回右操作数的结果。
   @Override public R visit(BinaryExpression binaryExpression) {
     R r0 = binaryExpression.expression0.accept(this);
     R r1 = binaryExpression.expression1.accept(this);

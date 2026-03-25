@@ -26,6 +26,11 @@ import static java.util.Objects.requireNonNull;
 /**
  * Extension to {@link Visitor} that returns a mutated tree.
  */
+// Shuttle 类是一个极其重要的基础组件。它扩展了传统的访问者模式（Visitor Pattern），专门用于对表达式树（Expression Tree）进行转换和修改。
+// Shuttle 的字面意思是“穿梭机”，其核心作用是：遍历并重写（Rewrite）树结构。
+// 不可变性维护：linq4j 的表达式节点（如 BinaryExpression）通常设计为不可变的。如果你想修改树中的某个叶子节点，你必须重新创建该节点及其所有父节点。Shuttle 自动化了这个过程。
+// 自底向上的重建：当子节点发生变化时，Shuttle 会自动调用 Expressions 工具类创建包含新子节点的父节点；如果子节点没变，则返回原始对象以节省内存。
+// 转换器基类：它是所有树转换逻辑（如：变量重命名、表达式简化、常量折叠）的基类。
 public class Shuttle {
   public Shuttle preVisit(WhileStatement whileStatement) {
     return this;

@@ -21,6 +21,11 @@ package org.apache.calcite.linq4j.tree;
  *
  * @param <R> Return type
  */
+// Visitor<R> 接口是实现**访问者模式（Visitor Pattern）**的核心定义。它为遍历和处理复杂的表达式树（Expression Tree）提供了一套标准的行为规范。
+// Visitor<R> 接口的主要作用是实现算法与数据结构的分离。
+// 统一的遍历入口：由于表达式树由多种不同类型的节点（如二元运算、方法调用、循环语句等）组成，Visitor 为每一种节点类型都定义了一个处理方法。
+// 解耦：如果你需要对表达式树进行某些操作（例如：将树转换成 SQL 字符串、进行常量折叠优化、统计节点数量等），你不需要修改节点类本身，只需实现一个新的 Visitor 即可。
+// 泛型支持 <R>：通过泛型参数 R，访问者可以灵活地定义返回值的类型。例如，转换成字符串时 R 是 String，进行求值时 R 是 Object。
 public interface Visitor<R> {
   R visit(BinaryExpression binaryExpression);
   R visit(BlockStatement blockStatement);
