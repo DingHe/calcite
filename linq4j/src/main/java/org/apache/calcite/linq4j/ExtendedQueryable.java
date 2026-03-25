@@ -44,12 +44,21 @@ import java.util.Comparator;
  *
  * @param <TSource> Element type
  */
+// 是对 Queryable 接口的扩展，主要用于支持 LINQ（Language Integrated Query） 风格的查询操作。
+// 核心定义：该类定义了一系列用于查询、转换、聚合和过滤数据的操作符。
+// 表达式树支持：与 ExtendedEnumerable 最大的不同在于，ExtendedQueryable 中的方法接收的参数大多是 FunctionExpression 类型。
+// 这意味着这些方法不仅仅是直接执行的代码，而是可以被解析为表达式树（Expression Tree）。
+// 远程执行能力：由于方法参数是表达式树，Calcite 可以拦截这些调用，将其翻译成 SQL 或其他特定数据源（如 MongoDB, JDBC, Cassandra）的查询语言，从而在数据库端执行，而不是把所有数据拉取到内存中执行。
+// 流式接口：提供了丰富的链式调用方法，支持排序、分组、连接、投影等复杂的集合操作。
 @Covariant(0)
 interface ExtendedQueryable<TSource> extends ExtendedEnumerable<TSource> {
 
   /**
    * Applies an accumulator function over a sequence.
    */
+  // aggregate 是最通用的**归约（Reduction）**算子。它对应 SQL 中的聚合函数（如 SUM, MAX, MIN）的底层通用实现，允许你定义自定义的累加逻辑。
+  // 与 ExtendedEnumerable 中的版本不同，这里的参数被包装在 FunctionExpression 中，这意味着该聚合逻辑可以被 Calcite 捕获并翻译成 SQL 的 AGGREGATE 算子下推到数据库执行。
+  // 该方法通过一个“累加器函数”对序列中的元素进行逐个处理，最终将整个序列合并为一个单一的值。
   @Nullable TSource aggregate(
       FunctionExpression<Function2<@Nullable TSource, TSource, TSource>> selector);
 
