@@ -19,6 +19,10 @@ package org.apache.calcite.linq4j.tree;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** Analogous to LINQ's System.Linq.Expressions.ExpressionType. */
+// ExpressionType 的主要作用是定义表达式树节点的类型标记，并规定了这些操作在转换为代码时的语法属性。
+// 节点分类：它为每一个逻辑操作（如加法、方法调用、赋值等）提供了一个唯一的枚举值，方便 Visitor 或 Shuttle 在遍历树时进行类型判断。
+// 优先级管理：它内部存储了每个操作符的优先级（Precedence）和结合性（Associativity），这对于将表达式树重新写回（Decompile）为 Java 源代码至关重要，能自动决定何时需要加括号 ()。
+// 语法元数据：它记录了操作符的符号（如 +, &&）、是否为后缀表达式、是否修改左值等信息。
 public enum ExpressionType {
 
   // Operator precedence and associativity is as follows.
@@ -88,18 +92,21 @@ public enum ExpressionType {
    * An operation that obtains the length of a one-dimensional
    * array, such as array.Length.
    */
+  // 数组长度获取。
   ArrayLength,
 
   /**
    * An indexing operation in a one-dimensional array, such as
    * {@code array[index]} in Java.
    */
+  // 数组下标访问
   ArrayIndex,
 
   /**
    * A method call, such as in the {@code obj.sampleMethod()}
    * expression.
    */
+  // 方法调用。
   Call(".", false, 1, false),
 
   /**
@@ -206,6 +213,7 @@ public enum ExpressionType {
    * An operation that reads from a field or property, such as
    * obj.SampleProperty.
    */
+  // 成员访问（. 字段或属性）。
   MemberAccess(".", false, 1, false),
 
   /**
@@ -259,6 +267,7 @@ public enum ExpressionType {
    * An operation that calls a constructor to create a new
    * object, such as new SampleType().
    */
+  // 创建对象
   New,
 
   /**
@@ -595,12 +604,22 @@ public enum ExpressionType {
    * While loop.
    */
   While;
-
+  // 主操作符符号。
+  // 例如 Add 对应 " + "，Not 对应 "!"。
   final @Nullable String op;
+  // 辅助操作符符号。
+  // 主要用于三元运算符 ? :，此时 op 为 " ? "，op2 为 " : "。
   final @Nullable String op2;
+  // 是否为后缀。
+  // 例如 i++ 中的 ++ 是后缀，而 ++i 是前缀。
   final boolean postfix;
+  // 左优先级。
+  // 用于在生成代码时判断左侧操作数是否需要括号。
   final int lprec;
+  // 右优先级。
+  // 用于在生成代码时判断右侧操作数是否需要括号。
   final int rprec;
+  // 是否修改左值。例如赋值 = 或自增 ++ 会改变变量本身的值。
   final boolean modifiesLvalue;
 
   ExpressionType() {
@@ -615,13 +634,22 @@ public enum ExpressionType {
       boolean right) {
     this(op, op2, postfix, prec, right, false);
   }
-
+  // 核心构造函数
+  // boolean postfix: 标记是否为后缀表达式（如 i++）。如果是后缀，生成代码时 op 会放在操作数后面。
+  // int prec: 优先级原始值（1-14）。数值越小，优先级越高（参考 Java 运算符优先级表）。
+  // boolean right: 结合性（Associativity）。true 表示右结合（如赋值 =），false 表示左结合（如加法 +）。
+  // 结合性（Associativity）决定了当一个表达式中出现多个优先级相同的操作符时，计算的先后顺序。
+  // 简单来说：优先级决定了先算乘除还是加减，而结合性决定了在同级运算中，是从左往右“包抄”，还是从右往左“嵌套”。
+  // boolean modifiesLvalue: 标记该操作是否会改变变量的值（如 ++, +=, =）。这在进行静态分析或优化时非常重要。
   ExpressionType(@Nullable String op, @Nullable String op2, boolean postfix, int prec,
       boolean right, boolean modifiesLvalue) {
     this.op = op;
     this.op2 = op2;
     this.postfix = postfix;
     this.modifiesLvalue = modifiesLvalue;
+    // 优先级原始值（1-14）。数值越小，优先级越高（参考 Java 运算符优先级表）。
+    // 在生成代码时，我们需要判断当前节点是否需要加括号。判断依据是：子节点的优先级必须大于父节点在该方向上的要求。
+    // 结合性（Associativity）决定了当一个表达式中出现多个优先级相同的操作符时，计算的先后顺序。
     this.lprec = (20 - prec) * 2 + (right ? 1 : 0);
     this.rprec = (20 - prec) * 2 + (right ? 0 : 1);
   }
