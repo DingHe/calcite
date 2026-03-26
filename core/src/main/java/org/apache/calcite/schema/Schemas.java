@@ -122,10 +122,18 @@ public final class Schemas {
   }
 
   /** Returns the expression for a sub-schema. */
+  // 非常核心的辅助方法。它的主要任务是构建一段 Java 表达式代码，以便在运行时能够通过父 Schema 找到指定的子 Schema。
+  // 这段代码使用了 Calcite 的 Linq4j 表达式树（Expression Tree）库。你可以把它想象成在编写“生成代码的代码”。
+  // schema: 当前的父级 Schema 对象。
+  // name: 子 Schema 的名称（字符串）。
+  // type: 期望转换的目标类型（例如 JdbcSchema.class）。
   public static Expression subSchemaExpression(SchemaPlus schema, String name,
       Class type) {
     // (Type) schemaExpression.getSubSchema("name")
+    // 获取父级表达式
+    // 如果 schema 是根节点，表达式可能是 root；如果它是深层的，表达式可能是 root.getSubSchema("A").getSubSchema("B")。这一步锁定了“父节点在哪里”。
     final Expression schemaExpression = expression(schema);
+    // 构造一个形如 parent.getSubSchema("name") 的方法调用。
     Expression call =
         Expressions.call(
             schemaExpression,
@@ -133,6 +141,7 @@ public final class Schemas {
             Expressions.constant(name));
     //CHECKSTYLE: IGNORE 2
     //noinspection unchecked
+    // 这段代码在逻辑上是永远不会执行的（因为有 false &&）。
     if (false && type != null && !type.isAssignableFrom(Schema.class)) {
       return unwrap(call, type);
     }

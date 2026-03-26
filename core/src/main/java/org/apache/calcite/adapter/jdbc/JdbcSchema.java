@@ -140,19 +140,30 @@ public class JdbcSchema implements Schema, Wrapper {
     return create(parentSchema, name, dataSource,
         SqlDialectFactoryImpl.INSTANCE, catalog, schema);
   }
-
+  // 核心作用是：将一个外部的 JDBC 数据源（如 MySQL、PostgreSQL）集成到 Calcite 的元数据层中，并为其绑定相应的物理执行约定。
   public static JdbcSchema create(
+      // 父节点 Schema。Calcite 的 Schema 是树状结构，通常 parent 是 Root。
       SchemaPlus parentSchema,
+      // 该 JDBC Schema 在 Calcite 中的别名（如 "MYSQL_DB"）。
       String name,
+      // 标准连接池对象（如 Druid, HikariCP），用于实际连接数据库。
       DataSource dataSource,
+      // 方言工厂。用于根据数据库连接信息判断该数据库的 SQL 语法特性。
       SqlDialectFactory dialectFactory,
+      // 对应数据库实例中的 Catalog 和 Schema 名称。
       @Nullable String catalog,
       @Nullable String schema) {
+    // 构建一个 Java 表达式树（Expression Tree）
+    // Calcite 的 Enumerable 约定会生成 Java 代码。
+    // 为了在生成的代码中能够找到这个 JdbcSchema 对象（从而拿到 DataSource），需要记录一个“路径表达式”。比如：root.getSubSchema("MYSQL_DB")。
     final Expression expression =
         Schemas.subSchemaExpression(parentSchema, name, JdbcSchema.class);
+    // 探测目标数据库类型。
     final SqlDialect dialect = createDialect(dialectFactory, dataSource);
+    // 创建调用约定 (JdbcConvention)
     final JdbcConvention convention =
         JdbcConvention.of(dialect, expression, name);
+    // 实例化该数据源专属的物理特征对象。
     return new JdbcSchema(dataSource, dialect, convention, catalog, schema);
   }
 
@@ -260,24 +271,31 @@ public class JdbcSchema implements Schema, Wrapper {
   @Override public final Set<String> getFunctionNames() {
     return getFunctions().keySet();
   }
-
+  // 实现了将远程数据库的物理表结构“映射”到 Calcite 内存中的过程。简单来说，它就是 Calcite 连接外部数据库的探针。
+  // 通过 JDBC 连接获取指定 Catalog 和 Schema 下的所有表元数据，并将它们转换成 Calcite 识别的 JdbcTable 对象。
+  // 这些 JdbcTable 随后会被放入 ImmutableMap 中，当用户写 SQL 查询某张表时，Calcite 就会从这个 Map 中查找对应的表定义。
   private ImmutableMap<String, JdbcTable> computeTables() {
     Connection connection = null;
     ResultSet resultSet = null;
     try {
+      // 建立连接并确定范围
+      // getCatalogSchema 会智能判断当前的上下文环境，确定我们要扫描哪一个库（Catalog）和哪一个模式（Schema）。这是为了防止扫描到整个数据库集群的所有表，导致性能崩溃。
       connection = dataSource.getConnection();
       final Pair<@Nullable String, @Nullable String> catalogSchema = getCatalogSchema(connection);
       final String catalog = catalogSchema.left;
       final String schema = catalogSchema.right;
       final Iterable<MetaImpl.MetaTable> tableDefs;
       Foo threadMetadata = THREAD_METADATA.get();
+      // 检查 THREAD_METADATA。如果当前线程已经注入了元数据（通常用于测试或特定优化场景），直接从 threadMetadata 获取。
       if (threadMetadata != null) {
         tableDefs = threadMetadata.apply(catalog, schema);
       } else {
         final List<MetaImpl.MetaTable> tableDefList = new ArrayList<>();
         final DatabaseMetaData metaData = connection.getMetaData();
+        // 调用标准的 JDBC 接口
         resultSet = metaData.getTables(catalog, schema, null, null);
         while (resultSet.next()) {
+          // 依次获取结果集中的第 1（Catalog）、2（Schema）、3（TableName）、4（TableType）个字段。
           final String catalogName = resultSet.getString(1);
           final String schemaName = resultSet.getString(2);
           final String tableName = resultSet.getString(3);
@@ -291,6 +309,10 @@ public class JdbcSchema implements Schema, Wrapper {
 
       final ImmutableMap.Builder<String, JdbcTable> builder =
           ImmutableMap.builder();
+      // 表类型清洗与转换
+      // 不同的数据库对表类型的命名不规范。
+      // 例如 Phoenix 可能返回 SYSTEM TABLE（中间有空格），代码会将其转换为 SYSTEM_TABLE 并转大写，以便匹配 Calcite 的 TableType 枚举。
+      // 容错处理： 如果遇到无法识别的类型（如 PostgreSQL 的某些特殊表），会将其标记为 OTHER，并记录一条日志，而不是直接抛出异常导致失败。
       for (MetaImpl.MetaTable tableDef : tableDefs) {
         // Clean up table type. In particular, this ensures that 'SYSTEM TABLE',
         // returned by Phoenix among others, maps to TableType.SYSTEM_TABLE.
@@ -331,6 +353,8 @@ public class JdbcSchema implements Schema, Wrapper {
   }
 
   /** Returns a pair of (catalog, schema) for the current connection. */
+  // 核心作用是：在执行元数据扫描前，确定当前数据库连接究竟指向哪一个逻辑库（Catalog）和模式（Schema）
+  // 在分布式或多租户数据库环境中，如果不能准确锁定这两个值，metaData.getTables 可能会扫描出成千上万张表，导致内存溢出或性能剧降。
   private Pair<@Nullable String, @Nullable String> getCatalogSchema(Connection connection)
       throws SQLException {
     final DatabaseMetaData metaData = connection.getMetaData();
@@ -387,7 +411,9 @@ public class JdbcSchema implements Schema, Wrapper {
       close(connection, null, null);
     }
   }
-
+  // Calcite JDBC 适配器中负责 “类型映射（Type Mapping）” 的核心逻辑。
+  // 它的任务是将远程数据库（如 MySQL 或 Oracle）的物理列信息转换为 Calcite 内部的标准类型系统（RelDataType）。
+  // getRelDataType 的主要职责是：通过 JDBC 的 getColumns 元数据接口，扫描指定表的每一列，获取其名称、数据类型、精度（Precision）、标度（Scale）以及是否允许为空（Nullable），最终构建出该表的 “行类型（Row Type）” 结构。
   RelProtoDataType getRelDataType(DatabaseMetaData metaData, String catalogName,
       String schemaName, String tableName) throws SQLException {
     final ResultSet resultSet =
@@ -515,7 +541,7 @@ public class JdbcSchema implements Schema, Wrapper {
     //noinspection RedundantCast
     return (Set<String>) getTypes().keySet();
   }
-
+  //不支持子schema
   @Override public @Nullable Schema getSubSchema(String name) {
     // JDBC does not support sub-schemas.
     return null;
