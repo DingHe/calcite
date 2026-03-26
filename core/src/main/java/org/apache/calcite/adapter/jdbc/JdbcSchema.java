@@ -76,20 +76,32 @@ import static java.util.Objects.requireNonNull;
  * queries against this schema are executed against those tables, pushing down
  * as much as possible of the query logic to SQL.
  */
+// JdbcSchema 是 JDBC 适配器（JDBC Adapter）的核心类。
+// 它实现了 Calcite 的 Schema 接口，充当了本地 Calcite SQL 引擎与外部关系型数据库（如 MySQL, Oracle, PostgreSQL 等）之间的桥梁。
+// JdbcSchema 的主要作用是将一个外部的 JDBC 数据源映射为 Calcite 内部的一个模式（Schema）。
+// 元数据映射（Metadata Mapping）：它通过 JDBC 的 DatabaseMetaData 自动读取外部数据库中的表结构、字段、数据类型，并将其转换为 Calcite 内部的 RelDataType 和 Table。
+// 计算下推（Push-down）：查询 JdbcSchema 中的表时，Calcite 会尽可能将 SQL 算子（如 Filter, Project, Join, Aggregate）下推并翻译成对应数据库的方言（Dialect），让外部数据库执行，以提高性能。
+// 统一视图：它允许用户使用统一的 Calcite SQL 语法跨越多个不同的异构 JDBC 数据源进行联邦查询。
 public class JdbcSchema implements Schema, Wrapper {
   private static final Logger LOGGER = LoggerFactory.getLogger(JdbcSchema.class);
-
+  // Java 标准数据源，用于获取数据库物理连接 Connection。
   final DataSource dataSource;
+  // 外部数据库的 Catalog（目录）名称。
   final @Nullable String catalog;
+  // 外部数据库的 Schema（模式）名称模式。
   final @Nullable String schema;
+  // SQL 方言（如 MysqlSqlDialect, OracleSqlDialect）。决定了 Calcite 如何将逻辑计划翻译成特定数据库可识别的 SQL 字符串。
   public final SqlDialect dialect;
+  // Calcite 物理计划的调用约定。标记这些算子属于 JDBC 物理执行节点，用于代价优化器（CBO）识别。
   final JdbcConvention convention;
+  // 模式内表名称到 JdbcTable 对象的缓存映射。
   private @Nullable ImmutableMap<String, JdbcTable> tableMap;
+  // 标记当前 Schema 是否是一个静态快照。如果是快照，它不会在运行期间动态刷新表列表。
   private final boolean snapshot;
-
+  // 一个线程本地变量（ThreadLocal），标记为 @Experimental，允许在特殊测试或上下文中覆盖默认的元数据获取逻辑。
   @Experimental
   public static final ThreadLocal<@Nullable Foo> THREAD_METADATA = new ThreadLocal<>();
-
+  // 比较数据库 JDBC 版本（如 4.0 对比 4.1）的排序器工具。
   private static final Ordering<Iterable<Integer>> VERSION_ORDERING =
       Ordering.<Integer>natural().lexicographical();
 

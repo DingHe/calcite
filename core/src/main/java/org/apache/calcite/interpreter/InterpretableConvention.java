@@ -27,9 +27,16 @@ import org.apache.calcite.plan.RelTraitSet;
 /**
  * Calling convention that returns results as an
  * {@link org.apache.calcite.linq4j.Enumerable} of object arrays.
- * 适用于动态解释执行的查询，通常用于需要灵活执行逻辑的场景
  * <p>Unlike enumerable convention, no code generation is required.
  */
+// 在 Apache Calcite 的架构中，InterpretableConvention（解释执行约定）是一个相对特殊且轻量级的物理特征。它主要用于 Calcite 的**内置解释器（Interpreter）**模块。
+// InterpretableConvention 的主要职责是提供一种无需生成代码即可执行查询的路径。
+// 执行方式： 与 EnumerableConvention（生成 Java 源码并编译）不同，它直接利用 Calcite 内部定义的节点处理器（如 Nodes.FilterNode, Nodes.ProjectNode）对数据进行逐行解释处理。
+// 桥梁作用： 它产出的结果格式与 Enumerable 兼容（即 Enumerable<Object[]>），但其内部实现完全基于解释逻辑。
+// 应用场景： 主要用于单元测试、快速验证逻辑计划，或者在不希望引入 Janino 编译器开销的超轻量级环境中使用。
+// 与 BindableConvention的不同：
+// 前者返回返回 EnumerableRel.class，后者返回BindableRel.class。
+// 执行组件，前者使用 org.apache.calcite.interpreter.Interpreter 模块，后者使用使用 ArrayBindable 接口手动绑定参数。
 public enum InterpretableConvention implements Convention {
   INSTANCE;
 

@@ -76,6 +76,12 @@ import static java.util.Objects.requireNonNull;
  * The resulting queryable can then be converted to a SQL query, which can be
  * executed efficiently on the JDBC server.
  */
+// 在 Apache Calcite 的 JDBC 适配器中，JdbcTable 是最核心的实现类。它充当了 Calcite 逻辑世界与外部关系型数据库（通过 JDBC 连接）之间的桥梁。
+// JdbcTable 的主要职责是将一个外部 JDBC 数据库中的表（或视图）包装成 Calcite 可以识别的 Table 对象：
+// 元数据映射：它持有外部数据库表的名称、模式（Schema）以及字段类型信息。
+// 查询转换（Push-down 的起点）：它实现了 TranslatableTable，能够将自己转化为 JdbcTableScan。这是 SQL 下推的关键，使得 Calcite 优化器可以将过滤、排序、聚合等操作直接交给底层的 MySQL/Oracle 等数据库处理。
+// 直接数据读取：它实现了 ScannableTable，即使不经过复杂的优化器，也能通过 scan 方法直接执行 SQL 并获取结果。
+// 写操作支持：通过实现 ModifiableTable，它支持对外部数据库进行 INSERT、UPDATE、DELETE 等 DML 操作。
 public class JdbcTable extends AbstractQueryableTable
     implements TranslatableTable, ScannableTable, ModifiableTable {
   @SuppressWarnings("methodref.receiver.bound.invalid")

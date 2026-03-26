@@ -53,11 +53,11 @@ public interface QueryableTable extends Table {
 
   /** Generates an expression with which this table can be referenced in
    * generated code.
-   * 生成表的Expression表达式
    * @param schema Schema
    * @param tableName Table name (unique within schema)
    * @param clazz The desired collection class; for example {@code Queryable}.
    */
+  // 生成引用该表的表达式
   // schema：所属 Schema。
   // tableName：表名。
   // clazz：期望的集合类（通常是 Queryable.class）。

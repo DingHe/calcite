@@ -26,7 +26,6 @@ import java.util.Set;
 
 /**
  * A namespace for tables and functions.
- * schema是表和函数的名称空间，可以包含子schema
  * <p>A schema can also contain sub-schemas, to any level of nesting. Most
  * providers have a limited number of levels; for example, most JDBC databases
  * have either one level ("schemas") or two levels ("database" and
@@ -55,28 +54,38 @@ import java.util.Set;
  * <p>A schema may be nested within another schema; see
  * {@link Schema#getSubSchema(String)}.
  */
+// Schema 接口是核心支柱之一。
+// 它定义了一个命名空间（Namespace），用于组织和查找数据库中的对象，如表、函数、类型以及嵌套的子模式
+// Schema 接口的主要职责是充当元数据目录（Catalog/Directory）：
+// 容器作用：它是一个层级化的容器，包含了 Table（表）、Function（函数）和 RelProtoDataType（类型）。
+// 层级结构支持：支持子模式（Sub-schema）的嵌套，能够模拟 JDBC 中的 Catalog 和 Schema 两级结构，甚至无限深度的树状结构。
+// SQL 解析支撑：当 Calcite 解析 SQL 语句（如 SELECT * FROM sales.emps）时，它会递归地通过 Schema 接口查找 sales 这个模式，再从该模式中查找 emps 表。
+// 代码生成引用：它定义了如何通过 linq4j 表达式在生成的 Java 代码中引用该模式。
+
 public interface Schema {
   /**
    * Returns a table with a given name, or null if not found.
-   * 根据表名返回Table对象
    * @param name Table name
    * @return Table, or null
    */
+  // 根据名称获取具体的 Table 对象。
+  // 说明：这是最常用的方法。如果表不存在，返回 null。
   @Nullable Table getTable(String name);
 
   /**
    * Returns the names of the tables in this schema.
-   * 返回该schema的所有表
    * @return Names of the tables in this schema
    */
+  // 作用：获取该模式下所有表的名称集合。
+  // 说明：用于元数据查询或 SQL 自动补全。
   Set<String> getTableNames();
 
   /**
    * Returns a type with a given name, or null if not found.
-   * 根据表名，返回对应的行数据类型
    * @param name Table name
    * @return Table, or null
    */
+  // 作用：根据名称获取自定义的数据类型原型（RelProtoDataType）。
   @Nullable RelProtoDataType getType(String name);
 
   /**
@@ -84,47 +93,51 @@ public interface Schema {
    *
    * @return Names of the tables in this schema
    */
+  // 作用：获取该模式下所有类型的名称集合。
   Set<String> getTypeNames();
 
   /**
    * Returns a list of functions in this schema with the given name, or
    * an empty list if there is no such function.
-   * 根据名字获取函数，因为参数不同，可能返回多个
    * @param name Name of function
    * @return List of functions with given name, or empty list
    */
+  // 作用：根据名称获取函数列表。
+  // 说明：由于 Java 和 SQL 支持函数重载（同名但参数不同），因此返回的是一个 Collection<Function>，由 Calcite 之后进行参数匹配。
   Collection<Function> getFunctions(String name);
 
   /**
    * Returns the names of the functions in this schema.
-   * 返回该schema的所有函数
    * @return Names of the functions in this schema
    */
+  // 作用：获取该模式下所有函数的名称集合。
   Set<String> getFunctionNames();
 
   /**
    * Returns a sub-schema with a given name, or null.
-   * 返回子schema
    * @param name Sub-schema name
    * @return Sub-schema with a given name, or null
    */
+  // 作用：获取嵌套在当前模式下的子模式。
+  // 说明：用于支持类似 catalog.schema.table 的多级路径。
   @Nullable Schema getSubSchema(String name);
 
   /**
    * Returns the names of this schema's child schemas.
-   * 返回所有子shema的名字
    * @return Names of this schema's child schemas
    */
+  // 作用：获取所有子模式的名称集合。
   Set<String> getSubSchemaNames();
 
   /**
    * Returns the expression by which this schema can be referenced in generated
    * code.
-   * 生成引用此schema的表达式
    * @param parentSchema Parent schema
    * @param name Name of this schema
    * @return Expression by which this schema can be referenced in generated code
    */
+  // 作用：生成引用此模式的 linq4j 表达式。
+  // 说明：在 Calcite 将查询计划转换为 Java 代码执行时，需要知道如何在运行期定位到这个 Schema 对象。
   Expression getExpression(@Nullable SchemaPlus parentSchema, String name);
 
   /** Returns whether the user is allowed to create new tables, functions
@@ -133,10 +146,11 @@ public interface Schema {
    *
    * <p>Even if this method returns true, the maps are not modified. Calcite
    * stores the defined objects in a wrapper object.
-   * 是否可以在此schema建新的表、函数或者子schema
    * @return Whether the user is allowed to create new tables, functions
    *   and sub-schemas in this schema
    */
+  // 作用：返回该模式是否允许动态修改。
+  // 说明：如果为 true，用户可以向其中添加新表或函数。
   boolean isMutable();
 
   /** Returns the snapshot of this schema as of the specified time. The
@@ -146,9 +160,12 @@ public interface Schema {
    *
    * @return the schema snapshot.
    */
+  // 作用：获取该模式在特定版本/时间点的快照。
+  // 说明：确保在长事务或复杂的查询计划生成过程中，元数据保持一致性，不被外部修改干扰。
   Schema snapshot(SchemaVersion version);
 
   /** Table type. */
+  // 枚举定义了 Calcite 识别的各种表类型，以便在生成的元数据（如 DatabaseMetaData）中正确归类：
   enum TableType {
     /** A regular table.
      *
