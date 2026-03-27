@@ -253,7 +253,7 @@ public class JdbcSchema implements Schema, Wrapper {
   public DataSource getDataSource() {
     return dataSource;
   }
-
+  // 用于生成java代码
   @Override public Expression getExpression(@Nullable SchemaPlus parentSchema, String name) {
     requireNonNull(parentSchema, "parentSchema must not be null for JdbcSchema");
     return Schemas.subSchemaExpression(parentSchema, name, JdbcSchema.class);

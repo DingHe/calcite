@@ -55,18 +55,25 @@ import static java.util.Objects.requireNonNull;
  *       arguments.</li>
  * </ul>
  */
+// AbstractSchema 的核心设计思想是模板模式（Template Pattern）。
+// 减少重复代码：Schema 接口定义了许多方法（如 getTable, getFunctions 等），如果直接实现接口，每个方法都要写一遍逻辑。AbstractSchema 通过提供默认实现（通常是返回空集合）和受保护的辅助方法，让开发者只需关注自己感兴趣的部分。
+// 基于 Map 的默认行为：它将复杂的查询逻辑（如按名称查找表、函数）统一转化为对底层 Map 或 Multimap 的操作。开发者只需覆盖（Override）对应的 get...Map() 方法即可。
+// 作为默认实现：如果一个 Schema 本身不包含任何预定义的对象，它可以直接作为空 Schema 使用。
 public class AbstractSchema implements Schema {
   public AbstractSchema() {
   }
-
+  // 作用: 定义该模式是否可变（即是否允许添加/删除表等）。
+  // 默认实现: 返回 true。如果你的数据源是只读的，需要覆盖此方法并返回 false。
   @Override public boolean isMutable() {
     return true;
   }
-
+  // 作用: 返回该模式在特定版本下的快照。
+  // 默认实现: 返回 this。表示默认不支持多版本版本控制，当前状态即为快照。
   @Override public Schema snapshot(SchemaVersion version) {
     return this;
   }
-
+  // 作用: 生成在代码生成阶段引用此模式的表达式。
+  // 说明: 它利用 Schemas.subSchemaExpression 工具类，根据父模式和当前类名构建引用路径。
   @Override public Expression getExpression(@Nullable SchemaPlus parentSchema, String name) {
     requireNonNull(parentSchema, "parentSchema");
     return Schemas.subSchemaExpression(parentSchema, name, getClass());
@@ -82,15 +89,18 @@ public class AbstractSchema implements Schema {
    *
    * @return Map of tables in this schema by name
    */
+  // 作用: 核心钩子方法。
+  // 返回包含所有表的 Map。
   protected Map<String, Table> getTableMap() {
     return ImmutableMap.of();
   }
-
+  // 作用: 获取所有表名。
+  // 实现: 调用 getTableMap().keySet()。被标记为 final，强制要求通过 getTableMap() 来改变行为。
   @Override public final Set<String> getTableNames() {
     //noinspection RedundantCast
     return (Set<String>) getTableMap().keySet();
   }
-
+  // 作用: 根据名称获取表对象。
   @Override public final @Nullable Table getTable(String name) {
     return getTableMap().get(name);
   }
@@ -105,14 +115,15 @@ public class AbstractSchema implements Schema {
    *
    * @return Map of types in this schema by name
    */
+  // 作用: 钩子方法。返回自定义类型的映射。
   protected Map<String, RelProtoDataType> getTypeMap() {
     return ImmutableMap.of();
   }
-
+  // 作用: 根据名称获取数据类型原型。
   @Override public @Nullable RelProtoDataType getType(String name) {
     return getTypeMap().get(name);
   }
-
+  // 作用: 获取所有类型的名称。
   @Override public Set<String> getTypeNames() {
     //noinspection RedundantCast
     return (Set<String>) getTypeMap().keySet();
@@ -131,14 +142,18 @@ public class AbstractSchema implements Schema {
    *
    * @return Multi-map of functions in this schema by name
    */
+
+  // 作用: 核心钩子方法。
+  // 返回函数的多值映射（Multimap）。
+  // 说明: 使用 Multimap 是因为 SQL 支持函数重载，同一个名字可能对应多个函数签名。
   protected Multimap<String, Function> getFunctionMultimap() {
     return ImmutableMultimap.of();
   }
-
+  // 作用: 获取指定名称的函数集合。
   @Override public final Collection<Function> getFunctions(String name) {
     return getFunctionMultimap().get(name); // never null
   }
-
+  // 作用: 获取所有函数的名称。
   @Override public final Set<String> getFunctionNames() {
     return getFunctionMultimap().keySet();
   }
@@ -153,15 +168,16 @@ public class AbstractSchema implements Schema {
    *
    * @return Map of sub-schemas in this schema by name
    */
+  // 作用: 钩入方法。返回嵌套子模式的映射。
   protected Map<String, Schema> getSubSchemaMap() {
     return ImmutableMap.of();
   }
-
+  // 作用: 获取所有子模式的名称。
   @Override public final Set<String> getSubSchemaNames() {
     //noinspection RedundantCast
     return (Set<String>) getSubSchemaMap().keySet();
   }
-
+  // 作用: 根据名称获取子模式。
   @Override public final @Nullable Schema getSubSchema(String name) {
     return getSubSchemaMap().get(name);
   }
