@@ -85,12 +85,19 @@ import static java.util.Objects.requireNonNull;
 public class JdbcTable extends AbstractQueryableTable
     implements TranslatableTable, ScannableTable, ModifiableTable {
   @SuppressWarnings("methodref.receiver.bound.invalid")
+  // 利用 Guava Suppliers.memoize 实现的懒加载提供者
   private final Supplier<RelProtoDataType> protoRowTypeSupplier =
       Suppliers.memoize(this::supplyProto);
+  // 所属的 JdbcSchema 对象。
+  // 说明：通过它可以访问 DataSource（获取连接）和 SqlDialect（处理数据库方言）。
   public final JdbcSchema jdbcSchema;
+  // 作用：物理数据库中的 Catalog 名称（可能为 null）。
   public final String jdbcCatalogName;
+  // 作用：物理数据库中的 Schema 名称（可能为 null）。
   public final String jdbcSchemaName;
+  // 作用：物理数据库中的表名或视图名。
   public final String jdbcTableName;
+  // 作用：表的类型。
   public final Schema.TableType jdbcTableType;
 
   JdbcTable(JdbcSchema jdbcSchema, String jdbcCatalogName,
@@ -111,7 +118,7 @@ public class JdbcTable extends AbstractQueryableTable
   @Override public Schema.TableType getJdbcTableType() {
     return jdbcTableType;
   }
-
+  // 允许用户直接从 JdbcTable 对象获取底层的 DataSource 或 SqlDialect。
   @Override public <C extends Object> @Nullable C unwrap(Class<C> aClass) {
     if (aClass.isInstance(jdbcSchema.getDataSource())) {
       return aClass.cast(jdbcSchema.getDataSource());
@@ -121,11 +128,13 @@ public class JdbcTable extends AbstractQueryableTable
       return super.unwrap(aClass);
     }
   }
-
+  // 获取该表的 Calcite 类型。
+  // 内部通过 protoRowTypeSupplier 调用 supplyProto。
   @Override public RelDataType getRowType(RelDataTypeFactory typeFactory) {
     return protoRowTypeSupplier.get().apply(typeFactory);
   }
-
+  // 核心私有方法。
+  // 调用 jdbcSchema.getRelDataType，通过 JDBC 驱动查询数据库元数据（字段名、类型、精度等）。
   private RelProtoDataType supplyProto() {
     try {
       return jdbcSchema.getRelDataType(
@@ -138,7 +147,7 @@ public class JdbcTable extends AbstractQueryableTable
               + "'", e);
     }
   }
-
+  // 将 Calcite 类型转换为 Java 类型映射，用于后续将 JDBC ResultSet 转换为 Java 对象。
   private List<Pair<ColumnMetaData.Rep, Integer>> fieldClasses(
       final JavaTypeFactory typeFactory) {
     final RelDataType rowType = getRowType(typeFactory);
@@ -151,7 +160,9 @@ public class JdbcTable extends AbstractQueryableTable
       return Pair.of(rep, type.getSqlTypeName().getJdbcOrdinal());
     });
   }
-
+  // 生成该表的查询基准 SQL。
+  // 生成一个简单的 SELECT * FROM table 语句
+  // 关键点在于它使用 jdbcSchema.dialect 确保表名的引用（如反引号或双引号）符合底层数据库规范。
   SqlString generateSql() {
     final SqlNodeList selectList = SqlNodeList.SINGLETON_STAR;
     SqlSelect node =
@@ -178,29 +189,31 @@ public class JdbcTable extends AbstractQueryableTable
     names.add(jdbcTableName);
     return new SqlIdentifier(names, SqlParserPos.ZERO);
   }
-
+  // 将该表转化为一个物理算子 JdbcTableScan。
+  // 这是进入 Calcite 优化器的入口，标记该扫描操作由 JdbcConvention（JDBC 约定）负责。
   @Override public RelNode toRel(RelOptTable.ToRelContext context,
       RelOptTable relOptTable) {
     return new JdbcTableScan(context.getCluster(), context.getTableHints(), relOptTable, this,
         jdbcSchema.convention);
   }
-
+  // 实现 QueryableTable 接口。
+  // 返回一个 JdbcTableQueryable 对象，使得该表可以参与 linq4j 的流式查询。
   @Override public <T> Queryable<T> asQueryable(QueryProvider queryProvider,
       SchemaPlus schema, String tableName) {
     return new JdbcTableQueryable<>(queryProvider, schema, tableName);
   }
-
+  // 直接扫描表。它生成 SQL 字符串，然后使用 ResultSetEnumerable 直接通过 JDBC 执行查询并返回结果。
   @Override public Enumerable<@Nullable Object[]> scan(DataContext root) {
     JavaTypeFactory typeFactory = root.getTypeFactory();
     final SqlString sql = generateSql();
     return ResultSetEnumerable.of(jdbcSchema.getDataSource(), sql.getSql(),
         JdbcUtils.rowBuilderFactory2(fieldClasses(typeFactory)));
   }
-
+  // 返回 null。JDBC 表不是内存集合，因此不支持直接返回底层集合对象。
   @Override public @Nullable Collection getModifiableCollection() {
     return null;
   }
-
+  // 作用：当 SQL 是 INSERT 或 UPDATE 时，该方法负责生成 LogicalTableModify 节点。
   @Override public TableModify toModificationRel(RelOptCluster cluster,
       RelOptTable table, CatalogReader catalogReader, RelNode input,
       Operation operation, @Nullable List<String> updateColumnList,
@@ -216,6 +229,8 @@ public class JdbcTable extends AbstractQueryableTable
    * to the JDBC data source.
    *
    * @param <T> element type */
+  // 当执行查询时，它会获取 Java 类型工厂，生成 SQL，并利用 ResultSetEnumerable 创建一个 JDBC 枚举器。
+  // 它负责将底层 java.sql.ResultSet 的每一行映射为 Calcite 需要的格式。
   private class JdbcTableQueryable<T> extends AbstractTableQueryable<T> {
     JdbcTableQueryable(QueryProvider queryProvider, SchemaPlus schema,
         String tableName) {
