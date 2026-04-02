@@ -45,13 +45,18 @@ import java.util.stream.Collector;
  * {@link SqlCall call}, {@link SqlLiteral literal},
  * {@link SqlIdentifier identifier}, and so forth.
  */
+// SqlNode 是一个抽象基类，代表 SQL 解析树中的一个节点。
+// 当 Calcite 的解析器（Parser）接收到一个 SQL 字符串时，它会将其转换为一棵由 SqlNode 及其子类对象组成的树。
+// 它是 SQL 语法结构的抽象：无论是整个 SELECT 语句、一个简单的数字（Literal）、一个字段名（Identifier），还是一个操作符（Call），它们在 AST 中都是一个 SqlNode。
+// 它是后续处理的入口：校验（Validation）、SQL 重写、以及将 AST 转换为关系代数（RelNode）的操作，都是基于这棵 SqlNode 树进行的。
 public abstract class SqlNode implements Cloneable {
   //~ Static fields/initializers ---------------------------------------------
-
+  // EMPTY_ARRAY: 一个空的 SqlNode 数组常量，用于减少数组创建开销，增加代码健壮性。
   public static final @Nullable SqlNode[] EMPTY_ARRAY = new SqlNode[0];
 
   //~ Instance fields --------------------------------------------------------
-
+  // 作用：记录该节点在原始 SQL 语句中的行、列位置信息。
+  // 价值：当 SQL 发生校验错误（如字段不存在）时，Calcite 能利用 pos 准确指出错误在 SQL 文本中的具体位置。
   protected final SqlParserPos pos;  //sql语句的位置
 
   //~ Constructors -----------------------------------------------------------
@@ -70,6 +75,7 @@ public abstract class SqlNode implements Cloneable {
   // CHECKSTYLE: IGNORE 1
   /** @deprecated Please use {@link #clone(SqlNode)}; this method brings
    * along too much baggage from early versions of Java */
+  // clone() (Object): 已废弃，内部调用了 clone(SqlParserPos)。
   @Deprecated
   @SuppressWarnings({"MethodDoesntCallSuperMethod", "AmbiguousMethodReference"})
   @Override public Object clone() {
@@ -77,6 +83,7 @@ public abstract class SqlNode implements Cloneable {
   }
 
   /** Creates a copy of a SqlNode. */
+  // 静态工具方法，用于克隆一个具体的 SqlNode 对象。
   @SuppressWarnings("AmbiguousMethodReference")
   public static <E extends SqlNode> E clone(E e) {
     //noinspection unchecked
@@ -86,6 +93,7 @@ public abstract class SqlNode implements Cloneable {
   /**
    * Clones a SqlNode with a different position.
    */
+  // 抽象方法，子类必须实现。允许在克隆节点的同时，为其指定一个新的位置信息。
   public abstract SqlNode clone(SqlParserPos pos);
 
   /**
@@ -95,6 +103,8 @@ public abstract class SqlNode implements Cloneable {
    * @return a {@link SqlKind} value, never null
    * @see #isA
    */
+  // 返回该节点的 SqlKind 类型（如 SELECT, AS, LITERAL 等）。
+  // 默认返回 OTHER。子类通常会重写此方法以返回其对应的枚举类型。
   public SqlKind getKind() {   //节点的类型，默认OTHER
     return SqlKind.OTHER;
   }
@@ -111,6 +121,7 @@ public abstract class SqlNode implements Cloneable {
    * @param category Category
    * @return Whether this node belongs to the given category.
    */
+  // 判断该节点是否属于某个分类（例如 SqlKind.QUERY 包含 SELECT, INSERT 等）。
   public final boolean isA(Set<SqlKind> category) {  //判断该节点是否是某一类别
     return getKind().belongsTo(category);
   }
@@ -126,7 +137,7 @@ public abstract class SqlNode implements Cloneable {
     }
     return clones;
   }
-
+  // toString(): 将解析树还原为标准的 ANSI SQL 字符串。
   @Override public String toString() {
     return toSqlString(c -> c.withDialect(AnsiSqlDialect.DEFAULT)
         .withAlwaysUseParentheses(false)
