@@ -33,6 +33,11 @@ import static org.apache.calcite.util.Static.RESOURCE;
  * SqlParserPos represents the position of a parsed token within SQL statement
  * text.
  */
+// SqlParserPos 是一个极其基础且关键的类。它主要用于追踪 SQL 语句中每个标记（Token）或语法节点（SqlNode）在原始文本中的物理位置。
+// SqlParserPos 的核心职责是定位与溯源：
+// 报错定位：当 SQL 解析或验证出错时，利用该类记录的行列信息，精准地告知用户错误发生的具体位置。
+// 节点合并：在构建抽象语法树（AST）时，它可以将多个子节点的范围合并，计算出父节点（如整个 SELECT 语句）在源码中的起止范围。
+// 引用处理：标记某个标识符是否被引号包裹（Quoted），这在处理数据库大小写敏感性时至关重要。
 public class SqlParserPos implements Serializable {
   //~ Static fields/initializers ---------------------------------------------
 
@@ -40,18 +45,23 @@ public class SqlParserPos implements Serializable {
    * SqlParserPos representing line one, character one. Use this if the node
    * doesn't correspond to a position in piece of SQL text.
    */
+  // 代表起始位置（1行1列）的常量。通常用于那些不是从原始 SQL 文本中解析出来的“虚拟”节点。
   public static final SqlParserPos ZERO = new SqlParserPos(0, 0);
 
   /** Same as {@link #ZERO} but always quoted. */
+  // 同上，但标记为已加引号。
   public static final SqlParserPos QUOTED_ZERO = new QuotedParserPos(0, 0, 0, 0);
 
   private static final long serialVersionUID = 1L;
 
   //~ Instance fields --------------------------------------------------------
-
+  // 起始行号，从1开始
   private final int lineNumber;
+  // 起始列号，从1开始
   private final int columnNumber;
+  //结束行号
   private final int endLineNumber;
+  //结束列号
   private final int endColumnNumber;
 
   //~ Constructors -----------------------------------------------------------
@@ -59,6 +69,7 @@ public class SqlParserPos implements Serializable {
   /**
    * Creates a new parser position.
    */
+  // 创建一个点位置（起点和终点相同）
   public SqlParserPos(
       int lineNumber,
       int columnNumber) {
@@ -68,6 +79,7 @@ public class SqlParserPos implements Serializable {
   /**
    * Creates a new parser range.
    */
+  // 创建一个范围位置。内部包含断言，确保起点不晚于终点。
   public SqlParserPos(
       int startLineNumber,
       int startColumnNumber,
@@ -120,6 +132,8 @@ public class SqlParserPos implements Serializable {
   }
 
   /** Returns a {@code SqlParserPos} the same as this but quoted. */
+  // 根据布尔值返回一个新的位置对象。
+  // 如果要加引号，则返回内部类 QuotedParserPos 的实例。
   public SqlParserPos withQuoting(boolean quoted) {
     if (isQuoted() == quoted) {
       return this;
@@ -136,7 +150,7 @@ public class SqlParserPos implements Serializable {
   public boolean isQuoted() {
     return false;
   }
-
+  // 调用资源文件格式化输出位置字符串（例如 "line 1, column 5"）
   @Override public String toString() {
     return RESOURCE.parserContext(lineNumber, columnNumber).str();
   }
@@ -146,6 +160,8 @@ public class SqlParserPos implements Serializable {
    * position that spans from the first point in the first to the last point
    * in the other.
    */
+  // 将当前位置与另一个位置合并。
+  // 逻辑：新范围从当前点的起点开始，到传入点的终点结束。常用于按顺序拼接 Token。
   public SqlParserPos plus(SqlParserPos pos) {
     return new SqlParserPos(
         getLineNum(),
@@ -159,6 +175,8 @@ public class SqlParserPos implements Serializable {
    * position that spans from the first point in the first to the last point
    * in the other.
    */
+  // 作用：将当前位置与一组节点的位置合并。
+  // 实现：使用内部类 PosBuilder 计算足以包含所有节点的最小外包矩形范围。
   public SqlParserPos plusAll(@Nullable SqlNode[] nodes) {
     final PosBuilder b = new PosBuilder(this);
     for (SqlNode node : nodes) {
@@ -186,6 +204,7 @@ public class SqlParserPos implements Serializable {
    * Combines the parser positions of an array of nodes to create a position
    * which spans from the beginning of the first to the end of the last.
    */
+  // 计算一组节点或位置的总和范围（从第一个的开始到最后一个的结束）。
   public static SqlParserPos sum(final SqlNode[] nodes) {
     if (nodes.length == 0) {
       throw new AssertionError();
@@ -241,7 +260,7 @@ public class SqlParserPos implements Serializable {
     }
     return b.build(pos0);
   }
-
+  // 判断两个位置范围是否有交集。
   public boolean overlaps(SqlParserPos pos) {
     return startsBefore(pos) && endsAfter(pos)
         || pos.startsBefore(this) && pos.endsAfter(this);
@@ -258,13 +277,15 @@ public class SqlParserPos implements Serializable {
         || endLineNumber == pos.endLineNumber
         && endColumnNumber >= pos.endColumnNumber;
   }
-
+  // 判断两个位置的起点是否完全重合。
   public boolean startsAt(SqlParserPos pos) {
     return lineNumber == pos.lineNumber
         && columnNumber == pos.columnNumber;
   }
 
   /** Parser position for an identifier segment that is quoted. */
+  // 这是 SqlParserPos 的一个简单子类，唯一的区别是它的 isQuoted() 永远返回 true。
+  // 这体现了内存优化的思想：只有真正加了引号的节点才使用这个子类。
   private static class QuotedParserPos extends SqlParserPos {
     QuotedParserPos(int startLineNumber, int startColumnNumber,
         int endLineNumber, int endColumnNumber) {
