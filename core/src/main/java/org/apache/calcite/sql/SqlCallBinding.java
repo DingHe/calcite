@@ -58,6 +58,14 @@ import static java.util.Objects.requireNonNull;
  * <code>SqlCallBinding</code> implements {@link SqlOperatorBinding} by
  * analyzing to the operands of a {@link SqlCall} with a {@link SqlValidator}.
  */
+// 在 Apache Calcite 中，SqlCallBinding 是 SqlOperatorBinding 的具体实现类，也是 SQL 验证（Validation）阶段最核心的上下文对象。
+// 它的核心作用是：在 SQL 验证阶段，将具体的 SQL 语法节点（SqlCall）与其所属的命名空间（SqlValidatorScope）以及验证器（SqlValidator）绑定在一起。
+// 当 Calcite 需要检查某个函数调用（如 MY_FUNC(a, 'b')）是否合法时：
+// 它会创建一个 SqlCallBinding 实例。
+// 该实例通过 SqlValidator 去查询元数据（列名、表名）。
+// 通过 SqlValidatorScope 确定变量的可见性。
+// 它为 SqlOperator 提供了“实参”的类型和值，从而完成参数数量检查、类型推导和单调性分析。
+
 public class SqlCallBinding extends SqlOperatorBinding {
 
   /** Static nested class required due to
@@ -65,15 +73,18 @@ public class SqlCallBinding extends SqlOperatorBinding {
    * ExceptionInInitializerError due to NPE in SqlCallBinding caused by circular dependency</a>.
    * The static field inside it cannot be part of the outer class: it must be defined
    * within a nested class in order to break the cycle during class loading. */
+  // 为了解决类加载时的循环依赖问题。它持有一个默认的 DEFAULT 操作符调用，用于填充可选参数。
   private static class DefaultCallHolder {
     private static final SqlCall DEFAULT_CALL =
         SqlStdOperatorTable.DEFAULT.createCall(SqlParserPos.ZERO);
   }
 
   //~ Instance fields --------------------------------------------------------
-
+  // 负责访问元数据和执行类型校验。
   private final SqlValidator validator;
+  // 定义了当前 SQL 节点可见的标识符（字段、表等）。
   private final SqlValidatorScope scope;
+  // 当前正在被绑定的 SQL 调用表达式
   private final SqlCall call;
 
   //~ Constructors -----------------------------------------------------------

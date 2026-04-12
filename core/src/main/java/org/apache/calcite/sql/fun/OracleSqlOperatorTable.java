@@ -30,6 +30,10 @@ import java.util.function.Supplier;
  * {@link SqlLibraryOperatorTableFactory#getOperatorTable(SqlLibrary...)}
  * instead, passing {@link SqlLibrary#ORACLE} as argument.
  */
+// 专门用于支持 Oracle 方言特定函数 的算子表类
+// 该类的主要作用是：为 Calcite 提供 Oracle 数据库特有的 SQL 函数支持。
+// 虽然 Calcite 默认支持标准 SQL（通过 SqlStdOperatorTable），但现实中很多业务逻辑依赖于 Oracle 的特定函数（如 DECODE, NVL 等）。
+// 这个类通过继承 ReflectiveSqlOperatorTable，将这些特定的算子集中在一个表中，方便校验器（Validator）在处理 Oracle 方言的 SQL 时进行查找。
 @Deprecated // to be removed before 2.0
 public class OracleSqlOperatorTable extends ReflectiveSqlOperatorTable {
   //~ Static fields/initializers ---------------------------------------------

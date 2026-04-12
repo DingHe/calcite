@@ -37,10 +37,17 @@ import java.util.List;
  * {@link SqlOperator} to actual operands, along with any additional information
  * required to validate those operands if needed.
  */
+// 它的核心作用是：解耦操作符（SqlOperator）与其具体调用场景（SqlCall 或 RexCall）。
+// 当我们讨论一个操作符（如 SUM 或 +）时，我们不仅需要知道它的定义，还需要知道它被绑定到了哪些具体的参数上。
+// 在 校验阶段（Validation）：它被绑定到 SqlNode（SQL 解析树节点）。
+// 在 执行计划阶段（Optimization）：它被绑定到 RexNode（行表达式节点）。
+// SqlOperatorBinding 提供了一套统一的接口，使得 SqlReturnTypeInference（类型推导器）和 SqlOperandTypeChecker（参数校验器）在不需要关心底层到底是 SqlNode 还是 RexNode 的情况下，
+// 就能获取到参数的类型、个数、甚至是字面量的值。
 public abstract class SqlOperatorBinding {
   //~ Instance fields --------------------------------------------------------
-
+  // 用于在推导过程中创建新的类型（比如将两个类型合并后的最小公共类型）。
   protected final RelDataTypeFactory typeFactory;
+  // 当前正在处理的 SqlOperator 对象（即操作符的定义）。
   private final SqlOperator sqlOperator;
 
   //~ Constructors -----------------------------------------------------------
@@ -70,6 +77,7 @@ public abstract class SqlOperatorBinding {
    *
    * <p>Returns -1 if the query is not an aggregate query.
    */
+  // 如果是在聚合查询中，返回 GROUP BY 子句中的列数。非聚合查询返回 -1。
   public int getGroupCount() {
     return -1;
   }
@@ -77,6 +85,7 @@ public abstract class SqlOperatorBinding {
   /**
    * Returns whether the operator is an aggregate function with a filter.
    */
+  // 返回该聚合函数是否带有 FILTER 子句。
   public boolean hasFilter() {
     return false;
   }
@@ -97,6 +106,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal zero-based ordinal of operand of interest
    * @return string value
    */
+  // 获取字符串字面量（已过时，建议使用 getOperandLiteralValue）。
   @Deprecated // to be removed before 2.0
   public @Nullable String getStringLiteralOperand(int ordinal) {
     throw new UnsupportedOperationException();
@@ -108,6 +118,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal zero-based ordinal of operand of interest
    * @return integer value
    */
+  // 获取整型字面量（已过时）。
   @Deprecated // to be removed before 2.0
   public int getIntLiteralOperand(int ordinal) {
     throw new UnsupportedOperationException();
@@ -137,6 +148,7 @@ public abstract class SqlOperatorBinding {
    *
    * @return value of operand
    */
+  // 获取第 ordinal 个操作数的字面量值，并尝试转换成指定的 Java 类型 clazz。如果不是字面量，返回 null。
   public <T extends Object> @Nullable T getOperandLiteralValue(int ordinal, Class<T> clazz) {
     throw new UnsupportedOperationException();
   }
@@ -149,6 +161,7 @@ public abstract class SqlOperatorBinding {
    *
    * @return value of operand
    */
+  // 获取字面量值并转换成 Calcite 定义的类型。
   public @Nullable Object getOperandLiteralValue(int ordinal, RelDataType type) {
     if (!(type instanceof RelDataTypeFactoryImpl.JavaType)) {
       return null;
@@ -181,6 +194,7 @@ public abstract class SqlOperatorBinding {
    * @return whether operand is null; false for everything except SQL
    * validation
    */
+  // 判断指定的参数是否为 NULL 常量。
   public boolean isOperandNull(int ordinal, boolean allowCast) {
     throw new UnsupportedOperationException();
   }
@@ -192,6 +206,7 @@ public abstract class SqlOperatorBinding {
    * @param allowCast whether to regard CAST(literal) as a literal
    * @return whether operand is literal
    */
+  // 判断第 ordinal 个参数是否为字面量常量。allowCast 参数决定是否视 CAST(constant) 为常量。
   public boolean isOperandLiteral(int ordinal, boolean allowCast) {
     throw new UnsupportedOperationException();
   }
@@ -202,6 +217,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal   zero-based ordinal of operand of interest
    * @return whether operand is a time frame
    */
+  // 判断操作数是否代表一个时间框架（如 YEAR, MINUTE）。
   public boolean isOperandTimeFrame(int ordinal) {
     return getOperandCount() > 0
         && SqlTypeName.TIME_FRAME_TYPES.contains(
@@ -210,10 +226,12 @@ public abstract class SqlOperatorBinding {
 
   /** Returns the number of bound operands.
    * Includes pre-operands and regular operands. */
+  // 返回当前调用中绑定的操作数总数。
   public abstract int getOperandCount();
 
   /** Returns the number of pre-operands.
    * Zero except for a few aggregate functions. */
+  // 返回“预操作数”的数量。通常只有特定的聚合函数会用到，默认返回 0。
   public int getPreOperandCount() {
     return 0;
   }
@@ -224,6 +242,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal zero-based ordinal of operand of interest
    * @return bound operand type
    */
+  // 获取第 ordinal 个操作数的逻辑类型（RelDataType）。这是类型推导最常用的方法。
   public abstract RelDataType getOperandType(int ordinal);
 
   /**
@@ -232,6 +251,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal zero-based ordinal of operand of interest
    * @return monotonicity of operand
    */
+  // 获取参数的单调性（递增、递减或非单调）。这在处理流式 SQL 或排序优化时非常有用。
   public SqlMonotonicity getOperandMonotonicity(int ordinal) {
     return SqlMonotonicity.NOT_MONOTONIC;
   }
@@ -240,6 +260,7 @@ public abstract class SqlOperatorBinding {
   /**
    * Returns the collation type.
    */
+  // 获取排序规则类型。
   public RelDataType getCollationType() {
     throw new UnsupportedOperationException();
   }
@@ -249,6 +270,7 @@ public abstract class SqlOperatorBinding {
    *
    * @return collected list
    */
+  // 将所有操作数的类型收集到一个 List 中。
   public List<RelDataType> collectOperandTypes() {
     return new AbstractList<RelDataType>() {
       @Override public RelDataType get(int index) {
@@ -270,6 +292,7 @@ public abstract class SqlOperatorBinding {
    * @param ordinal Ordinal of the operand
    * @return Rowtype of the query underlying the cursor
    */
+  // 获取游标类型的参数行类型。
   public @Nullable RelDataType getCursorOperand(int ordinal) {
     throw new UnsupportedOperationException();
   }
@@ -284,6 +307,7 @@ public abstract class SqlOperatorBinding {
    * @return the name of the parent cursor referenced by the column list
    * parameter if it is a column list parameter; otherwise, null is returned
    */
+  // 获取列列表参数的信息，常用于表函数（Table Functions）。
   public @Nullable String getColumnListParamInfo(
       int ordinal,
       String paramName,

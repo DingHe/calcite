@@ -93,6 +93,11 @@ import static java.util.Objects.requireNonNull;
  * Implementation of {@link org.apache.calcite.sql.SqlOperatorTable} containing
  * the standard operators and functions.
  */
+// SqlStdOperatorTable 是最核心、最庞大的算子库类。它几乎定义了 SQL 标准中所有的内置操作符
+// 它是 Calcite 内置的标准 SQL 操作符“大本营”。
+// 集中定义：该类通过静态常量定义了数百个标准 SQL 操作符（如 UNION, AND, +, CASE, COUNT 等）。
+// 注册中心：它继承自 ReflectiveSqlOperatorTable，利用反射机制，在 init() 被调用时，会自动扫描类中所有的 SqlOperator 字段并将其注册到父类的检索索引中。
+// 验证依据：当 Calcite 的校验器（Validator）解析 SQL 语句时，会通过这个表来查找对应的函数名、检查参数类型是否合法、并推导返回值类型。
 public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
 
   //~ Static fields/initializers ---------------------------------------------
@@ -100,9 +105,11 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
   /**
    * The standard operator table.
    */
+  // 单例持有者。
+  //通过反射的方式把通过属性定义的Operator加入缓存
   private static final Supplier<SqlStdOperatorTable> INSTANCE =
       Suppliers.memoize(() ->
-          (SqlStdOperatorTable) new SqlStdOperatorTable().init()); //通过反射的方式把通过属性定义的Operator加入缓存
+          (SqlStdOperatorTable) new SqlStdOperatorTable().init());
 
   //-------------------------------------------------------------
   //                   SET OPERATORS

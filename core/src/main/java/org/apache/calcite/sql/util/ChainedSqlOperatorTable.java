@@ -36,6 +36,12 @@ import java.util.List;
  *
  * <p>To create, call {@link SqlOperatorTables#chain}.
  */
+// 在 Apache Calcite 项目中，ChainedSqlOperatorTable 是 SqlOperatorTable 接口的一个非常实用且强大的实现类。它采用了 组合模式（Composite Pattern），将多个算子表组合在一起工作。
+// 该类的核心作用是：将多个独立的算子表“串联”起来，形成一个统一的逻辑表。
+// 在复杂的 SQL 引擎中，我们往往需要同时支持多种来源的函数，例如：
+// 标准函数（SqlStdOperatorTable）
+// 方言特定函数（如 OracleSqlOperatorTable）
+// 用户自定义函数（UDF）
 public class ChainedSqlOperatorTable implements SqlOperatorTable {
   //~ Instance fields --------------------------------------------------------
 

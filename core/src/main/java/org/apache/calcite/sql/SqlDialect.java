@@ -68,8 +68,6 @@ import static java.util.Objects.requireNonNull;
 
 /**
  * <code>SqlDialect</code> encapsulates the differences between dialects of SQL.
- * 封装不同SQL方言之间的差异，主要由SqlWriter和SqlBuilder使用。
- * 增加新的类，需要继承此类，以包含DEFAULT_CONTEXT和DEFAULT这两静态成员。
  * <p>It is used by classes such as {@link SqlWriter} and
  * {@link org.apache.calcite.sql.util.SqlBuilder}.
  *
@@ -82,6 +80,15 @@ import static java.util.Objects.requireNonNull;
  *   <code>DEFAULT_CONTEXT</code></li>
  * </ul>
  */
+// SqlDialect 类是 Apache Calcite 中用于处理 SQL 方言差异 的核心类。
+// 由于不同的数据库（如 Oracle, MySQL, PostgreSQL, Hive 等）在语法、标识符引用、函数支持和数据类型处理上存在显著差异，
+// SqlDialect 的存在使得 Calcite 能够将统一的抽象语法树（SqlNode）生成符合特定数据库要求的 SQL 字符串。
+// SqlDialect 的核心作用是封装和屏蔽不同 SQL 方言之间的差异。
+// 语法转换：它协助 SqlWriter 将 SqlNode 转换为特定数据库的 SQL。例如，它决定了如何处理 LIMIT/OFFSET（有些数据库用 TOP）。
+// 标识符处理：决定如何引用表名和列名（如 MySQL 用反引号 `，Oracle 用双引号 "）。
+// 函数映射：判断某个内置函数在特定方言中是否受支持，或者是否需要重写。
+// 行为定义：定义 NULL 值的排序方式、子查询是否需要别名等行为。
+
 public class SqlDialect {
   //~ Static fields/initializers ---------------------------------------------
 
@@ -89,8 +96,9 @@ public class SqlDialect {
       LoggerFactory.getLogger(SqlDialect.class);
 
   /** Empty context. */
-  public static final Context EMPTY_CONTEXT = emptyContext();  //空的上下文
-  //方言共有的标量函数和操作
+  // 一个空的上下文对象，作为创建方言实例的基准配置。
+  public static final Context EMPTY_CONTEXT = emptyContext();
+  // 包含所有方言通用的内置标量函数和操作符（如 ABS, AND, CASE, CAST 等）。
   /** Built-in scalar functions and operators common for every dialect. */
   protected static final Set<SqlOperator> BUILT_IN_OPERATORS_LIST =
       ImmutableSet.<SqlOperator>builder()
@@ -145,18 +153,29 @@ public class SqlDialect {
 
 
   //~ Instance fields --------------------------------------------------------
-
-  protected final @Nullable String identifierQuoteString;   //标识符引用使用的符号，所谓的标识符就是表名、列名等字段
+  // 标识符引用的起始符号（如 " 或 `）。
+  protected final @Nullable String identifierQuoteString;
+  // 标识符引用的结束符号。
   protected final @Nullable String identifierEndQuoteString;
+  // 标识符中包含引号时的转义符（通常是双引号）。
   protected final @Nullable String identifierEscapedQuote;
-  protected final String literalQuoteString;   //常量字符串使用的符号
+  // 字符串常量的起始引号（通常是 '）。
+  protected final String literalQuoteString;
+  // 字符串常量的结束引号。
   protected final String literalEndQuoteString;
+  // 常量中的转义字符（通常是 ''）。
   protected final String literalEscapedQuote;
+  // 所属的数据库产品枚举（如 MYSQL, ORACLE）。
   private final DatabaseProduct databaseProduct;
+  // NULL 值的排序行为（是排在最前、最后还是根据升降序变化）。
   protected final NullCollation nullCollation;
+  // 类型系统，定义了该方言支持的最大精度、长度等。
   private final RelDataTypeSystem dataTypeSystem;
-  private final Casing unquotedCasing;  //标识符存储之前是否需要转换大小写问题。
+  // 标识符在未加引号和加引号时的大小写转换策略。
+  private final Casing unquotedCasing;
+  // 标识符在未加引号和加引号时的大小写转换策略。
   private final Casing quotedCasing;
+  // 标识符是否区分大小写。
   private final boolean caseSensitive;
 
   //~ Constructors -----------------------------------------------------------
@@ -172,6 +191,7 @@ public class SqlDialect {
    *
    * @deprecated Replaced by {@link SqlDialectFactory}
    */
+  // 根据 JDBC 连接的元数据自动创建匹配的方言实例。
   @Deprecated // to be removed before 2.0
   public static SqlDialect create(DatabaseMetaData databaseMetaData) {
     return new SqlDialectFactoryImpl().create(databaseMetaData);
@@ -213,6 +233,7 @@ public class SqlDialect {
    *
    * @param context All the information necessary to create a dialect
    */
+  // 推荐的构造函数，通过 Context 对象初始化所有属性。
   public SqlDialect(Context context) {
     this.nullCollation = requireNonNull(context.nullCollation());
     this.dataTypeSystem = requireNonNull(context.dataTypeSystem());
@@ -245,7 +266,7 @@ public class SqlDialect {
   }
 
   //~ Methods ----------------------------------------------------------------
-  //创建一个空的山下文
+  // 创建一个空的山下文
   /** Creates an empty context. Use {@link #EMPTY_CONTEXT} to reference the instance. */
   private static Context emptyContext() {
     return new ContextImpl(DatabaseProduct.UNKNOWN, null, null, -1, -1,
@@ -263,6 +284,7 @@ public class SqlDialect {
    * @param productVersion Product version
    * @return database product
    */
+  // 静态工具方法，根据 JDBC 驱动提供的产品名字符串映射到 DatabaseProduct 枚举。
   @Deprecated // to be removed before 2.0
   public static DatabaseProduct getProduct(
       String productName,
@@ -342,6 +364,7 @@ public class SqlDialect {
   }
 
   /** Returns the type system implementation for this dialect. */
+  // 返回该方言的类型系统
   public RelDataTypeSystem getTypeSystem() {
     return dataTypeSystem;
   }
@@ -357,6 +380,7 @@ public class SqlDialect {
    * @param val Identifier to quote
    * @return Quoted identifier
    */
+  // 将单个标识符（如 my_table）用方言对应的引号包围。
   public String quoteIdentifier(String val) {
     return quoteIdentifier(new StringBuilder(), val).toString();
   }
@@ -364,7 +388,6 @@ public class SqlDialect {
   /**
    * Encloses an identifier in quotation marks appropriate for the current SQL
    * dialect, writing the result to a {@link StringBuilder}.
-   * 根据不同的方言使用合适的引号把标识符括起来
    * <p>For example, <code>quoteIdentifier("emp")</code> yields a string
    * containing <code>"emp"</code> in Oracle, and a string containing <code>
    * [emp]</code> in Access.
@@ -396,6 +419,7 @@ public class SqlDialect {
    * @param identifiers List of parts of the identifier to quote
    * @return The buffer
    */
+  // 处理多级标识符（如 schema.table.column），各部分分别加引号并用点号连接。
   public StringBuilder quoteIdentifier(
       StringBuilder buf,
       List<String> identifiers) {
@@ -409,7 +433,7 @@ public class SqlDialect {
     return buf;
   }
 
-  //标识符是否要括起来，默认是true
+  // 判断标识符是否需要加引号。默认返回 true（保守策略）。
   /** Returns whether to quote an identifier.
    * By default, all identifiers are quoted. */
   protected boolean identifierNeedsQuote(String val) {
@@ -418,9 +442,9 @@ public class SqlDialect {
 
   /**
    * Converts a string into a string literal.
-   * 把字符串转为字符常量
    * <p>For example, {@code "can't run"} becomes {@code "'can''t run'"}.
    */
+  // 将字符串转为 SQL 常量形式（处理转义）。
   public final String quoteStringLiteral(String val) {
     final StringBuilder buf = new StringBuilder();
     quoteStringLiteral(buf, null, val);
@@ -443,7 +467,8 @@ public class SqlDialect {
     buf.append(val.replace(literalEndQuoteString, literalEscapedQuote));
     buf.append(literalEndQuoteString);
   }
-
+  //  SQL 生成（Unparse）支持
+  // 核心方法。决定如何打印一个操作符调用。例如，如果方言不支持 ROW 关键字，它会将其重写为匿名形式。
   public void unparseCall(SqlWriter writer, SqlCall call, int leftPrec,
       int rightPrec) {
     SqlOperator operator = call.getOperator();
@@ -467,12 +492,12 @@ public class SqlDialect {
       operator.unparse(writer, call, leftPrec, rightPrec);
     }
   }
-
+  // 定义如何打印日期时间常量。
   public void unparseDateTimeLiteral(SqlWriter writer,
       SqlAbstractDateTimeLiteral literal, int leftPrec, int rightPrec) {
     writer.literal(literal.toString());
   }
-
+  // 定义日期加减运算的打印逻辑（如 date + interval）。
   public void unparseSqlDatetimeArithmetic(SqlWriter writer,
       SqlCall call, SqlKind sqlKind, int leftPrec, int rightPrec) {
     final SqlWriter.Frame frame = writer.startList("(", ")");
@@ -490,6 +515,7 @@ public class SqlDialect {
   /** Converts an interval qualifier to a SQL string. The default implementation
    * returns strings such as
    * <code>INTERVAL '1 2:3:4' DAY(4) TO SECOND(4)</code>. */
+  // 处理时间间隔限定符（如 DAY TO SECOND）的打印。
   public void unparseSqlIntervalQualifier(SqlWriter writer,
       SqlIntervalQualifier qualifier, RelDataTypeSystem typeSystem) {
     if (qualifier.timeFrameName != null) {
@@ -541,6 +567,7 @@ public class SqlDialect {
   /** Converts an interval literal to a SQL string. The default implementation
    * returns strings such as
    * <code>INTERVAL '1 2:3:4' DAY(4) TO SECOND(4)</code>. */
+  // 处理 INTERVAL '1' DAY 这种常量的打印。
   public void unparseSqlIntervalLiteral(SqlWriter writer,
       SqlIntervalLiteral literal, int leftPrec, int rightPrec) {
     SqlIntervalLiteral.IntervalValue interval =
@@ -555,6 +582,7 @@ public class SqlDialect {
   }
 
   /** Converts table scan hints. The default implementation suppresses all hints. */
+  // 处理表扫描提示（Hints），默认不打印。
   public void unparseTableScanHints(SqlWriter writer,
       SqlNodeList hints, int leftPrec, int rightPrec) {
   }
@@ -583,6 +611,7 @@ public class SqlDialect {
    * Converts a string into a unicode string literal. For example,
    * <code>can't{tab}run\</code> becomes <code>u'can''t\0009run\\'</code>.
    */
+  // 将字符串转为 Unicode 形式的 SQL 常量（如 u&'...'）。
   public void quoteStringLiteralUnicode(StringBuilder buf, String val) {
     buf.append("u&'");
     for (int i = 0; i < val.length(); i++) {
@@ -612,6 +641,7 @@ public class SqlDialect {
    * Converts a string literal back into a string. For example, <code>'can''t
    * run'</code> becomes <code>can't run</code>.
    */
+  // 去除字符串常量的引号并反转义，还原为原始字符串。
   public @Nullable String unquoteStringLiteral(@Nullable String val) {
     if (val != null
         && val.startsWith(literalQuoteString)
@@ -623,7 +653,7 @@ public class SqlDialect {
     }
     return val;
   }
-
+  // 是否允许在别名前面写 AS 关键字。
   protected boolean allowsAs() {
     return true;
   }
@@ -642,6 +672,7 @@ public class SqlDialect {
    *
    * <p>In Oracle, both queries are legal.
    */
+  // FROM 子句中的子查询是否强制要求别名。
   public boolean requiresAliasForFromItems() {
     return false;
   }
@@ -668,6 +699,7 @@ public class SqlDialect {
    *
    * <p>Returns true for all databases except DB2.
    */
+  // 引用表名时是否存在隐式别名（如 sales.emp 是否自动拥有别名 emp）。
   public boolean hasImplicitTableAlias() {
     return true;
   }
@@ -717,6 +749,7 @@ public class SqlDialect {
    * Returns whether the dialect supports character set names as part of a
    * data type, for instance {@code VARCHAR(30) CHARACTER SET `ISO-8859-1`}.
    */
+  // 是否支持在数据类型中指定字符集。
   @Pure
   public boolean supportsCharSet() {
     return true;
@@ -738,10 +771,11 @@ public class SqlDialect {
    * group by 'a', DATE '2022-01-01'
    * }</pre></blockquote>
    */
+  // 是否允许在 GROUP BY 中使用常量（如 GROUP BY 1 或 GROUP BY 'a'）。
   public boolean supportsGroupByLiteral() {
     return true;
   }
-
+  // 判断方言是否支持特定的聚合函数（如 COUNT, SUM）。
   public boolean supportsAggregateFunction(SqlKind kind) {
     switch (kind) {
     case COUNT:
@@ -775,6 +809,7 @@ public class SqlDialect {
   }
 
   /** Returns whether this dialect supports window functions (OVER clause). */
+  // 是否支持开窗函数（OVER 子句）。
   public boolean supportsWindowFunctions() {
     return true;
   }
@@ -782,6 +817,7 @@ public class SqlDialect {
   /** Returns whether this dialect supports a given function or operator.
    * It only applies to built-in scalar functions and operators, since
    * user-defined functions and procedures should be read by JdbcSchema. */
+  // 检查方言是否支持特定的内置函数。
   public boolean supportsFunction(SqlOperator operator, RelDataType type,
       List<RelDataType> paramTypes) {
     switch (operator.kind) {
@@ -822,6 +858,7 @@ public class SqlDialect {
   }
 
   /** Returns whether this dialect supports a given type. */
+  // 是否支持某种特定数据类型。
   public boolean supportsDataType(RelDataType type) {
     return true;
   }
@@ -832,6 +869,7 @@ public class SqlDialect {
   * <p>If this method returns null, the cast will be omitted. In the default
   * implementation, this is the case for the NULL type, and therefore
   * {@code CAST(NULL AS <nulltype>)} is rendered as {@code NULL}. */
+ // 返回用于 CAST(x AS type) 的类型声明。会根据方言调整精度和名称。
   public @Nullable SqlNode getCastSpec(RelDataType type) {
     int maxPrecision = -1;
     int maxScale = -1;
@@ -868,6 +906,7 @@ public class SqlDialect {
   /** Rewrites SINGLE_VALUE into expression based on database variants
    * E.g. HSQLDB, MYSQL, ORACLE, etc.
    */
+  // 某些数据库不支持 SINGLE_VALUE 聚合，在此处进行重写逻辑。
   public SqlNode rewriteSingleValueExpr(SqlNode aggCall, RelDataType relDataType) {
     LOGGER.debug("SINGLE_VALUE rewrite not supported for {}", databaseProduct);
     return aggCall;
@@ -879,6 +918,7 @@ public class SqlDialect {
    *
    * @see #rewriteMaxMin(SqlNode, RelDataType)
    */
+  // 将 MAX/MIN 针对布尔类型重写为 BOOL_OR/BOOL_AND（如 PostgreSQL 需求）。
   public SqlNode rewriteMaxMinExpr(SqlNode aggCall, RelDataType relDataType) {
     return aggCall;
   }
@@ -888,6 +928,7 @@ public class SqlDialect {
    * Some dialects (e.g. Postgres and Redshift), rewrite as
    * BOOL_OR/BOOL_AND if the return type is BOOLEAN.
    */
+  // 将 MAX/MIN 针对布尔类型重写为 BOOL_OR/BOOL_AND（如 PostgreSQL 需求）。
   protected static SqlNode rewriteMaxMin(SqlNode aggCall, RelDataType relDataType) {
     // The behavior of this method depends on the argument type,
     // and whether it is MIN/MAX
@@ -914,6 +955,7 @@ public class SqlDialect {
    * {@link RelFieldCollation.Direction#STRICTLY_DESCENDING}
    * @return A SqlNode for null direction emulation or <code>null</code> if not required
    */
+  // 如果数据库原生不支持 NULLS FIRST/LAST，通过该方法生成等价的 CASE WHEN 表达式进行模拟。
   public @Nullable SqlNode emulateNullDirection(SqlNode node, boolean nullsFirst,
       boolean desc) {
     return null;
@@ -1450,42 +1492,63 @@ public class SqlDialect {
   }
 
   /** Information for creating a dialect.
-   * 创建dialect需要的上下文
    * <p>It is immutable; to "set" a property, call one of the "with" methods,
    * which returns a new context with the desired property value. */
+  // Context 的本质是 SqlDialect 的配置载体。
+  // 解耦初始化：在 Calcite 早期版本中，SqlDialect 的构造函数非常臃肿。Context 将几十个配置项封装在一起，使方言的创建过程更加清晰。
+  // 不可变性保证：由于它是不可变的，所有的 withXxx 方法都不会修改当前对象，而是返回一个包含新值的新实例。这保证了在多线程环境下的线程安全，也方便了配置的复用和层级化定制。
+  // 方言工厂的基石：SqlDialectFactory 在创建方言时，本质上就是在填充这个 Context 对象。
+  // 该接口的方法是成对出现的：一个是 Getter（获取属性），一个是 Wither（设置属性并返回新上下文）。
   public interface Context {
+    // 作用：指定数据库产品类型（如 MYSQL, ORACLE, POSTGRESQL）。
+    // 影响：决定了方言默认的基础行为。
     DatabaseProduct databaseProduct();
     Context withDatabaseProduct(DatabaseProduct databaseProduct);
+    // 作用：数据库产品的原始名称字符串（通常来自 JDBC 驱动）。
     @Nullable String databaseProductName();
     Context withDatabaseProductName(String databaseProductName);
+    // 作用：数据库的完整版本字符串。
     @Nullable String databaseVersion();
     Context withDatabaseVersion(String databaseVersion);
+    // 作用：数据库的主版本号（如 Oracle 19c 中的 19）。用于根据版本开启或关闭特定的 SQL 特性。
     int databaseMajorVersion();
     Context withDatabaseMajorVersion(int databaseMajorVersion);
+    // 作用：数据库的次版本号。
     int databaseMinorVersion();
     Context withDatabaseMinorVersion(int databaseMinorVersion);
+    // 作用：字符串常量的引号（默认通常是单引号 '）。
     String literalQuoteString();
     Context withLiteralQuoteString(String literalQuoteString);
+    // 作用：字符串常量内部出现引号时的转义方式（如 ''）。
     String literalEscapedQuoteString();
     Context withLiteralEscapedQuoteString(
         String literalEscapedQuoteString);
+    // 作用：标识符的起始引用符（如 MySQL 的 `）。如果为 null，表示该方言不支持或不使用标识符引用。
     @Nullable String identifierQuoteString();
     Context withIdentifierQuoteString(@Nullable String identifierQuoteString);
+    // 作用：标识符内部出现引号时的转义符。
     @Nullable String identifierEscapedQuoteString();
     Context withIdentifierEscapedQuoteString(
         @Nullable String identifierEscapedQuoteString);
+    // 作用：处理未加引号的标识符时的大小写策略（如转换为大写、小写或保持不变）。
     Casing unquotedCasing();
     Context withUnquotedCasing(Casing unquotedCasing);
+    // 作用：处理加了引号的标识符时的大小写策略。
     Casing quotedCasing();
     Context withQuotedCasing(Casing unquotedCasing);
+    // 作用：标识符比较时是否区分大小写。
     boolean caseSensitive();
     Context withCaseSensitive(boolean caseSensitive);
+    // 作用：SQL 兼容性级别（SqlConformance）。决定了哪些非标准语法（如 CROSS APPLY）是被允许的。
     SqlConformance conformance();
     Context withConformance(SqlConformance conformance);
+    // 作用：NULL 值的排序规则（NullCollation）。决定了在 ORDER BY 中 NULL 是排在最前还是最后。
     NullCollation nullCollation();
     Context withNullCollation(NullCollation nullCollation);
+    // 作用：类型系统实现。定义了特定方言下的数据类型限制（如 VARCHAR 的最大长度）。
     RelDataTypeSystem dataTypeSystem();
     Context withDataTypeSystem(RelDataTypeSystem dataTypeSystem);
+    // 作用：专门为 JethroData 数据库提供的特殊元数据信息（属于特定方言的扩展点）。
     JethroDataSqlDialect.JethroInfo jethroInfo();
     Context withJethroInfo(JethroDataSqlDialect.JethroInfo jethroInfo);
   }

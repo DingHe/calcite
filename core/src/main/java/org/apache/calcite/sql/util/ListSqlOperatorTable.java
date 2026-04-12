@@ -35,6 +35,11 @@ import java.util.List;
  * Implementation of the {@link SqlOperatorTable} interface by using a list of
  * {@link SqlOperator operators}.
  */
+// 在 Apache Calcite 项目中，ListSqlOperatorTable 是 SqlOperatorTable 接口的一个基础实现类。
+// 与之前介绍的 ReflectiveSqlOperatorTable（基于反射）不同，它是一个显式的、基于集合的操作符表实现。
+// 该类的核心作用是：通过维护一个显式的操作符列表来提供 SQL 算子的存储与检索功能。
+// 手动维护：它允许开发者手动将 SqlOperator 实例添加到表中，而不是通过定义类属性并利用反射来加载。
+// 轻量级容器：它通常用于那些需要动态构建算子集，或者算子数量较少、不需要复杂反射逻辑的场景。
 public class ListSqlOperatorTable
     extends SqlOperatorTables.IndexedSqlOperatorTable
     implements SqlOperatorTable {
@@ -45,6 +50,7 @@ public class ListSqlOperatorTable
    *
    * @deprecated Use {@link SqlOperatorTables#of}, which creates an immutable
    * table. */
+  // 创建一个初始为空的、可变的算子表
   @Deprecated // to be removed before 2.0
   public ListSqlOperatorTable() {
     this(ImmutableSet.of());
@@ -54,6 +60,7 @@ public class ListSqlOperatorTable
    *
    * @deprecated Use {@link SqlOperatorTables#of}, which creates an immutable
    * table. */
+  // 根据传入的操作符列表创建一个可变的算子表
   @Deprecated // to be removed before 2.0
   public ListSqlOperatorTable(List<SqlOperator> operatorList) {
     this((Iterable<SqlOperator>) operatorList);

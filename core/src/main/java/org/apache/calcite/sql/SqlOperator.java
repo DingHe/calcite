@@ -53,8 +53,7 @@ import static org.apache.calcite.util.Static.RESOURCE;
 
 import static java.util.Objects.requireNonNull;
 
-/** operator包含函数、operators，例如 等值、case语句等，有操作数，例如除法有两操作数
- * 有形参，可以通过SqlCall实例化。
+/**
  * A <code>SqlOperator</code> is a type of node in a SQL parse tree (it is NOT a
  * node in a SQL parse tree). It includes functions, operators such as '=', and
  * syntactic constructs such as 'case' statements. Operators may represent
@@ -77,14 +76,47 @@ import static java.util.Objects.requireNonNull;
  * <p>In many cases, the formal/actual distinction is clear from context, in
  * which case we drop these qualifiers.
  */
+// SqlOperator 是一个至关重要的抽象基类。它并不直接出现在 SQL 解析树中（解析树的节点是 SqlNode），而是作为 “元数据”或“定义层” 存在，描述了 SQL 中所有可执行操作的行为。
+// SqlOperator 定义了 SQL 中所有“操作”的语义。这包括：
+// 标准运算符：如 +, -, *, /, =, AND, OR。
+// 内置函数：如 SUM, COUNT, SUBSTR, CAST。
+// 语法结构：如 CASE, OVER, BETWEEN。
+// 查询级操作：如 SELECT, JOIN, UNION。
+// 核心职责：
+// 定义语法：规定该操作在 SQL 中如何呈现（前缀、后缀、函数式等）。
+// 校验逻辑：规定操作数（Operands）的数量和类型是否合法。
+// 类型推导：根据输入操作数的类型，推导出结果的返回类型。
+// 执行顺序：通过左/右优先级处理运算的先后顺序和结合性。
+// SqlOperator 定义了 SQL 中所有“动作”该如何执行。我们可以通过以下三个层面来深度理解这个概念：
+// 1. 它是动作的“模板”或“元数据”
+// 当你写下 SELECT a + b 时，Calcite 会解析出一个 SqlCall 节点代表 + 这个动作。但 + 到底是什么？
+// 它需要几个操作数？（两个）
+// 它支持什么类型？（数字、时间戳等）
+// 它的优先级高吗？（比 * 低，比 OR 高）
+// INT + DOUBLE 的结果是什么类型？（推导结果为 DOUBLE）
+// 这些逻辑规则全部存储在 SqlOperator 对象中。SqlNode 是实例化的“调用者”，而 SqlOperator 是被调用的“函数原型”。
+// 在 Calcite 中，“Operator”不仅仅指 + - * /。它的涵盖范围非常广，甚至包括了 SQL 的核心结构：
+// 算术与逻辑运算符：>、<、AND、LIKE、IS NULL。
+// 内置函数：ABS()、SUBSTR()、CAST()。
+// 聚合与窗口函数：COUNT()、MAX()、RANK()、LEAD()。
+// 查询级操作符：这是最特别的，SELECT 语句本身也是一个 SqlSelectOperator，JOIN 也是一个 SqlJoinOperator。
+// 为什么这样设计？（解耦的核心）
+// 这种设计的妙处在于将“解析”与“语义”解耦。
+// 如果你想为一个新的国产数据库定制 SQL 方言，或者想在 SQL 里支持一个自定义的 AI 函数 PREDICT_MODEL(data)：
+// 你不需要修改解析器（JavaCC）。
+// 你只需要定义一个新的 SqlOperator 实例。
+// 在其中指定它的 OperandTypeChecker（检查数据是否合法）和 ReturnTypeInference（结果是概率还是类别）。
+// 将其注册到 SqlOperatorTable 中。
+// 这样，Calcite 就能立刻识别并校验这个新函数，就像它是 SQL 标准的一部分一样。
 public abstract class SqlOperator {
   //~ Static fields/initializers ---------------------------------------------
-
+  // 系统换行符，用于格式化输出。
   public static final String NL = System.getProperty("line.separator");
 
   /**
    * Maximum precedence.
    */
+  // 定义了最大优先级常量（200）。
   public static final int MDX_PRECEDENCE = 200;
 
   //~ Instance fields --------------------------------------------------------
@@ -92,20 +124,24 @@ public abstract class SqlOperator {
   /**
    * The name of the operator/function. Ex. "OVERLAY" or "TRIM"
    */
-  private final String name; //operator的名称
+  // 操作符的名称（如 "SUM" 或 "+"）。
+  private final String name;
 
   /**
    * See {@link SqlKind}. It's possible to have a name that doesn't match the
    * kind
    */
-  public final SqlKind kind; //种类
+  // SqlKind 枚举，用于快速分类（如 SELECT, FILTER, OTHER_FUNCTION），逻辑判断比字符串名称更高效。
+  public final SqlKind kind;
 
   /**
    * The precedence with which this operator binds to the expression to the
    * left. This is less than the right precedence if the operator is
    * left-associative.
    */
-  private final int leftPrec; //如果是左关联，则要比rightPrec小
+  // 左优先级。决定了运算符与其左侧表达式结合的紧密度。
+  // 如果是左关联，则要比rightPrec小
+  private final int leftPrec;
 
   /**
    * The precedence with which this operator binds to the expression to the
@@ -115,12 +151,15 @@ public abstract class SqlOperator {
   private final int rightPrec;
 
   /** Used to infer the return type of a call to this operator. */
-  private final @Nullable SqlReturnTypeInference returnTypeInference; //返回值类型推断
+  // 返回类型推导接口。用于计算 SQL 执行后的结果类型。
+  private final @Nullable SqlReturnTypeInference returnTypeInference;
 
   /** Used to infer types of unknown operands. */
-  private final @Nullable SqlOperandTypeInference operandTypeInference; //对于位置的操作数，数类型推断
+  // 操作数类型推导接口。当操作数类型未知（如 ? 占位符）时，根据上下文推断其类型。
+  private final @Nullable SqlOperandTypeInference operandTypeInference;
 
   /** Used to validate operand types. */
+  // 操作数类型检查器。验证传入的操作数数量和类型是否符合定义。
   private final @Nullable SqlOperandTypeChecker operandTypeChecker;
 
   //~ Constructors -----------------------------------------------------------
@@ -172,7 +211,7 @@ public abstract class SqlOperator {
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  // 根据基本优先级和结合性（左结合或右结合）计算出最终的 leftPrec 和 rightPrec。
   protected static int leftPrec(int prec, boolean leftAssoc) {
     assert (prec % 2) == 0; //偶数用于优先级
     if (!leftAssoc) {
@@ -210,18 +249,19 @@ public abstract class SqlOperator {
     // or give operandTypeChecker a value.
     throw Util.needToImplement(this);
   }
-
+  // 获取操作符名称。
   public String getName() {
     return name;
   }
 
-  /** 返回Operator的全限定名
+  /**
    * Returns the fully-qualified name of this operator.
    */
+  // 将操作符名称包装成 SqlIdentifier 对象。
   public SqlIdentifier getNameAsId() {
     return new SqlIdentifier(getName(), SqlParserPos.ZERO);
   }
-
+  // 获取 SqlKind。
   @Pure
   public SqlKind getKind() {
     return kind;
@@ -230,7 +270,7 @@ public abstract class SqlOperator {
   @Override public String toString() {
     return name;
   }
-
+  // 获取优先级数值。
   public int getLeftPrec() {
     return leftPrec;
   }
@@ -242,7 +282,8 @@ public abstract class SqlOperator {
   /**
    * Returns the syntactic type of this operator, never null.
    */
-  public abstract SqlSyntax getSyntax(); //操作的语法
+  // 抽象方法，子类必须实现。返回该操作符的语法类型（如 FUNCTION, BINARY, POSTFIX 等）。
+  public abstract SqlSyntax getSyntax();
 
   /**
    * Creates a call to this operator with a list of operands.
@@ -254,6 +295,7 @@ public abstract class SqlOperator {
    * @param pos               Parser position of the identifier of the call
    * @param operands          List of operands
    */
+
   public final SqlCall createCall(
       @Nullable SqlLiteral functionQualifier,
       SqlParserPos pos,
@@ -272,6 +314,7 @@ public abstract class SqlOperator {
    * @param pos               Parser position of the identifier of the call
    * @param operands          Array of operands
    */
+  // 最全的创建方法，支持传入限定符（如 DISTINCT）、位置信息和操作数列表。
   public SqlCall createCall(
       @Nullable SqlLiteral functionQualifier,
       SqlParserPos pos,
@@ -286,6 +329,7 @@ public abstract class SqlOperator {
    * {@link #createCall(SqlParserPos, List)}. The ambiguity arises because
    * {@link SqlNodeList} extends {@link SqlNode}
    * and also implements {@code List<SqlNode>}. */
+  // 最全的创建方法，支持传入限定符（如 DISTINCT）、位置信息和操作数列表。
   @Deprecated
   public static SqlCall createCall(
       @Nullable SqlLiteral functionQualifier,
@@ -367,6 +411,7 @@ public abstract class SqlOperator {
    * @param call      Call to be rewritten
    * @return rewritten call
    */
+  // 允许操作符在验证前进行自我重写（例如将 NULLIF(a, b) 重写为 CASE WHEN a=b THEN NULL ELSE a END）。
   public SqlNode rewriteCall(SqlValidator validator, SqlCall call) {
     return call;
   }
@@ -379,6 +424,7 @@ public abstract class SqlOperator {
    * <p>The default implementation of this method delegates to
    * {@link SqlSyntax#unparse}.
    */
+  // 将 SqlCall 转换回 SQL 字符串。
   public void unparse(
       SqlWriter writer,
       SqlCall call,
@@ -466,6 +512,7 @@ public abstract class SqlOperator {
    * @see SqlNode#validateExpr(SqlValidator, SqlValidatorScope)
    * @see #deriveType(SqlValidator, SqlValidatorScope, SqlCall)
    */
+  // 结构化验证，默认行为是递归验证所有操作数。
   public void validateCall(
       SqlCall call,
       SqlValidator validator,
@@ -486,6 +533,7 @@ public abstract class SqlOperator {
    * @param call      call to be validated
    * @return inferred type
    */
+  // 核心验证流程。依次执行：预验证 -> 检查操作数数量 -> 检查操作数类型 -> 推导并记录返回类型。
   public final RelDataType validateOperands(SqlValidator validator,
       SqlValidatorScope scope, SqlCall call) {
     // Let subclasses know what's up.
@@ -515,6 +563,7 @@ public abstract class SqlOperator {
    * @param scope     validation scope
    * @param call      the call being validated
    */
+  // 验证开始前的预处理钩子，子类可覆盖。
   protected void preValidateCall(SqlValidator validator,
       SqlValidatorScope scope, SqlCall call) {
   }
@@ -578,6 +627,7 @@ public abstract class SqlOperator {
    * @param call      Call to this operator
    * @return Type of call
    */
+  // 验证过程中的关键点。它会递归推导操作数类型，并查找最匹配的操作符实现（处理函数重载），最后返回调整后的结果类型。
   public RelDataType deriveType(
       SqlValidator validator,
       SqlValidatorScope scope,
@@ -613,7 +663,7 @@ public abstract class SqlOperator {
     SqlValidatorUtil.checkCharsetAndCollateConsistentIfCharType(type);
     return type;
   }
-
+  // 提取命名参数的名称列表。
   protected @Nullable List<String> constructArgNameList(SqlCall call) {
     // If any arguments are named, construct a map.
     final ImmutableList.Builder<String> nameBuilder = ImmutableList.builder();
@@ -631,7 +681,7 @@ public abstract class SqlOperator {
       return argNames;
     }
   }
-
+  // 根据命名参数重新排列操作数列表。
   protected List<SqlNode> constructOperandList(
       SqlValidator validator,
       SqlCall call,
@@ -657,7 +707,7 @@ public abstract class SqlOperator {
     }
     return argBuilder.build();
   }
-
+  // 构造操作数的类型列表。
   protected List<RelDataType> constructArgTypeList(
       SqlValidator validator,
       SqlValidatorScope scope,
@@ -688,7 +738,7 @@ public abstract class SqlOperator {
 
     return argTypeBuilder.build();
   }
-
+  // 推导单个操作数的类型。
   protected RelDataType deriveOperandType(SqlValidator validator,
       SqlValidatorScope scope, int i, SqlNode operand) {
     return validator.deriveType(scope, operand);
@@ -700,6 +750,7 @@ public abstract class SqlOperator {
    *
    * @return whether this operator should be surrounded by space
    */
+  // 返回在取消解析（unparse）时，操作符前后是否需要空格。
   boolean needsSpace() {
     return true;
   }
@@ -719,6 +770,7 @@ public abstract class SqlOperator {
    * Infers the type of a call to this operator with a given set of operand
    * types. Shorthand for {@link #inferReturnType(SqlOperatorBinding)}.
    */
+  // 执行具体的返回类型推导逻辑。
   public final RelDataType inferReturnType(
       RelDataTypeFactory typeFactory,
       List<RelDataType> operandTypes) {
@@ -803,6 +855,7 @@ public abstract class SqlOperator {
    * @return signature template, or null to indicate that a default template
    * will suffice
    */
+  // 返回用于生成签名的模板（如 "{1} {0} {2}"）
   public @Nullable String getSignatureTemplate(final int operandsCount) {
     return null;
   }
@@ -811,6 +864,7 @@ public abstract class SqlOperator {
    * Returns a string describing the expected operand types of a call, e.g.
    * "SUBSTR(VARCHAR, INTEGER, INTEGER)".
    */
+  // 返回友好的错误提示字符串，描述预期的参数类型（如 SUBSTR(VARCHAR, INTEGER)）。
   public final String getAllowedSignatures() {
     return getAllowedSignatures(name);
   }
@@ -852,6 +906,7 @@ public abstract class SqlOperator {
    * @return whether this operator is an analytic function (aggregate function
    * or window function)
    */
+  // 是否为聚合函数或分析函数（如 SUM, RANK）。
   @Pure
   public boolean isAggregator() {
     return false;
@@ -870,6 +925,7 @@ public abstract class SqlOperator {
    * @see #allowsFraming()
    * @see #requiresOrder()
    */
+  // 是否必须配合 OVER 子句使用（如 RANK）。
   public boolean requiresOver() {
     return false;
   }
@@ -883,6 +939,7 @@ public abstract class SqlOperator {
    *
    * @see #isAggregator()
    */
+  // 在窗口函数中是否必须指定 ORDER BY（如 LEAD）。
   public boolean requiresOrder() {
     return false;
   }
@@ -891,6 +948,7 @@ public abstract class SqlOperator {
    * Returns whether this is a window function that allows framing (i.e. a
    * ROWS or RANGE clause in the window specification).
    */
+  // 是否允许窗口框架子句（ROWS/RANGE）。
   public boolean allowsFraming() {
     return true;
   }
@@ -905,6 +963,7 @@ public abstract class SqlOperator {
    * <p>Group functions have auxiliary functions, e.g. {@code HOP_START}, but
    * these are not group functions.
    */
+  // 是否为分组函数（如 TUMBLE, HOP）。
   public boolean isGroup() {
     return false;
   }
@@ -917,6 +976,7 @@ public abstract class SqlOperator {
    *
    * @see #isGroup()
    */
+  // 是否为分组辅助函数（如 TUMBLE_START）。
   public boolean isGroupAuxiliary() {
     return false;
   }
@@ -928,6 +988,7 @@ public abstract class SqlOperator {
    * @param visitor Visitor
    * @param call    Call to visit
    */
+  // 接受访问者，遍历所有操作数。
   public <R> @Nullable R acceptCall(SqlVisitor<R> visitor, SqlCall call) {
     for (SqlNode operand : call.getOperandList()) {
       if (operand == null) {
