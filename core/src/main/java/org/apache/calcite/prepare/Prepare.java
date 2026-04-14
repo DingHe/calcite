@@ -398,19 +398,34 @@ public abstract class Prepare {
   protected abstract SqlValidator getSqlValidator();
 
   /** Interface by which validator and planner can read table metadata. */
+  // CatalogReader 的核心作用是统一元数据访问入口。
+  // 在 SQL 处理的不同阶段，系统对元数据的需求各不相同：
+  // 校验阶段 (Validation)：需要 SqlValidatorCatalogReader 来检查表名、列名和类型。
+  // 优化阶段 (Planning)：需要 RelOptSchema 来获取表的统计信息和优化规则。
+  // 函数解析 (Function Resolution)：需要 SqlOperatorTable 来查找 SQL 算子和函数。
+  // CatalogReader 通过多重继承，将这三者组合在一起。它充当了一个全能型“管理员”，确保校验器（Validator）和优化器（Planner）看到的元数据是完全一致的。
+
   public interface CatalogReader
       extends RelOptSchema, SqlValidatorCatalogReader, SqlOperatorTable {
+    // 重写自 RelOptSchema。
+    // 根据路径名获取优化器专用的表对象。
+    // PreparingTable（它是 RelOptTable 的子接口）。
+    // 优化阶段的核心方法。它将 SQL 层的表名转化为包含统计信息（Cost）、物理属性（Distribution）和算子转换逻辑的“准备表”对象。
     @Override @Nullable PreparingTable getTableForMember(List<String> names);
 
     /** Returns a catalog reader the same as this one but with a possibly
      * different schema path. */
+    // 创建一个基于当前配置但拥有不同搜索路径的新 CatalogReader 实例。
+    // 参数：schemaPath 新的 Schema 搜索路径。
     CatalogReader withSchemaPath(List<String> schemaPath);
-
+    // 重写自 SqlValidatorCatalogReader。
+    // 作用：根据路径名获取校验器专用的表对象。
     @Override @Nullable PreparingTable getTable(List<String> names);
-
+    // 线程本地变量，用于存储当前线程绑定的 CatalogReader 实例。
     ThreadLocal<@Nullable CatalogReader> THREAD_LOCAL = new ThreadLocal<>();
   }
-  //PreparingTable是为了校验和优化而定义的表
+
+  // PreparingTable是为了校验和优化而定义的表
   /** Definition of a table, for the purposes of the validator and planner. */
   public interface PreparingTable
       extends RelOptTable, SqlValidatorTable {
@@ -418,14 +433,21 @@ public abstract class Prepare {
 
   /** Abstract implementation of {@link PreparingTable} with an implementation
    * for {@link #columnHasDefaultValue}. */
+  // 实现了 PreparingTable 接口。这个类的主要目的是为 SQL 准备（Preparing）阶段的表对象提供基础实现。
+  // 中间适配层：它是连接 RelOptTable（优化器使用的表）和具体存储元数据（如 Table）的适配器。
+  // 公共行为封装：它实现了 PreparingTable 中一些通用的逻辑，比如如何判断列的默认值、如何处理表的扩展（Extension）等，避免子类重复编写代码。
+  // 可扩展性支持：它支持动态扩展列（Extended Columns），这在处理类似 HBase 或 Phoenix 等支持动态 Schema 的系统时非常有用。
   public abstract static class AbstractPreparingTable
       implements PreparingTable {
     @SuppressWarnings("deprecation")
+    // 判断表中指定的某一列是否具有默认值。
     @Override public boolean columnHasDefaultValue(RelDataType rowType, int ordinal,
         InitializerContext initializerContext) {
       // This method is no longer used
+      // 首先尝试将当前对象通过 unwrap(Table.class) 转为底层的 Table 对象。
       final Table table = this.unwrap(Table.class);
       if (table instanceof Wrapper) {
+        // 如果 Table 实现了 Wrapper 接口且包含 InitializerExpressionFactory，则调用该工厂的 newColumnDefaultValue 方法。如果返回的类型不是 NULL，则认为有默认值。
         final InitializerExpressionFactory initializerExpressionFactory =
             ((Wrapper) table).unwrap(InitializerExpressionFactory.class); //通过InitializerExpressionFactory接口，创建默认值
         if (initializerExpressionFactory != null) {
@@ -434,28 +456,33 @@ public abstract class Prepare {
               .getType().getSqlTypeName() != SqlTypeName.NULL;
         }
       }
+      // 如果请求的列索引（ordinal）超出了当前行类型的范围，默认返回 true。
       if (ordinal >= rowType.getFieldList().size()) {
         return true;
       }
+      // 可空性兜底：如果上述都不满足，则检查该列是否允许为 null。如果不允许为 null（Not Null），则隐式地认为它可能需要某种初始化处理。
       return !rowType.getFieldList().get(ordinal).getType().isNullable();
     }
-
+    // 实现表的动态列扩展。允许在查询运行时为表增加原本元数据中不存在的列。
     @Override public final RelOptTable extend(List<RelDataTypeField> extendedFields) {
       final Table table = unwrap(Table.class);
 
       // Get the set of extended columns that do not have the same name as a column
       // in the base table.
       final List<RelDataTypeField> baseColumns = getRowType().getFieldList();
+      // 将输入的扩展列与原表列对比，剔除名称重复的列。
       final List<RelDataTypeField> dedupedFields =
           RelOptUtil.deduplicateColumns(baseColumns, extendedFields);
       final List<RelDataTypeField> dedupedExtendedFields =
           dedupedFields.subList(baseColumns.size(), dedupedFields.size());
 
       if (table instanceof ExtensibleTable) {
+        // 如果底层表是 ExtensibleTable：调用其 extend 方法生成新的 Table 对象，然后调用抽象方法 extend(Table) 封装回 RelOptTable。
         final Table extendedTable =
                 ((ExtensibleTable) table).extend(dedupedExtendedFields);
         return extend(extendedTable);
       } else if (table instanceof ModifiableViewTable) {
+        // 如果底层表是 ModifiableViewTable：针对可修改的视图进行扩展处理，利用 TypeFactory 重构类型。
         final ModifiableViewTable modifiableViewTable =
                 (ModifiableViewTable) table;
         final ModifiableViewTable extendedView =
@@ -470,8 +497,11 @@ public abstract class Prepare {
 
     /** Implementation-specific code to instantiate a new {@link RelOptTable}
      * based on a {@link Table} that has been extended. */
+    // 抽象钩子方法。
+    // 当 extend 流程生成了一个新的、带有扩展列的 Table 对象后，需要将其重新封装成优化器能识别的 RelOptTable。
+    // 由于 AbstractPreparingTable 不知道具体的实现类（如 RelOptTableImpl）是如何构造的，因此交给子类去实现具体的实例化过程。
     protected abstract RelOptTable extend(Table extendedTable);
-
+    // 获取表中每一列的列策略（Column Strategy）。
     @Override public List<ColumnStrategy> getColumnStrategies() {
       return RelOptTableImpl.columnStrategies(AbstractPreparingTable.this);
     }

@@ -30,10 +30,17 @@ import java.util.Objects;
 /**
  * A generic implementation of {@link SqlMoniker}.
  */
+// SqlMonikerImpl 的核心作用是实现 SQL 标识符的“轻量级”表示。
+// 在 SQL 校验和自动补全的过程中，Calcite 需要频繁地传递和比较表名、列名等。
+// 如果直接使用 SqlIdentifier 或 RelOptTable，对象开销较大且包含许多不必要的上下文（如解析位置）。
+// SqlMonikerImpl 通过将标识符简化为 名称列表 和 类型枚举，提供了一个易于存储、比较和打印的实现。
 public class SqlMonikerImpl implements SqlMoniker {
   //~ Instance fields --------------------------------------------------------
-
+  // 存储该对象的完全限定名。
+  // 使用 Google Guava 的 ImmutableList 保证了安全性。例如，对于 sales.public.emp 表，该列表存储为 ["sales", "public", "emp"]。
   private final ImmutableList<String> names;
+  // 标识该对象的类型。
+  // 区分该标识符代表的是 COLUMN（列）、TABLE（表）、SCHEMA（架构）还是 FUNCTION（函数）等。
   private final SqlMonikerType type;
 
   //~ Constructors -----------------------------------------------------------

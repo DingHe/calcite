@@ -70,11 +70,21 @@ import static java.util.Objects.requireNonNull;
 /**
  * Implementation of {@link org.apache.calcite.plan.RelOptTable}.
  */
+// 在 Calcite 的 SQL 处理流程中，RelOptTableImpl 扮演着**“元数据适配器”和“关系表达式转换器”**的角色：
+// 桥梁作用：它将底层的、具体的存储元数据（Table 接口实现）包装成优化器（Planner）可以识别的逻辑表对象（RelOptTable）。
+// 统计信息载体：它负责向优化器提供表的行数、分布、排序、键等统计信息（通过底层的 Statistic）。
+// 代码生成支持：通过 tableExpressionFactory，它提供了将表访问转换为 Linq4j 表达式的能力，用于最终的 Java 代码生成。
+// 关系转换：它负责将逻辑表定义转换为具体的物理或逻辑关系运算符（通常是 TableScan）。
 public class RelOptTableImpl extends Prepare.AbstractPreparingTable {
+  // 所属的优化器 Schema。用于查找类型工厂和处理表之间的关系。
   private final @Nullable RelOptSchema schema;
-  private final RelDataType rowType;  //关系数据类型
-  private final @Nullable Table table;  //数据源表
-  private final @Nullable TableExpressionFactory tableExpressionFactory; //表的lin4j表达式工厂
+  // 核心属性。定义了表的列名、列类型及其顺序（即逻辑 Schema）。
+  private final RelDataType rowType;
+  // 指向底层的物理表对象（如 CsvTable、JdbcTable 等）。可能为 null。
+  private final @Nullable Table table;
+  // 表表达式工厂。用于在生成的代码中定义如何访问该表的数据。
+  private final @Nullable TableExpressionFactory tableExpressionFactory;
+  // 表的全限定名（例如 ["CATALOG", "SCHEMA", "TABLE"]）。
   private final ImmutableList<String> names;
 
   /** Estimate for the row count, or null.
@@ -84,6 +94,7 @@ public class RelOptTableImpl extends Prepare.AbstractPreparingTable {
    * <p>Useful when a table that contains a materialized query result is being
    * used to replace a query expression that wildly underestimates the row
    * count. Now the materialized table can tell the same lie. */
+  // 手动指定的行数估算值。如果不为 null，则会覆盖底层 table 提供的统计值。
   private final @Nullable Double rowCount;
 
   private RelOptTableImpl(

@@ -1070,11 +1070,14 @@ public class SqlValidatorUtil {
    *
    * @return TableEntry with a table with the given name, or null
    */
+  // 解析表名并从元数据管理器（Catalog Reader）中获取对应的表入口（TableEntry）。
+  // 在 SQL 中，用户引用表的方式多种多样（如 EMP、SALES.EMP 或 CATALOG.SALES.EMP）。该方法会根据当前会话的上下文（Schema 搜索路径）和名称匹配规则（是否大小写敏感），尝试在不同的层级中“搜寻”这个表。
   public static CalciteSchema.@Nullable TableEntry getTableEntry(
       SqlValidatorCatalogReader catalogReader, List<String> names) {
     // First look in the default schema, if any.
     // If not found, look in the root schema.
     for (List<String> schemaPath : catalogReader.getSchemaPaths()) {
+      // 获取父级 Schema
       CalciteSchema schema =
           getSchema(catalogReader.getRootSchema(),
               Iterables.concat(schemaPath, Util.skipLast(names)),
@@ -1082,6 +1085,8 @@ public class SqlValidatorUtil {
       if (schema == null) {
         continue;
       }
+      // 一旦找到了父级 Schema，就调用 getTableEntryFrom 在该 Schema 下根据表的最后一段名称（Util.last(names)）进行查找。
+      // 此时会传入 isCaseSensitive 来决定是否区分大小写。
       CalciteSchema.TableEntry entry =
           getTableEntryFrom(schema, Util.last(names),
               catalogReader.nameMatcher().isCaseSensitive());
@@ -1106,27 +1111,41 @@ public class SqlValidatorUtil {
    *
    * @return CalciteSchema that corresponds specified schemaPath
    */
+  // 根据给定的路径（schemaPath），从根节点开始层层向下查找并返回对应的 Schema 对象。
+  // 在 Calcite 中，Schema 是可以嵌套的（例如 Root -> Catalog -> Database -> Schema）。
+  // 该方法就像在文件系统中根据绝对或相对路径寻找文件夹一样。
   public static @Nullable CalciteSchema getSchema(CalciteSchema rootSchema,
       Iterable<String> schemaPath, SqlNameMatcher nameMatcher) {
+    // 查找的起始点。虽然参数名是 rootSchema，但它也可以是 Schema 树中的任何一个节点。
     CalciteSchema schema = rootSchema;
+    // 遍历路径中的每一个名称。
     for (String schemaName : schemaPath) {
+
+      // 如果当前处理的是路径中的第一个名称，且这个名称恰好就是 rootSchema 本身的名字，则跳过本次循环。
       if (schema == rootSchema
           && nameMatcher.matches(schemaName, schema.getName())) {
         continue;
       }
+      // 调用当前 Schema 节点的 getSubSchema 方法，根据名称获取子 Schema。
       schema = schema.getSubSchema(schemaName, nameMatcher.isCaseSensitive());
+      // 某一层级没找到对应的子 Schema，说明路径无效，直接返回 null。
       if (schema == null) {
         return null;
       }
     }
     return schema;
   }
-
+  // 在指定的单个 Schema 中，尝试以多种方式定位一个表。
+  // 在 SQL 中，一个“表名”对应的可能不仅仅是一个普通的物理表或视图，还可能是一个“无参数函数”（Nullary Function，例如某些系统将特定的函数调用视为虚拟表）。该方法封装了这种两阶段的查找逻辑。
+  // schema 目标 Schema 对象。这通常是上一步 getSchema 方法查找出来的结果。
+  // String name:待查找的表名（字符串）。注意这里是单个名称，不再是路径列表
   private static CalciteSchema.@Nullable TableEntry getTableEntryFrom(
       CalciteSchema schema, String name, boolean caseSensitive) {
+    // 标准表查找
     CalciteSchema.TableEntry entry =
         schema.getTable(name, caseSensitive);
     if (entry == null) {
+      // 备选方案——无参数函数查找
       entry = schema.getTableBasedOnNullaryFunction(name, caseSensitive);
     }
     return entry;

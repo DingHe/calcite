@@ -42,8 +42,14 @@ import static org.apache.calcite.util.Static.RESOURCE;
 /**
 * Implementation of {@link org.apache.calcite.schema.ScalarFunction}.
 */
+// ScalarFunctionImpl 的本质是一个桥梁：
+// 反射转换：它将一个普通的 Java 方法（Method）包装成 Calcite 能够理解的标量函数模型。
+// 执行转换：它不仅定义了函数的元数据（参数、返回类型），还负责生成该函数在内存中执行时的 Java 代码实现（Implementor）。
+// 空值策略处理：它能够识别 Java 方法上的注解（如 @Strict），从而自动处理 SQL 中的 NULL 值逻辑。
 public class ScalarFunctionImpl extends ReflectiveFunctionBase
     implements ScalarFunction, ImplementableFunction {
+  // 存储该函数的“执行器”。
+  // 当 Calcite 将 SQL 编译为可执行的 Java 字节码时，这个属性决定了如何生成调用该 Java 方法的代码。它封装了反射调用逻辑，并处理了参数传递和空值判断。
   private final CallImplementor implementor;
 
   /** Private constructor. */
@@ -56,19 +62,28 @@ public class ScalarFunctionImpl extends ReflectiveFunctionBase
    * Creates {@link org.apache.calcite.schema.ScalarFunction} for each method in
    * a given class.
    */
+  // 扫描指定类中的所有公共方法，并为每个方法创建一个 ScalarFunction。
+  // 当你有一个包含多个数学计算方法的类（例如 MyMathFunctions）时，你不需要手动一个个创建函数，只需调用 createAll(MyMathFunctions.class)，
+  // 它就能自动把类里所有的 Java 方法提取出来，生成一个映射表（Multimap）。
   @Deprecated // to be removed before 2.0
   public static ImmutableMultimap<String, ScalarFunction> createAll(
       Class<?> clazz) {
+    // 创建一个不可变多重映射（Multimap）的构建器
+    // 为什么用 Multimap？ 因为 Java 支持方法重载（同名但参数不同）。
+    // 使用 Multimap<String, ScalarFunction> 可以让同一个方法名对应多个不同的 ScalarFunction 实现。
     final ImmutableMultimap.Builder<String, ScalarFunction> builder =
         ImmutableMultimap.builder();
     for (Method method : clazz.getMethods()) {
+      // 排除基础 Object 方法
       if (method.getDeclaringClass() == Object.class) {
         continue;
       }
+      // 如果方法是 static 的，Calcite 可以直接通过类名调用，无需检查构造函数。
       if (!isStatic(method)
           && !classHasPublicZeroArgsConstructor(clazz)) {
         continue;
       }
+      // 方法名作为 Key，生成的函数对象作为 Value 存入构建器
       final ScalarFunction function = create(method);
       builder.put(method.getName(), function);
     }
@@ -129,6 +144,10 @@ public class ScalarFunctionImpl extends ReflectiveFunctionBase
    * @return created {@link ScalarFunction} or null
    */
   public static ScalarFunction create(Method method) {
+    // 核心逻辑：如果该方法是一个实例方法（非 static），Calcite 在运行时需要创建一个该类的对象来发起调用。
+    // 硬性要求：该类必须具备以下两种构造函数之一：
+    // 公共无参构造函数：最常见的 UDF 类形式。
+    // FunctionContext 构造函数：允许 UDF 在初始化时获取环境上下文（如分配内存缓冲区或读取配置）。
     if (!isStatic(method)) {
       Class<?> clazz = method.getDeclaringClass();
       if (!classHasPublicZeroArgsConstructor(clazz)
@@ -136,6 +155,8 @@ public class ScalarFunctionImpl extends ReflectiveFunctionBase
         throw RESOURCE.requireDefaultConstructor(clazz.getName()).ex();
       }
     }
+    // 深层含义：这一步非常关键。它通过分析方法的签名、注解（如 @Strict）以及参数类型，生成一个 CallImplementor。
+    // 这个执行器告诉 Calcite 的代码生成器：“在生成的 Java 代码中，应该如何写这一行调用逻辑（包括处理空值、转换参数类型等）。”
     CallImplementor implementor = createImplementor(method);
     return new ScalarFunctionImpl(method, implementor);
   }
@@ -161,10 +182,18 @@ public class ScalarFunctionImpl extends ReflectiveFunctionBase
   @Override public CallImplementor getImplementor() {
     return implementor;
   }
-
+  // 在 Calcite 的 Enumerable 执行引擎中，SQL 并不是解释执行的，而是被翻译成 Java 代码并动态编译。
+  // createImplementor 的任务就是创建一个“模板工具”（CallImplementor），它告诉编译器：
+  // 核心动作：如何通过反射或直接调用来执行这个 method。
+  // 防护逻辑：在调用这个方法之前，是否需要先检查参数是不是 NULL。
   private static CallImplementor createImplementor(final Method method) {
+    // 检查方法名或类上的注解（如 @Strict）。
+    // 如果是 STRICT（严格模式），只要参数里有一个 NULL，Calcite 生成的代码就会直接返回 NULL，根本不会去执行你的 Java 方法。
+    // 这能避免你的 Java 代码报 NullPointerException
     final NullPolicy nullPolicy = getNullPolicy(method);
+    // 调用 RexImpTable（Calcite 的算子实现大本营）的工厂方法
     return RexImpTable.createImplementor(
+        // 负责最纯粹的一件事——“假设参数都不为空，生成调用该 Java 方法的代码”。它不关心逻辑判断，只负责物理上的方法触发。
         new ReflectiveCallNotNullImplementor(method), nullPolicy, false);
   }
 

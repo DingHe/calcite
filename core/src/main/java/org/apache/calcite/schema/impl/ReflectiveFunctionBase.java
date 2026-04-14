@@ -39,10 +39,20 @@ import static org.apache.calcite.util.ReflectUtil.isPublic;
  * This class mainly solves conversion of method parameter types to {@code
  * List<FunctionParameter>} form.
  */
+// 要负责将 Java 反射信息（Method 和 Class）桥接到 Calcite 的元数据系统（Function 和 FunctionParameter）中。
+// 如果你想通过编写一个普通的 Java 方法来实现 SQL 函数，Calcite 内部就会利用这个类来理解你的方法有哪些参数、参数类型是什么以及如何调用。
+// 是自动自动化元数据转换：
+// 反射解析：它利用 Java 的反射机制（Reflection）读取 Java 方法的签名。
+// 参数映射：它将 Java 方法的参数类型（如 int, String）自动转换为 Calcite 校验器所需的 FunctionParameter 列表。
+//
 public abstract class ReflectiveFunctionBase implements Function {
   /** Method that implements the function. */
+  // 存储真正实现该函数逻辑的 Java 方法对象。
+  // 在 SQL 执行阶段，Calcite 会通过这个 Method 对象进行反射调用或生成对应的字节码。
   public final Method method;
   /** Types of parameter for the function call. */
+  // 存储该函数在 SQL 层面的参数元数据。
+  // 用途：当校验器（Validator）检查 SQL 语句中的函数调用是否合法时，会读取这个列表来核对参数个数和类型。
   public final List<FunctionParameter> parameters;
 
   /**
@@ -70,6 +80,7 @@ public abstract class ReflectiveFunctionBase implements Function {
    * @param clazz Class to verify
    * @return whether class has a public constructor with zero arguments
    */
+  // 检查一个类是否具有公共的无参构造函数
   static boolean classHasPublicZeroArgsConstructor(Class<?> clazz) {
     for (Constructor<?> constructor : clazz.getConstructors()) {
       if (constructor.getParameterCount() == 0 && isPublic(constructor)) {
@@ -87,6 +98,7 @@ public abstract class ReflectiveFunctionBase implements Function {
    * @return whether class has a public constructor with one FunctionContext
    * argument
    */
+  // 检查类是否有接受一个 FunctionContext 参数的公共构造函数。
   static boolean classHasPublicFunctionContextConstructor(Class<?> clazz) {
     for (Constructor<?> constructor : clazz.getConstructors()) {
       if (constructor.getParameterCount() == 1
@@ -105,6 +117,7 @@ public abstract class ReflectiveFunctionBase implements Function {
    * @param name name of the method to find
    * @return the first method with matching name or null when no method found
    */
+  // 在指定的类中按名称查找第一个非桥接（non-bridge）方法。
   static @Nullable Method findMethod(Class<?> clazz, String name) {
     for (Method method : clazz.getMethods()) {
       if (method.getName().equals(name) && !method.isBridge()) {
@@ -121,6 +134,8 @@ public abstract class ReflectiveFunctionBase implements Function {
 
   /** Helps build lists of
    * {@link org.apache.calcite.schema.FunctionParameter}. */
+  // 参数构建器
+  // 用于将 Java 方法参数转换为 Calcite 的 FunctionParameter 对象。
   public static class ParameterListBuilder {
     final List<FunctionParameter> builder = new ArrayList<>();
 
@@ -131,7 +146,7 @@ public abstract class ReflectiveFunctionBase implements Function {
     public ParameterListBuilder add(final Class<?> type, final String name) {
       return add(type, name, false);
     }
-
+    // 向构建器添加一个参数，默认是必选的。
     public ParameterListBuilder add(final Class<?> type, final String name,
         final boolean optional) {
       final int ordinal = builder.size();
