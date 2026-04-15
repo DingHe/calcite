@@ -26,20 +26,26 @@ import java.util.Objects;
 /**
  * Variable that references a field of a lambda expression.
  */
+// RexLambdaRef 是 RexSlot 的具体实现类之一
+// 主要用于支持 SQL 或关系表达式中的 Lambda 表达式（匿名函数）。
+// RexLambdaRef 代表对 Lambda 表达式参数（或其字段）的引用。
+// 上下文环境：在 SQL 中，某些高级函数（如 FILTER, TRANSFORM 或某些自定义的高阶函数）会接受 Lambda 表达式作为参数。
+// 引用机制：类似于 RexInputRef 引用输入流的列，RexLambdaRef 用于在 Lambda 函数体内部引用传入的参数。
+// 索引定位：它继承自 RexSlot，因此通过一个 index（索引）来标识它引用的是 Lambda 参数列表中的第几个参数。
 public class RexLambdaRef extends RexSlot {
 
   public RexLambdaRef(int index, String name, RelDataType type) {
     super(name, index, type);
   }
-
+  // 返回该节点的类型种类。
   @Override public SqlKind getKind() {
     return SqlKind.LAMBDA_REF;
   }
-
+  // 支持单参数访问者模式。
   @Override public <R> R accept(RexVisitor<R> visitor) {
     return visitor.visitLambdaRef(this);
   }
-
+  // 支持带负载（Payload）的访问者模式。
   @Override public <R, P> R accept(RexBiVisitor<R, P> visitor, P arg) {
     return (R) null;
   }

@@ -42,8 +42,11 @@ import java.util.Objects;
  * <p>Note that this kind of {@link RexNode} is an auxiliary data structure with
  * a very specific purpose and should not be used in relational expressions.
  */
+// RexTableInputRef 的主要作用是提供表达式的血缘追踪（Expression Lineage）和唯一溯源。
+// 唯一性引用：在复杂的 SQL 优化过程中，同一个表可能会出现多次（例如 Self-Join）。普通的 RexInputRef 只能告诉你“引用了当前算子的第 N 列”，但无法直观地告诉你“这对应于原始基础表 A 的第 2 次出现的第 3 列”。
+// 血缘与谓词追踪：它主要用于元数据分析（如 ExpressionLineage 和 AllPredicates）。通过它，优化器可以跨越多个 Join 或 Project 算子，直接定位到该数据最原始的出处。
 public class RexTableInputRef extends RexInputRef {
-
+  // 指定了该引用具体属于哪一张表的哪一次出现。
   private final RelTableRef tableRef;
 
   private RexTableInputRef(RelTableRef tableRef, int index, RelDataType type) {
@@ -76,7 +79,7 @@ public class RexTableInputRef extends RexInputRef {
   public int getIdentifier() {
     return tableRef.getEntityNumber();
   }
-
+  // 用于根据表引用、列索引和类型创建对象。
   public static RexTableInputRef of(RelTableRef tableRef, int index, RelDataType type) {
     return new RexTableInputRef(tableRef, index, type);
   }
@@ -100,9 +103,11 @@ public class RexTableInputRef extends RexInputRef {
   /** Identifies uniquely a table by its qualified name and its entity number
    * (occurrence). */
   public static class RelTableRef implements Comparable<RelTableRef> {
-
+    // 指向 Calcite 定义的表对象。
     private final RelOptTable table;
+    // 该表在计划中出现的序号（Occurrence）。例如，如果 EMP 表在查询中被引用了两次，第一次序号为 0，第二次为 1。
     private final int entityNumber;
+    // 缓存的字符串标识，格式通常为 [表名].#序号（如 A.#0）
     private final String digest;
 
     private RelTableRef(RelOptTable table, int entityNumber) {

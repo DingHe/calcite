@@ -23,11 +23,15 @@ import java.util.Objects;
 /**
  * A row-expression which references a field.
  */
+// RexVariable（行表达式变量）是所有命名变量引用的基类。
+// 抽象定义：它代表了在行表达式中指向某个“变量”或“列”的引用。它本身不存储具体的值，而是指向一个可以获取值的地方。
+// 元数据持有者：它最核心的作用是为这些变量引用提供统一的名称和数据类型管理。
 public abstract class RexVariable extends RexNode {
   //~ Instance fields --------------------------------------------------------
-
-  protected final String name; //引用了哪个列的名字
-  protected final RelDataType type; //列的类型
+  // 存储变量的名称。
+  protected final String name;
+  // 存储该变量的数据类型。
+  protected final RelDataType type;
 
   //~ Constructors -----------------------------------------------------------
 

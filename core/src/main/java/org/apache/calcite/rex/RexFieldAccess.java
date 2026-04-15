@@ -39,7 +39,6 @@ import static com.google.common.base.Preconditions.checkArgument;
  * purpose. So in practice, <code>RexFieldAccess</code> is usually used to
  * access fields of correlating variables, for example the expression
  * <code>emp.deptno</code> in
- *  用户访问相关自查询中的变量，例如下面例子的emp.deptno
  * <blockquote>
  * <pre>SELECT ename
  * FROM dept
@@ -50,10 +49,16 @@ import static com.google.common.base.Preconditions.checkArgument;
  *     AND gender = 'F')</pre>
  * </blockquote>
  */
+// RexFieldAccess 的主要作用是访问一个行表达式（Row Expression）中的特定字段。
+// 虽然在普通的 SQL 查询（如 SELECT col FROM table）中，Calcite 通常使用 RexInputRef 来引用列，但 RexFieldAccess 在以下场景中不可或缺：
+// 相关子查询（Correlated Subqueries）：当子查询引用外部查询的变量（Correlating Variables）时。例如 WHERE emp.deptno = dept.deptno，这里的 dept.deptno 往往通过 RexFieldAccess 访问。
+// 嵌套数据结构（Structured Types）：访问复合类型（如对象、结构体或行类型）中的某一个成员。例如访问一个名为 Address 字段中的 City 属性。
 public class RexFieldAccess extends RexNode {
   //~ Instance fields --------------------------------------------------------
-
-  private final RexNode expr; //表达式
+  // 代表被访问的基础表达式。
+  // 这是“点”操作符左侧的部分。它本身可以是一个变量引用（RexCorrelVariable）、另一个字段访问（嵌套访问）或者其他任何返回行/对象类型的表达式。
+  private final RexNode expr;
+  // 代表被访问的具体字段。
   private final RelDataTypeField field; //哪个字段
 
   //~ Constructors -----------------------------------------------------------

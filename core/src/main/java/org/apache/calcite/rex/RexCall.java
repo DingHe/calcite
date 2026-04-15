@@ -52,13 +52,20 @@ import static java.util.Objects.requireNonNull;
  * often be encoded as extra arguments. (These don't need to be hidden, because
  * no one is going to be generating source code from this tree.)
  */
+// RexCall 代表通过操作符对零个或多个表达式进行的调用。
+// 表达式树的节点：它是 RexNode 树中的非叶子节点。例如，表达式 a + 1 在内部会被表示为一个 RexCall，其中操作符是 +，操作数是变量 a 和常量 1。
+// 统一的运算模型：Calcite 将所有的逻辑运算（算术运算、逻辑运算、比较运算）、函数调用（如 ABS, SUBSTR）、甚至是特殊的语法结构（如 CASE...WHEN, CAST）都统一建模为 RexCall。
+// 逻辑表示而非源代码：它只关注“什么操作符作用于哪些数据”，而不关心原始 SQL 是如何书写的（比如是中缀 a + b 还是函数式 PLUS(a, b)）。
 public class RexCall extends RexNode {
 
   //~ Instance fields --------------------------------------------------------
-
-  public final SqlOperator op;  //操作符
-  public final ImmutableList<RexNode> operands; //操作数
-  public final RelDataType type; //返回值类型
+  // 调用的操作符或函数（如 SqlStdOperatorTable.PLUS）。它定义了运算的语义。
+  public final SqlOperator op;
+  // 该调用的参数列表。注意其类型是 RexNode，意味着操作数可以是常量、变量或其他 RexCall（嵌套）。
+  public final ImmutableList<RexNode> operands;
+  // 该表达式计算结果的数据类型。例如 1 + 1.0 的类型通常是 DOUBLE。
+  public final RelDataType type;
+  // 预计算的节点总数（包括自身及所有子节点）。用于在优化过程中评估表达式的复杂度。
   public final int nodeCount;
 
   /**

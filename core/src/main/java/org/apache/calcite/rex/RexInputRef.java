@@ -50,10 +50,18 @@ import java.util.List;
  * <p>So <code>RexInputRef(3, Integer)</code> is the correct reference for the
  * field DEPTNO2.
  */
+// RexInputRef 是一个至关重要的类。它是 RexNode 家族中最常用的节点之一。
+// RexInputRef 代表对输入关系表达式（Relational Expression）中某个字段的引用。
+// 位置引用：Calcite 的关系代数内部并不主要通过“列名”来关联数据，而是通过偏移量（Index）。例如，如果上游算子输出 3 列，那么这三列分别被编号为 0, 1, 2。RexInputRef(0, ...) 就代表引用第一列。
+// 连续编号机制：在涉及多个输入的算子（如 Join）中，字段是连续编号的。如果左表有 3 列，右表有 2 列，那么引用右表的第一列时，索引就是 3。
+// 核心纽带：它是连接逻辑表达式与底层数据流的“管道”，定义了数据从哪里（哪个索引位置）流向当前的计算逻辑。
 public class RexInputRef extends RexSlot {
   //~ Static fields/initializers ---------------------------------------------
 
   // list of common names, to reduce memory allocations
+  // 缓存常用的列名字符串。
+  // 它初始化了一个 SelfPopulatingList（在前文 RexSlot 中提到过），前缀为 $。
+  // 例如，索引为 0 的列名是 $0。这种缓存机制极大地减少了在高频率创建引用时的内存分配和垃圾回收（GC）压力。
   @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
   private static final List<String> NAMES = new SelfPopulatingList("$", 30);
 

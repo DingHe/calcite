@@ -32,13 +32,23 @@ import static com.google.common.base.Preconditions.checkArgument;
 /**
  * Call to an aggregate function over a window.
  */
+// RexOver 是一个专门用于表示 开窗函数（Window Function） 调用的类。它继承自 RexCall，但在结构上比普通的函数调用更复杂，因为它不仅包含函数本身，还包含窗口的定义。
+// RexOver 代表 SQL 中的 OVER 子句表达式，例如：
+//SUM(DISTINCT score) IGNORE NULLS OVER (PARTITION BY deptno ORDER BY score ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
+// 组合性：它将一个聚合函数（如 SUM, AVG, RANK）与一个窗口规范（RexWindow）绑定在一起。
+// 计算上下文：普通的聚合是在 GROUP BY 时对多行压缩为一行，而 RexOver 表示的开窗函数是在保留原有行的基础上，在每行对应的窗口范围内进行计算。
 public class RexOver extends RexCall {
   private static final Finder FINDER = new Finder();
 
   //~ Instance fields --------------------------------------------------------
-
+  // 定义窗口的具体规格。
+  // 包含 PARTITION BY（分区）、ORDER BY（排序）以及 FRAME（行或范围边界，如 ROWS BETWEEN...）。
   private final RexWindow window;
+  // 标记聚合是否应用了 DISTINCT 关键字。
+  // 例如 COUNT(DISTINCT x) OVER(...)，如果为 true，计算时会去重。
   private final boolean distinct;
+  // 标记是否忽略 NULL 值。
+  // 对应 SQL 标准中的 IGNORE NULLS 或 RESPECT NULLS。
   private final boolean ignoreNulls;
 
   //~ Constructors -----------------------------------------------------------

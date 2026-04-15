@@ -30,11 +30,18 @@ import java.util.Objects;
 /**
  * Represents a lambda expression.
  */
+// 在 Apache Calcite 中，RexLambda 类是行表达式（Row Expression）体系中用于支持函数式编程特性的核心类。它封装了一个完整的 Lambda 表达式定义。
+// RexLambda 代表一个 Lambda 表达式（也称为匿名函数）。
+// 定义函数式逻辑：它将一组参数（Parameters）与一个表达式主体（Body/Expression）绑定在一起。
+// 高阶函数支持：它通常作为参数传递给高阶函数（High-order Functions）。例如，在 SQL 中处理数组或复杂类型时，FILTER(arr, x -> x > 5) 里的 x -> x > 5 部分就会在 Calcite 内部表示为一个 RexLambda。
+
 public class RexLambda extends RexNode {
   //~ Instance fields --------------------------------------------------------
-
-  private final List<RexLambdaRef> parameters; //保存了 Lambda 表达式的参数列表，每个参数通过 RexLambdaRef 表示
-  private final RexNode expression; //是 Lambda 表达式的主体部分，表示 Lambda 的实际计算或操作，它是一个 RexNode 对象，可能是其他类型的表达式节点（如常量、运算符等）
+  // 存储 Lambda 表达式的参数列表。
+  // 这是一个由 RexLambdaRef 对象组成的列表。每个 RexLambdaRef 定义了参数的名称、类型和在该 Lambda 内部的索引位置。它使用 ImmutableList 存储，确保了线程安全和不可变性。
+  private final List<RexLambdaRef> parameters;
+  // 存储 Lambda 表达式的主体（Body）。
+  private final RexNode expression;
 
   //~ Constructors -----------------------------------------------------------
 

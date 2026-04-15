@@ -3059,15 +3059,30 @@ public class RexSimplify {
    * {@code TRUE OR UNKNOWN OR FALSE} returns {@code TRUE};
    * {@code UNKNOWN OR FALSE OR UNKNOWN} returns {@code UNKNOWN};
    * {@code FALSE OR FALSE} returns {@code FALSE}. */
+  // 在 Apache Calcite 中，RexSargBuilder 是一个内部辅助类（通常在 SargCollector 内部使用），用于在优化阶段动态构建 Sarg（Search Argument，搜索参数）。
+  // 在 SQL 优化中，Sarg 代表一种可以用于索引搜索的过滤条件（例如：x > 5 AND x < 10）。RexSargBuilder 的主要作用如下：
+  // 中间状态容器：它是一个**可变（Mutable）**的节点。由于 RexLiteral（包含 Sarg 的节点）是不可变的，在解析复杂的 OR 或 AND 逻辑时，需要一个临时的缓冲区来累加和合并区间（Ranges）。
+  // 谓词合并：当遍历表达式树时，它负责将离散的条件（如 x > 1 和 x < 10）合并到一个 RangeSet 中。
+  // 三值逻辑处理：它负责处理 NULL 值的行为（即 nullAs），模拟 SQL 中的三值逻辑（TRUE, FALSE, UNKNOWN）在合并过程中的变化。
+  // 转换桥梁：当合并完成后，它会被转化为不可变的 RexLiteral 或 SEARCH 表达式。
   @SuppressWarnings("BetaApi")
   private static class RexSargBuilder extends RexNode {
-    final RexNode ref; //表示当前 Sarg 所关联的 RexNode，通常是一个列或表达式
+    // 表示该 Sarg 作用的对象。通常是一个列引用（RexInputRef），例如 WHERE x > 5 中的 x。
+    final RexNode ref;
+    // Calcite 的工厂类，用于在合并过程中处理数据类型比较或最终构建节点。
     final RexBuilder rexBuilder;
-    final boolean negate; //表示是否对 Sarg 进行取反
+    // 标识是否对整个搜索范围进行取反（NOT 语义）。
+    final boolean negate;
+    // 记录所有被加入该 Sarg 的表达式的数据类型。
     final List<RelDataType> types = new ArrayList<>();
-    final RangeSet<Comparable> rangeSet = TreeRangeSet.create();//使用 RangeSet 数据结构来存储 Sarg 表示的区间范围
-    boolean hasSarg; //表示是否已经添加了 Sarg
-    boolean mergedSarg; //表示 Sarg 是否已经合并过
+    // 核心数据结构。
+    // 使用 Guava 的 RangeSet 存储所有的区间范围（如 [5, 10)）。
+    final RangeSet<Comparable> rangeSet = TreeRangeSet.create();
+    // 标记当前 Builder 是否已经处理过至少一个 Sarg 对象。
+    boolean hasSarg;
+    // 标记是否发生过多个 Sarg 的合并操作
+    boolean mergedSarg;
+    // 定义当输入值为 NULL 时，该表达式应该返回 TRUE、FALSE 还是 UNKNOWN。默认值为 FALSE。
     RexUnknownAs nullAs = FALSE;
 
     RexSargBuilder(RexNode ref, RexBuilder rexBuilder, boolean negate) {
@@ -3086,15 +3101,19 @@ public class RexSimplify {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked", "UnstableApiUsage"})
+    // 负责将 Builder 中维护的可变状态最终转换为一个不可变的、用于查询优化的 Sarg 对象。
+    // 该方法的主要作用是执行最后的逻辑收网。它将 RangeSet（区间集合）和 nullAs（NULL 值处理逻辑）打包成一个 Sarg 实例。
+    // 特别地，它支持在构建时进行“取反”操作，从而将类似 NOT (x > 1 AND x < 10) 的逻辑正确转化为其补集。
     <C extends Comparable<C>> Sarg<C> build(boolean negate) {
       final RangeSet<C> r = (RangeSet) this.rangeSet;
+      // 取反逻辑处理 (if (negate))
       if (negate) {
         return Sarg.of(nullAs.negate(), r.complement());
       } else {
         return Sarg.of(nullAs, r);
       }
     }
-
+    // 计算该 Sarg 结果的数据类型。
     @Override public RelDataType getType() {
       if (this.types.isEmpty()) {
         // Expression is "x IS NULL"

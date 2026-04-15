@@ -40,11 +40,19 @@ import java.util.Objects;
  * RexRangeRef; it will return a <code>{@link RexInputRef}(5,Integer)</code>,
  * and the {@link org.apache.calcite.rex.RexRangeRef} will disappear.
  */
+// 是一个临时性的中间对象
+// RexRangeRef 代表对一组连续列（列范围）的引用。
+// 瞬时性（Transient）：它仅在将 SQL 树（SqlNode）转换为关系表达式树（RelNode/RexNode）的转换过程中存在。在最终生成的标准关系表达式树中，它是不会出现的。
+// 块引用：当你处理类似 JOIN 或者 SELECT * 这种涉及多个字段的操作时，Calcite 会先用 RexRangeRef 把某张表的所有列作为一个“块”整体引用。
+// 自动展开：一旦转换逻辑需要访问这个块中的具体某一列时，RexRangeRef 就会被“打散”并替换为具体的 RexInputRef，随后该对象消失。
 public class RexRangeRef extends RexNode {
   //~ Instance fields --------------------------------------------------------
-
-  private final RelDataType type; //表示范围的类型（RelDataType）。它定义了这个范围所代表的列类型，比如一个表或子查询的多个列
-  private final int offset; //表示范围的偏移量，即列在输入记录中的起始位置。这个偏移量是相对于当前查询上下文中的字段的索引（通常是从 0 开始的整数）
+  // 定义该范围所包含的结构类型。
+  // 这通常是一个 RecordType（记录类型），包含了该范围内所有列的子类型信息。例如，如果引用的是一张有 3 个字段的表，这个 type 就会描述这 3 个字段的类型。
+  private final RelDataType type;
+  // 定义该列范围在输入流中的起始偏移量。
+  // 示例：假设左表有 3 列（索引 0, 1, 2），右表有 2 列。引用右表的 RexRangeRef 的 offset 就是 3。它代表了索引为 $\{3, 4\}$ 的列集合。
+  private final int offset;
 
   //~ Constructors -----------------------------------------------------------
 

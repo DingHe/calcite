@@ -150,18 +150,46 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
 /**
  * Built-in methods.
  */
+// BuiltInMethod 类在 Apache Calcite 框架中扮演着**方法注册表（Method Registry）**的角色。
+// 它是一个枚举类，将 SQL 算子、内置函数以及框架内部操作映射到具体的 Java 反射方法（java.lang.reflect.Method）上。
+// 在 Calcite 的 Enumerable 执行引擎中，SQL 逻辑会被转换成 Linq4j 表达式树，并最终生成 Java 代码。
+// 在这个过程中，Calcite 需要知道如何将 SQL 概念（如 JOIN、GROUP BY 或内置函数 SUBSTRING）转化为实际的 Java 方法调用。
+// BuiltInMethod 的作用概括如下：
+// 代码生成桥梁：作为从抽象逻辑（RexNode/RelNode）到具体 Java 实现之间的索引。
+// 统一管理：集中管理 Calcite 运行时刻（Runtime）所依赖的所有外部和内部 Java 方法。
+// 反射缓存：在类加载时通过反射获取 Method 对象并缓存，避免运行时频繁反射导致的性能损耗。
 public enum BuiltInMethod {
+  // 在 Queryable 集合上执行“投影（Projection）”操作。
+  // 它对应 SQL 中的 SELECT 子句。
+  // 参数是 FunctionExpression（函数表达式树）。这意味着 Calcite 不仅仅是在调用一个方法，而是在构建一个表达式树，以便后续优化器可以分析这个 SELECT 到底选了哪些字段。
   QUERYABLE_SELECT(Queryable.class, "select", FunctionExpression.class),
+  // 作用：将一个 Queryable 对象降级转换为 Enumerable 对象。
+  // 为什么要转换？ 当 Calcite 完成了高级的查询优化，准备进入最终的物理执行阶段（即开始逐行循环处理数据）时，它会调用此方法将“可查询的表达式”转换为“可迭代的数据流”。
   QUERYABLE_AS_ENUMERABLE(Queryable.class, "asEnumerable"),
+  // 作用：将一个物理表（Table）转换成 Linq4j 的查询对象（Queryable）。
+  // 当生成的代码需要从数据库的一张表开始读取数据时，它会调用这个方法。
   QUERYABLE_TABLE_AS_QUERYABLE(QueryableTable.class, "asQueryable",
       QueryProvider.class, SchemaPlus.class, String.class),
+  // 作用：将一个普通的 Enumerable（内存集合）包装成 Queryable。
   AS_QUERYABLE(Enumerable.class, "asQueryable"),
+  // 用于实例化一个 AbstractEnumerable 对象。
+  // 在 Calcite 自动生成的 Java 代码中，经常需要通过匿名内部类或子类继承 AbstractEnumerable。
   ABSTRACT_ENUMERABLE_CTOR(AbstractEnumerable.class),
+  // 将字符串（String/Char）显式转换为高精度数值（Decimal）。
+  // 对应 SQL 中的 CAST('123.45' AS DECIMAL(10, 2))。
+  // 参数中的两个 int 分别代表 SQL 中的 Precision（精度） 和 Scale（标度）。
+  // Primitive 类提供的这个辅助方法确保了字符串到 BigDecimal 转换时的舍入逻辑和溢出检查符合 SQL 标准。
   CHAR_DECIMAL_CAST(Primitive.class, "charToDecimalCast", String.class, int.class, int.class),
+  // 将“短”时间间隔（如 INTERVAL DAY TO SECOND）转换为 Decimal。
+  // 在 Calcite 中，DAY-SECOND 类型的间隔在 Java 中通常用 Long（毫秒数）表示。
   SHORT_INTERVAL_DECIMAL_CAST(Primitive.class, "shortIntervalToDecimalCast",
       Long.class, int.class, int.class, BigDecimal.class),
+  // 作用：将“长”时间间隔（如 INTERVAL YEAR TO MONTH）转换为 Decimal。
   LONG_INTERVAL_DECIMAL_CAST(Primitive.class, "longIntervalToDecimalCast",
       Integer.class, int.class, int.class, BigDecimal.class),
+  // 将 Enumerable 中的所有元素“倾倒”进一个指定的 Java 集合中。
+  // 这是一个终结操作（Terminal Operation）。
+  // 当查询执行完毕，我们需要将结果集从 Calcite 的迭代器转移到内存中的 List 或 Set 时，生成的代码会调用此方法。
   INTO(ExtendedEnumerable.class, "into", Collection.class),
   REMOVE_ALL(ExtendedEnumerable.class, "removeAll", Collection.class),
   SCHEMA_GET_SUB_SCHEMA(Schema.class, "getSubSchema", String.class),
@@ -873,16 +901,23 @@ public enum BuiltInMethod {
   BIG_DECIMAL_ADD(BigDecimal.class, "add", BigDecimal.class),
   BIG_DECIMAL_NEGATE(BigDecimal.class, "negate"),
   COMPARE_TO(Comparable.class, "compareTo", Object.class);
-
+  // 存储该枚举项对应的 Java 反射方法对象。
+  // 用途：在代码生成阶段（如 RexToLixTranslator 或 EnumerableRel 的实现中），直接获取此对象用于构建 MethodCallExpression。
   @SuppressWarnings("ImmutableEnumChecker")
   public final Method method;
   @SuppressWarnings("ImmutableEnumChecker")
+  // 作用：某些枚举项代表的是类构造函数（如 ABSTRACT_ENUMERABLE_CTOR）。
   public final Constructor constructor;
   @SuppressWarnings("ImmutableEnumChecker")
+  // 存储对应的类成员变量（如 COMPARABLE_EMPTY_LIST）。
   public final Field field;
 
   public static final ImmutableMap<Method, BuiltInMethod> FUNCTIONS_MAPS;
-
+  // 在 BuiltInMethod 枚举中，我们通常是从“枚举名”查找“Java 方法”；而这个 FUNCTIONS_MAPS 则是为了实现从“Java 方法”反向查找“枚举项”。
+  // 在 Calcite 的优化器或表达式转换过程中，程序经常会拿到一个 java.lang.reflect.Method 对象。此时，程序需要知道：“这个方法是不是 Calcite 官方内置的某个函数？”
+  // 通过 FUNCTIONS_MAPS，系统可以快速判断：
+  // 如果一个 Method 在这个 Map 中，说明它是 Calcite 原生支持的（如 SqlFunctions.upper），可以直接进行优化或特殊处理。
+  // 如果不在，说明这可能是一个外部定义的 UDF 或普通 Java 方法。
   static {
     final ImmutableMap.Builder<Method, BuiltInMethod> builder =
         ImmutableMap.builder();

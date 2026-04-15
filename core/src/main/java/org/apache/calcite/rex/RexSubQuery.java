@@ -40,9 +40,18 @@ import static com.google.common.base.Preconditions.checkArgument;
 /**
  * Scalar expression that represents an IN, EXISTS or scalar sub-query.
  */
+// RexSubQuery 是一个非常特殊的 RexCall 子类，它连接了 Calcite 的两个核心世界：表达式世界（RexNode）和关系算子世界（RelNode）。
+// RexSubQuery 代表 SQL 里的标量表达式中的子查询。
+// 桥梁作用：普通的 RexNode（如加法、常量）通常只处理行内数据，而 RexSubQuery 内部封装了一个完整的关系表达式树（RelNode）。
+// 语义涵盖：它涵盖了 SQL 中常见的子查询模式，包括 IN、EXISTS、标量子查询（返回单行单列的查询）、以及 SOME/ANY 逻辑。
+// 优化中间态：在优化器的早期阶段，子查询被表示为 RexSubQuery。随后，优化器规则（如 SubQueryRemoveRule）会将其解开，转化为 Join（连接）或 Apply（相关连接）算子。
 public class RexSubQuery extends RexCall {
+  // 该子查询对应的底层关系算子树。
+  // 这是子查询的核心，代表了要执行的查询逻辑（例如 SELECT * FROM table WHERE ...）。
   public final RelNode rel;
-
+  // op (继承自 RexCall): 代表子查询的操作符（如 IN, EXISTS, SCALAR_QUERY）。
+  // operands (继承自 RexCall): 子查询的左手边参数。例如 x IN (SELECT...) 中的 x 就是一个 operand。
+  // type (继承自 RexCall): 表达式的返回类型。
   private RexSubQuery(RelDataType type, SqlOperator op,
       ImmutableList<RexNode> operands, RelNode rel) {
     super(type, op, operands);
@@ -50,6 +59,7 @@ public class RexSubQuery extends RexCall {
   }
 
   /** Creates an IN sub-query. */
+  // 创建 IN 子查询。nodes 代表外部查询中需要与子查询结果匹配的列。
   public static RexSubQuery in(RelNode rel, ImmutableList<RexNode> nodes) {
     final RelDataType type = type(rel, nodes);
     return new RexSubQuery(type, SqlStdOperatorTable.IN, nodes, rel);

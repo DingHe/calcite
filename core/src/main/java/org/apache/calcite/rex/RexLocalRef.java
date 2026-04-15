@@ -35,10 +35,16 @@ import java.util.Objects;
  *
  * <p>Variables are immutable.
  */
+// RexLocalRef 代表对“局部变量”或“中间结果”的引用。
+// 中间表达式引用：在 Calcite 的 RexProgram 结构中，为了避免重复计算复杂的表达式，系统会将复杂的计算逻辑展平为一个列表。RexLocalRef 就用来指向这个列表中的某个中间计算结果。
+// 解耦计算与引用：普通的 RexInputRef 直接引用上游算子的输出，而 RexLocalRef 引用的是在当前程序上下文内部已经定义好的表达式。
+// 内存优化：它支持在同一个上下文（Context）中对同一槽位（Slot）的多次引用，从而提高表达式树的复用率。
 public class RexLocalRef extends RexSlot {
   //~ Static fields/initializers ---------------------------------------------
 
   // array of common names, to reduce memory allocations
+  // 缓存局部变量的显示名称。
+  // 使用 SelfPopulatingList 生成前缀为 $t 的名称（例如 $t0, $t1, $t2）。这里的 t 代表 Temporary（临时）。这种设计减少了生成大量字符串时的内存开销。
   @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
   private static final List<String> NAMES = new SelfPopulatingList("$t", 30);
 
@@ -50,6 +56,7 @@ public class RexLocalRef extends RexSlot {
    * @param index Index of the field in the underlying row type
    * @param type  Type of the column
    */
+  // index (来自 RexSlot)：表示该局部变量在当前 RexProgram 表达式列表中的索引位置。
   public RexLocalRef(int index, RelDataType type) {
     super(createName(index), index, type);
     assert type != null;

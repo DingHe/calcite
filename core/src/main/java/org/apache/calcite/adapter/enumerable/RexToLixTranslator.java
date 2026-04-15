@@ -101,22 +101,18 @@ import static java.util.Objects.requireNonNull;
 /**
  * Translates {@link org.apache.calcite.rex.RexNode REX expressions} to
  * {@link Expression linq4j expressions}.
- * 主要作用
- * 表达式翻译：
- *
- * RexToLixTranslator 将抽象的 RexNode 表达式转换为相应的 Java 表达式，这样可以在执行时直接利用这些表达式进行计算。
- * 代码生成：
- *
- * 在 Apache Calcite 中，RexToLixTranslator 通常用于代码生成过程，将逻辑查询转化为具体的执行代码。这对于在查询优化和执行引擎中实现高性能计算是非常重要的。
- * 支持多种表达式：
- *
- * 该类支持多种类型的 RexNode，例如算术运算、逻辑运算、函数调用等，并能够根据上下文生成相应的 Java 代码。
- * 上下文管理：
- *
- * RexToLixTranslator 维护了翻译过程中的上下文信息，例如当前的作用域、可用的变量等，确保生成的代码能够正确引用这些变量。
  */
+// RexToLixTranslator 是 Apache Calcite Enumerable 适配器中的核心组件。
+// 它的名字揭示了它的使命：将 Rex（Row Expressions，关系表达式）转换为 Lix（Linq4j Expressions，Java 表达式树）。
+// 简单来说，它是 Calcite 的“代码生成器入口”，负责把 SQL 逻辑（如 a + b）翻译成能够在 JVM 上运行的 Java 代码（如 aValue + bValue）。
+// 在 Calcite 的查询优化流程中，最后一步通常是将逻辑执行计划转化为物理执行代码。RexToLixTranslator 的作用在于：
+// 语义转换：将抽象的 RexNode 节点树遍历并翻译成 Linq4j 的 Expression 结构。
+// 处理三值逻辑：自动处理 SQL 中的 NULL 逻辑（通过之前提到的 Result 类中的双变量模式）。
+// 类型映射：将 SQL 数据类型映射为对应的 Java 类型（例如 VARCHAR 转 String）。
+// 算子落地：调用 RexImpTable 来寻找每个 SQL 算子（如 +, CASE, CAST）对应的 Java 实现代码。
 public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result> {
-  public static final Map<Method, SqlOperator> JAVA_TO_SQL_METHOD_MAP =    //java方法和Sql函数的映射
+  // 建立 Java 内置方法（如 String.toUpperCase）与 SQL 算子（UPPER）之间的映射关系。
+  public static final Map<Method, SqlOperator> JAVA_TO_SQL_METHOD_MAP =
       ImmutableMap.<Method, SqlOperator>builder()
           .put(BuiltInMethod.STRING_TO_UPPER.method, UPPER)
           .put(BuiltInMethod.SUBSTRING.method, SUBSTRING)
@@ -124,15 +120,22 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
           .put(BuiltInMethod.CHAR_LENGTH.method, CHAR_LENGTH)
           .put(BuiltInMethod.TRANSLATE3.method, TRANSLATE3)
           .build();
-
+  // 用于在翻译过程中处理 SQL 类型与 Java 类型之间的转换逻辑。
   final JavaTypeFactory typeFactory;
+  // 用于在必要时构建辅助的 Rex 节点。
   final RexBuilder builder;
+  // 代表一组待翻译的表达式序列，通常包含 Project（投影）和 Filter（过滤）逻辑。
   private final @Nullable RexProgram program;
   final SqlConformance conformance;
-  private final Expression root; //根表达式
+  // 代表生成的 Java 代码中的 DataContext 根对象，通过它可以访问运行时变量（如 ? 参数）。
+  private final Expression root;
+  // 核心组件，用于告诉翻译器“如何获取输入列的数据”（例如从一个 Object[] 数组中按索引取值）
   final RexToLixTranslator.@Nullable InputGetter inputGetter;
+  // 代码收集器。翻译过程中生成的每一行 Java 变量声明和赋值语句都会存放在这里。
   private final BlockBuilder list;
+  // 用于存放生成的静态成员或常量定义。
   private final @Nullable BlockBuilder staticList;
+  // 用于处理相关子查询（Correlated Subquery）中的变量引用。
   private final @Nullable Function1<String, InputGetter> correlates;
 
   /**
@@ -144,6 +147,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * @see #getLiteral
    * @see #getLiteralValue
    */
+  // 缓存机制：记录已经翻译过的表达式。如果同一个 RexNode 被引用多次，翻译器会直接返回之前的变量引用，避免生成重复的 Java 代码。
   private final Map<Expression, Expression> literalMap = new HashMap<>();
 
   /** For {@code RexCall}, keep the list of its operand's {@code Result}.
@@ -159,6 +163,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
 
   /** Map from RexNode to its Result, to avoid generating duplicate code.
    * For {@code RexLiteral} and {@code RexCall}. */
+  // 缓存机制：记录已经翻译过的表达式。如果同一个 RexNode 被引用多次，翻译器会直接返回之前的变量引用，避免生成重复的 Java 代码。
   private final Map<RexNode, Result> rexResultMap = new HashMap<>();
 
   private @Nullable Type currentStorageType;
@@ -1802,8 +1807,20 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   }
 
   /** Result of translating a {@code RexNode}. */
+  // 代表了将一个 SQL 表达式（RexNode） 翻译成 Java 可执行代码（Linq4j 表达式） 后的最终产物
+  // 核心作用：处理 SQL 的“三值逻辑”
+  // SQL 逻辑与普通 Java 逻辑最大的区别在于 NULL 的处理。在 Java 中，一个原始类型（如 int）不能为 null，而 SQL 中的任何列都可能为 NULL。
+  // 为了在生成的 Java 代码中高效且安全地表示这一点，Calcite 不使用包装类（如 Integer，因为会有装箱拆箱的性能损耗），而是采用了 “双变量表示法”：
+  // 一个布尔变量：记录“是否为 NULL”。
+  // 一个值变量：记录“实际的数值”（如果为 NULL，此值通常为默认值）。
+  // Result 类就是用来同时持有这两个变量引用的。
   public static class Result {
+    // 代表生成的 Java 代码中的一个布尔变量。
+    // 含义：如果在运行时该变量为 true，则表示对应的 SQL 表达式计算结果为 NULL。
     final ParameterExpression isNullVariable;
+    // 代表生成的 Java 代码中的结果值变量。
+    // 存储表达式的实际计算结果。
+    // 如果 SQL 表达式是 age + 1，它可能对应 Java 中的 int v1Value;。
     final ParameterExpression valueVariable;
 
     public Result(ParameterExpression isNullVariable,

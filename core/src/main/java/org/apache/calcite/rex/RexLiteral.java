@@ -187,6 +187,11 @@ import static java.util.Objects.requireNonNull;
  * </tr>
  * </table>
  */
+// 专门用于表示常量值（Constant value）。
+// RexLiteral 代表行表达式中的一个具体数值、字符串、布尔值或空值。
+// 常量载体：它是 SQL 语句中如 123, 'Hello', TRUE, NULL 等字面量在优化器内部的等价物。
+// 黑盒存储：内部对值的存储采用了一种“黑盒”策略。例如，所有的精确数字（INT, BIGINT, DECIMAL）在内部都统一存储为 BigDecimal，所有的二进制数据存储为 ByteString。这种设计统一了数值计算逻辑。
+// 类型绑定：每一个字面量都严格绑定一个 RelDataType，确保在表达式求值和优化过程中类型的一致性和安全性。
 public class RexLiteral extends RexNode {
   //~ Instance fields --------------------------------------------------------
 
@@ -197,12 +202,16 @@ public class RexLiteral extends RexNode {
    * represented by a {@link BigDecimal}. But since this field is private, it
    * doesn't really matter how the values are stored.
    */
-  private final @Nullable Comparable value; //实际的值
+  // 存储字面量的实际数值。
+  // 类型被限制为 Comparable，以便支持排序和范围比较（如在 Sarg 中使用）。如果值为 NULL，则该字段为 null。
+  private final @Nullable Comparable value;
 
   /**
    * The real type of this literal, as reported by {@link #getType}.
    */
-  private final RelDataType type; //类型
+  // 字面量的逻辑数据类型（Calcite 类型系统）。
+  // 包含精度、刻度、字符集和是否允许为 NULL 等信息。
+  private final RelDataType type;
 
   // TODO jvs 26-May-2006:  Use SqlTypeFamily instead; it exists
   // for exactly this purpose (to avoid the confusion which results
@@ -214,7 +223,10 @@ public class RexLiteral extends RexNode {
    * {@link SqlTypeName#DECIMAL}. See {@link #valueMatchesType} for the
    * definitive story.
    */
-  private final SqlTypeName typeName; //sql中的类型
+  // 对应的 SQL 类型名称。
+  // 用于快速分类（如 BOOLEAN, CHAR, DECIMAL 等）。
+  private final SqlTypeName typeName;
+  // 缓存所有时间单位（如 YEAR, MONTH, DAY），用于处理时间间隔（Interval）字面量的解析和格式化。
   private static final ImmutableList<TimeUnit> TIME_UNITS =
       ImmutableList.copyOf(TimeUnit.values());
 
@@ -270,6 +282,8 @@ public class RexLiteral extends RexNode {
    * @param includeType whether the digest should include type or not
    * @return digest
    */
+  // 计算字面量的“摘要”字符串。
+  // 为了可读性，它会智能隐藏默认类型信息。例如 1:INTEGER 会简化为 1，但 1:BIGINT 会保留类型。
   @RequiresNonNull({"typeName", "type"})
   public final String computeDigest(
       @UnknownInitialization RexLiteral this,
@@ -306,6 +320,7 @@ public class RexLiteral extends RexNode {
 
   /** Returns whether a value is appropriate for its type. (We have rules about
    * these things!) */
+  // 定义了 Calcite 的存储规范。例如，它规定 DATE 必须存为 DateString，INTEGER 必须存为 BigDecimal。
   public static boolean valueMatchesType(
       @Nullable Comparable value,
       SqlTypeName typeName,
