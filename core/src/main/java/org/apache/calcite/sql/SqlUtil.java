@@ -313,46 +313,63 @@ public abstract class SqlUtil {
    * @param call        List of 0 or more operands
    * @param ordered     Whether argument list may end with ORDER BY
    */
+  // 主要任务是将一个 SqlCall（函数调用节点）还原为符合 SQL 函数语法的字符串（即 FUNCTION_NAME(args...) 这种形式）。
   public static void unparseFunctionSyntax(SqlOperator operator,
       SqlWriter writer, SqlCall call, boolean ordered) {
     if (operator instanceof SqlFunction) {
       SqlFunction function = (SqlFunction) operator;
-
+      // // 1. 如果函数类型是 SPECIFIC (针对某些 SQL 方言中的特定路径函数)，则打印 SPECIFIC 关键字
       if (function.getFunctionType().isSpecific()) {
         writer.keyword("SPECIFIC");
       }
+      // 2. 获取函数的标识符（SqlIdentifier）
       SqlIdentifier id = function.getSqlIdentifier();
       if (id == null) {
+        // 如果没有标识符对象，直接打印操作符的名字（简单字符串）
         writer.keyword(operator.getName());
       } else {
+        // 如果有标识符（可能带有模式名，如 schema.func），则按标识符语法解析
         unparseSqlIdentifierSyntax(writer, id, true);
       }
     } else {
+      // 3. 如果操作符不是标准的 SqlFunction，直接打印其名称
       writer.print(operator.getName());
     }
+    // 第二部分：处理无参数时的特殊语法限制
     if (call.operandCount() == 0) {
       switch (call.getOperator().getSyntax()) {
+      // 4. FUNCTION_ID 类型（如 CURRENT_TIME）在无参数时不带括号
+      // 如果是这种情况，直接返回，不执行后面的括号打印逻辑
       case FUNCTION_ID:
         // For example, the "LOCALTIME" function appears as "LOCALTIME"
         // when it has 0 args, not "LOCALTIME()".
         return;
+      // 如 COUNT(*)
       case FUNCTION_STAR: // E.g. "COUNT(*)"
+        // 如 RANK()
       case FUNCTION: // E.g. "RANK()"
+        // 聚合函数
       case ORDERED_FUNCTION: // E.g. "STRING_AGG(x)"
         // fall through - dealt with below
+        // 这些类型即使无参数，也需要后续代码打印 "()"，所以跳出 switch 继续向下执行
         break;
       default:
         break;
       }
     }
+    // 第三部分：开启参数列表（打印左括号）
+    // 5. 开启一个 List 帧，指定类型为函数调用，起始符为 "("，结束符为 ")"
     final SqlWriter.Frame frame =
         writer.startList(SqlWriter.FrameTypeEnum.FUN_CALL, "(", ")");
+    // 6. 处理量词（Quantifier），例如 COUNT(DISTINCT x) 中的 DISTINCT
     final SqlLiteral quantifier = call.getFunctionQuantifier();
     if (quantifier != null) {
-      quantifier.unparse(writer, 0, 0);
+      quantifier.unparse(writer, 0, 0); // 打印 DISTINCT 或 ALL
     }
+   //  第四部分：处理特殊的无参数星号
     if (call.operandCount() == 0) {
       switch (call.getOperator().getSyntax()) {
+      // 7. 如果是函数星号语法（如 COUNT(*)），在括号内打印 "*"
       case FUNCTION_STAR:
         writer.sep("*");
         break;
@@ -360,16 +377,20 @@ public abstract class SqlUtil {
         break;
       }
     }
+    // 第五部分：遍历并打印参数列表
     for (SqlNode operand : call.getOperandList()) {
       if (ordered && operand instanceof SqlNodeList) {
+        // 9. 如果允许排序（如 STRING_AGG）且当前节点是列表，打印 ORDER BY 关键字
         writer.sep("ORDER BY");
       } else if (ordered && operand.getKind() == SqlKind.SEPARATOR) {
+        // 10. 处理特定的 SEPARATOR 关键字（常见于 MySQL 的 GROUP_CONCAT）
         writer.sep("SEPARATOR");
         ((SqlCall) operand).operand(0).unparse(writer, 0, 0);
         continue;
       } else {
         writer.sep(",");
       }
+      // 12. 递归调用操作数自身的 unparse 方法，打印参数内容
       operand.unparse(writer, 0, 0);
     }
 

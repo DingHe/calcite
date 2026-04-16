@@ -27,25 +27,38 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.function.Predicate;
 
-/** SqlSpecialOperator 适用于那些 不直接表现为标准 SQL 操作符，但仍然需要在 SQL 解析和执行过程中得到处理的情况
+/** SqlSpecialOperator
  * Generic operator for nodes with special syntax.
  */
+// 专门用于处理那些**不符合标准 SQL 语法结构（如前缀、后缀、中缀或函数式语法）**的特殊操作符
+// SqlSpecialOperator 的核心作用是为 “非标准”或“复杂”语法节点 提供一个通用的表示方式。
+// 在 SQL 解析过程中，有些表达式的结构非常独特，例如：
+// CAST(a AS INT)
+// CASE WHEN ... THEN ... END
+// EXTRACT(HOUR FROM ...)
+// 这些语法不能简单地归类为 a + b（中缀）或 f(a, b)（函数），它们需要特殊的解析逻辑和规约规则。SqlSpecialOperator 允许 Calcite 在解析阶段将这些复杂的标记流（Token Sequence）手动规约为一个 SqlNode 树。
+// SqlSpecialOperator 是 Calcite 处理 SQL 语法糖 和 复杂关键字组合 的扩展机制。
+// 它不强迫开发者将语法塞进“函数”或“算符”的死胡同，而是提供了一个基于 Token 序列规约 的灵活框架，让开发者能够处理任何奇形怪状的 SQL 结构。
 public class SqlSpecialOperator extends SqlOperator {
   //~ Constructors -----------------------------------------------------------
-
+  // 最简构造函数。
+  // name 操作符名称；kind 属于哪个 SQL 类型（枚举）。
   public SqlSpecialOperator(
       String name,
       SqlKind kind) {
     this(name, kind, 2);
   }
-
+  // 允许指定优先级。
   public SqlSpecialOperator(
       String name,
       SqlKind kind,
       int prec) {
     this(name, kind, prec, true, null, null, null);
   }
-
+  // 全参数构造函数，用于精细控制。
+  // returnTypeInference: 返回类型推导逻辑。
+  // operandTypeInference: 操作数类型推导逻辑。
+  // operandTypeChecker: 操作数类型检查器（验证输入是否合法）。
   public SqlSpecialOperator(
       String name,
       SqlKind kind,
@@ -85,6 +98,7 @@ public class SqlSpecialOperator extends SqlOperator {
    *     {@link SqlNode}
    * @return ordinal of the node which replaced the expression
    */
+  // 该类最重要的扩展点。它负责将一个 Token 序列（包含操作符和节点）“规约”成一个单一的 SqlNode。
   public ReduceResult reduceExpr(
       int ordinal,
       TokenSequence list) {
@@ -94,16 +108,24 @@ public class SqlSpecialOperator extends SqlOperator {
   /** List of tokens: the input to a parser. Every token is either an operator
    * ({@link SqlOperator}) or an expression ({@link SqlNode}), and every token
    * has a position. */
+  // 表示解析过程中的 Token 流。
   public interface TokenSequence {
+    // 返回序列中 Token 的数量。
     int size();
+    // 获取第 i 个位置的操作符对象。
     SqlOperator op(int i);
+    // 获取第 i 个位置在源代码中的位置信息（行、列）。
     SqlParserPos pos(int i);
+    // 判断第 i 个位置是否是操作符（反之则是 SqlNode 表达式）。
     boolean isOp(int i);
+    // 获取第 i 个位置的 SqlNode。
     SqlNode node(int i);
+    // 核心操作：将序列中从 start 到 end 的部分替换为一个新的 SqlNode（实现规约）。
     void replaceSublist(int start, int end, SqlNode e);
 
     /** Creates a parser whose token sequence is a copy of a subset of this
      * token sequence. */
+    // 返回一个基于优先级的爬升解析器（PrecedenceClimbingParser），用于处理复杂的嵌套子表达式。
     PrecedenceClimbingParser parser(int start,
         Predicate<PrecedenceClimbingParser.Token> predicate);
   }

@@ -90,6 +90,12 @@ import static java.util.Objects.requireNonNull;
  *
  * <p>Some common literal values (NULL, TRUE, FALSE, 0, 1, '') are cached.
  */
+// RexBuilder 是行表达式（RexNode）系统的核心工厂类。它负责创建所有类型的行表达式节点，并确保这些节点的类型正确且符合 SQL 语义。
+// RexBuilder 的主要作用是构建和管理 RexNode 实例。
+// 集中化创建：它是创建 RexLiteral（常量）、RexCall（函数调用）、RexInputRef（字段引用）等节点的统一入口。
+// 类型校验与转换：在创建表达式时，它会利用 RelDataTypeFactory 确保表达式的类型符合预期，并自动处理一些隐含的类型转换（如 CAST）。
+// 性能优化（缓存）：它内部缓存了一些常见的常量值（如 NULL、TRUE、FALSE、0、1 以及空字符串），以减少内存占用和对象创建开销。
+// 语义映射：它负责将高层的 SQL 算子（SqlOperator）绑定到具体的行计算逻辑上。
 public class RexBuilder {
   /**
    * Special operator that accesses an unadvertised field of an input record.
@@ -97,24 +103,31 @@ public class RexBuilder {
    * during sql-to-rel translation, then replaced during the process that
    * trims unwanted fields.
    */
+  // 内部特殊操作符 _get。用于在 SQL 到 Rel 转换的中间阶段访问记录中未公开的字段。
   public static final SqlSpecialOperator GET_OPERATOR =
       new SqlSpecialOperator("_get", SqlKind.OTHER_FUNCTION);
 
   /** The smallest valid {@code int} value, as a {@link BigDecimal}. */
+  // 以 BigDecimal 格式存储 Java int 类型的最小值（-2,147,483,648）。
   private static final BigDecimal INT_MIN =
       BigDecimal.valueOf(Integer.MIN_VALUE);
 
   /** The largest valid {@code int} value, as a {@link BigDecimal}. */
+  // 以 BigDecimal 格式存储 Java int 类型的最大值（2,147,483,647）。
   private static final BigDecimal INT_MAX =
       BigDecimal.valueOf(Integer.MAX_VALUE);
 
   //~ Instance fields --------------------------------------------------------
-
+  // 类型工厂
   protected final RelDataTypeFactory typeFactory;
+  // 布尔值 true 和 false 的常量节点缓存
   private final RexLiteral booleanTrue;
   private final RexLiteral booleanFalse;
+  // 空字符串 '' 的常量节点缓存。
   private final RexLiteral charEmpty;
+  // SQL NULL 值的通用常量节点缓存。
   private final RexLiteral constantNull;
+  // 标准 SQL 操作符表
   private final SqlStdOperatorTable opTab = SqlStdOperatorTable.instance();
 
   //~ Constructors -----------------------------------------------------------
@@ -151,6 +164,9 @@ public class RexBuilder {
 
   /** Creates a list of {@link org.apache.calcite.rex.RexInputRef} expressions,
    * projecting the fields of a given record type. */
+  // 恒等投影（Identity Projects）
+  // 等同于执行 SELECT *，即按照输入数据的原始顺序和类型，完整地引用每一列。
+  // 根据给定的行类型（RelDataType），生成一个包含该行所有字段引用的列表。这个列表通常用于构建 Project（投影）算子的表达式，表示不改变列的顺序和内容，直接将所有列传递到下一层。
   public List<RexNode> identityProjects(final RelDataType rowType) {
     return Util.transform(rowType.getFieldList(),
         input -> new RexInputRef(input.getIndex(), input.getType()));
@@ -191,8 +207,15 @@ public class RexBuilder {
    * @param caseSensitive Whether match is case-sensitive
    * @return Expression accessing a given named field
    */
+  // 通过字段名称（String）来访问一个复合类型（如 STRUCT 或 ROW）表达式内部的成员。
+  // 例如，在 SQL 中访问 address.city，其中 address 是一个 RexNode，那么该方法就会负责找到 city 字段并生成对应的访问逻辑。
+  // RexNode expr:
+  //代表一个返回记录类型的表达式（例如一个输入引用或另一个函数调用）。其类型必须是复合类型（isStruct() == true）
+  // String fieldName:
+  //想要访问的字段名（如 "city"）。
   public RexNode makeFieldAccess(RexNode expr, String fieldName,
       boolean caseSensitive) {
+    // 获取表达式 expr 的数据类型。
     final RelDataType type = expr.getType();
     final RelDataTypeField field =
         type.getField(fieldName, caseSensitive, false);
@@ -230,11 +253,14 @@ public class RexBuilder {
    * @param field Field
    * @return Expression accessing given field
    */
+  // 将对某个字段的抽象访问，转化为最高效的行表达式形式。它会尝试“拍平”那些可以通过简单索引偏移量解决的访问请求。
   private RexNode makeFieldAccessInternal(
       RexNode expr,
       final RelDataTypeField field) {
+    // 路径 A：当 expr 是 RexRangeRef 时（优化路径）
     if (expr instanceof RexRangeRef) {
       RexRangeRef range = (RexRangeRef) expr;
+      // 如果字段索引小于 0，说明这不是一个普通的物理列，而是一个“虚拟”或“动态”属性。
       if (field.getIndex() < 0) {
         return makeCall(
             field.getType(),
@@ -243,16 +269,21 @@ public class RexBuilder {
                 expr,
                 makeLiteral(field.getName())));
       }
+      // 处理普通物理列 (field.getIndex() >= 0)：
+      // 由于 RexRangeRef 本身就代表一组列，访问其中的第 i 个字段，其实就是访问输入流中 起始偏移量 + 字段索引 的那一列。
       return new RexInputRef(
           range.getOffset() + field.getIndex(),
           field.getType());
     }
+    // 路径 B：当 expr 是普通表达式时（通用路径）
+    // 如果 expr 是一个普通的算子结果（例如一个 CASE 表达式返回的结构体，或者是另一个函数调用的结果）：
     return new RexFieldAccess(expr, field);
   }
 
   /**
    * Creates a call with a list of arguments and a predetermined type.
    */
+  // 创建一个Call
   public RexNode makeCall(
       RelDataType returnType,
       SqlOperator op,
@@ -1081,17 +1112,20 @@ public class RexBuilder {
    * @param typeName SQL type of literal
    * @return Literal
    */
+  // 接收一个 Java 原始对象，根据目标 SQL 类型进行格式规范化（如四舍五入、校对集转换），最终封装成一个 RexLiteral 实例。
   protected RexLiteral makeLiteral(
-      @Nullable Comparable o,
-      RelDataType type,
-      SqlTypeName typeName) {
+      @Nullable Comparable o,// 常量的值。它必须实现了 Comparable 接口（Calcite 要求所有常量值可比较）。
+      RelDataType type, // 目标逻辑类型（例如 VARCHAR(10) 或 DECIMAL(10, 2)）。
+      SqlTypeName typeName) { // SQL 类型枚举。它定义了常量在 SQL 语义中属于哪种大类（如 CHAR, TIMESTAMP）
     // All literals except NULL have NOT NULL types.
+    // Calcite 的类型系统非常严谨。如果值 o 是 null，它会通过 typeFactory 强制将返回类型标记为 Nullable；反之则通常标记为 NOT NULL。
     type = typeFactory.createTypeWithNullability(type, o == null);
     int p;
     switch (typeName) {
     case CHAR:
       // Character literals must have a charset and collation. Populate
       // from the type if necessary.
+      // 如果 Java 对象 NlsString 中的字符集与 RelDataType 定义的不一致，会创建一个新的 NlsString 实例，以确保常量对象的元数据与类型元数据完美匹配。
       assert o instanceof NlsString;
       NlsString nlsString = (NlsString) o;
       if (nlsString.getCollation() == null
@@ -1110,6 +1144,8 @@ public class RexBuilder {
       break;
     case TIME:
     case TIME_WITH_LOCAL_TIME_ZONE:
+      // 获取类型定义的精度 p（如果未指定则默认为 0），然后调用时间对象的 .round(p) 方法进行四舍五入。
+      // 这确保了如 2023-01-01 12:00:00.1234 在 TIMESTAMP(2) 下被截断为 .12。
       assert o instanceof TimeString;
       p = type.getPrecision();
       if (p == RelDataType.PRECISION_NOT_SPECIFIED) {
