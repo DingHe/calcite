@@ -21,20 +21,27 @@ import org.apache.calcite.sql.fun.SqlLibrary;
 /**
  * Enumeration of built-in SQL compatibility modes.
  */
+// SqlConformanceEnum 是 SqlConformance 接口的默认枚举实现。它在 Apache Calcite 中扮演着“配置字典”的角色，预定义了多种主流数据库方言和 SQL 标准的兼容性行为。
+// 这个枚举类的核心作用是 提供开箱即用的 SQL 兼容性预设。
+// 如果你需要 Calcite 像 MySQL 一样处理 SQL，或者像 Oracle 一样严格要求 FROM 子句，你不需要手动实现 SqlConformance 接口的几十个方法，只需要引用 SqlConformanceEnum.MYSQL_5 或 SqlConformanceEnum.ORACLE_10。它通过内建的逻辑分支（switch-case），定义了每种方言在语法解析和语义验证阶段的具体开关。
 public enum SqlConformanceEnum implements SqlConformance {
   /** Calcite's default SQL behavior. */
+  // Calcite 默认行为，平衡了标准与实用性。
   DEFAULT,
 
   /** Conformance value that allows just about everything supported by
-   * Calcite. 一种宽松的 SQL 兼容性模式，允许几乎所有 Calcite 支持的 SQL 特性*/
+   * Calcite. */
+  // 宽松模式，尽可能接受各种语法。
   LENIENT,
 
   /** Conformance value that allows anything supported by any dialect.
-   * Even more liberal than {@link #LENIENT}. 比 LENIENT 更宽松的一种模式。允许所有 Calcite 支持的 SQL 特性，并且进一步放宽了 SQL 语法的规则 */
+   * Even more liberal than {@link #LENIENT}. */
+  // 极其狂热的兼容模式，用于 Babel 解析器，旨在接受所有已知方言的语法。
   BABEL,
 
   /** Conformance value that instructs Calcite to use SQL semantics strictly
-   * consistent with the SQL:92 standard. SQL:92 是 SQL 的一个标准版本，这个模式要求 SQL 的语法和行为严格按照这个版本来执行，不容忍任何扩展或不符合标准的语法*/
+   * consistent with the SQL:92 standard. */
+  // 分别严格遵守 SQL:92、SQL:99、SQL:2003 标准。
   STRICT_92,
 
   /** Conformance value that instructs Calcite to use SQL semantics strictly
@@ -43,11 +50,13 @@ public enum SqlConformanceEnum implements SqlConformance {
 
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with the SQL:99 standard, but ignoring its more
-   * inconvenient or controversial dicta. 与 SQL:99 标准兼容，但忽略一些更繁琐或有争议的规定。这种模式是 STRICT_99 的放宽版本，允许一些 SQL:99 标准中不太受欢迎或执行上不太方便的部分可以被忽略 */
+   * inconvenient or controversial dicta.  */
+  // 务实模式，遵循标准但避开了一些反人类或难以实现的规定。
   PRAGMATIC_99,
 
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with BigQuery. */
+  // 这些特定数据库的具体行为。
   BIG_QUERY,
 
   /** Conformance value that instructs Calcite to use SQL semantics
@@ -80,7 +89,7 @@ public enum SqlConformanceEnum implements SqlConformance {
   /** Conformance value that instructs Calcite to use SQL semantics
    * consistent with Microsoft SQL Server version 2008. */
   SQL_SERVER_2008;
-  //表示当前枚举常量是否是“宽松模式”
+  // 仅 BABEL 返回 true。决定是否启用最宽松的解析逻辑。
   @Override public boolean isLiberal() {
     switch (this) {
     case BABEL:
@@ -89,7 +98,8 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-  //字符文字别名（Char Literal Alias），例如SELECT 'hello' AS greeting;
+
+  // 允许 'alias' 这种带引号的列别名。适用于 MYSQL_5、BIG_QUERY 等。
   @Override public boolean allowCharLiteralAlias() {
     switch (this) {
     case BABEL:
@@ -181,7 +191,7 @@ public enum SqlConformanceEnum implements SqlConformance {
   @Override public boolean isSortByAliasObscures() {
     return this == SqlConformanceEnum.STRICT_92;
   }
-
+  // 只有 ORACLE 和 STRICT 系列要求必须有 FROM。
   @Override public boolean isFromRequired() {
     switch (this) {
     case ORACLE_10:
@@ -212,7 +222,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-
+  // 是否允许 !=。大多数方言（LENIENT、MYSQL、PRESTO 等）都支持。
   @Override public boolean isBangEqualAllowed() {
     switch (this) {
     case LENIENT:
@@ -227,7 +237,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-
+  // 是否允许 MINUS（Oracle 风格）代替 EXCEPT。
   @Override public boolean isMinusAllowed() {
     switch (this) {
     case BABEL:
@@ -248,7 +258,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return true;
     }
   }
-
+  // 是否允许 % 取模。MYSQL、PRESTO、BIG_QUERY 支持。
   @Override public boolean isPercentRemainderAllowed() {
     switch (this) {
     case BABEL:
@@ -286,7 +296,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-
+  // 允许无参函数带括号，如 CURRENT_DATE()。
   @Override public boolean allowNiladicParentheses() {
     switch (this) {
     case BABEL:
@@ -414,7 +424,7 @@ public enum SqlConformanceEnum implements SqlConformance {
       return false;
     }
   }
-
+  // 允许使用 VALUE 代替 VALUES。
   @Override public boolean isValueAllowed() {
     switch (this) {
     case BABEL:

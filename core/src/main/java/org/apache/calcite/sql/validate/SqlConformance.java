@@ -34,13 +34,21 @@ import org.apache.calcite.sql.fun.SqlLibrary;
  * @see SqlAbstractConformance
  * @see SqlDelegatingConformance
  */
+// SqlConformance 接口是实现 SQL 方言兼容性 的核心。
+// 由于不同的数据库（如 MySQL、Oracle、BigQuery）在 SQL 语法和语义上存在细微差别，Calcite 通过这个接口来控制验证器（Validator）和解析器（Parser）的行为，以适配不同的 SQL 标准或特定数据库习惯。
+// 主要作用包括：
+// 语法开关：决定解析器是否允许某些非标准的语法（例如：是否允许使用 != 代替 <>）。
+// 语义控制：决定 SQL 逻辑的解释方式（例如：GROUP BY 1 是指按第一列分组，还是按常量 1 分组）。
+// 兼容性模拟：通过组合不同的返回值，Calcite 可以模拟出类似 MySQL、Oracle 或 PostgreSQL 的行为，使得同一个查询引擎能处理多种风格的 SQL。
 public interface SqlConformance {
   /** Short-cut for {@link SqlConformanceEnum#DEFAULT}. */
   @SuppressWarnings("unused")
+  // 默认兼容性模式。
   @Deprecated // to be removed before 2.0
   SqlConformanceEnum DEFAULT = SqlConformanceEnum.DEFAULT;
   /** Short-cut for {@link SqlConformanceEnum#STRICT_92}. */
   @SuppressWarnings("unused")
+  // 严格遵守 SQL-92、SQL-99 或 SQL-2003 标准。
   @Deprecated // to be removed before 2.0
   SqlConformanceEnum STRICT_92 = SqlConformanceEnum.STRICT_92;
   /** Short-cut for {@link SqlConformanceEnum#STRICT_99}. */
@@ -50,17 +58,21 @@ public interface SqlConformance {
   /** Short-cut for {@link SqlConformanceEnum#PRAGMATIC_99}. */
   @SuppressWarnings("unused")
   @Deprecated // to be removed before 2.0
+  // 追求实用的 SQL 标准模式（略微宽松）。
   SqlConformanceEnum PRAGMATIC_99 = SqlConformanceEnum.PRAGMATIC_99;
   /** Short-cut for {@link SqlConformanceEnum#ORACLE_10}. */
   @SuppressWarnings("unused")
   @Deprecated // to be removed before 2.0
+  // 模拟 Oracle 10 的兼容性。
   SqlConformanceEnum ORACLE_10 = SqlConformanceEnum.ORACLE_10;
   /** Short-cut for {@link SqlConformanceEnum#STRICT_2003}. */
   @SuppressWarnings("unused")
   @Deprecated // to be removed before 2.0
+  // 代表严格遵守 ISO/IEC 9075:2003 (SQL:2003) 标准的兼容性模式
   SqlConformanceEnum STRICT_2003 = SqlConformanceEnum.STRICT_2003;
   /** Short-cut for {@link SqlConformanceEnum#PRAGMATIC_2003}. */
   @SuppressWarnings("unused")
+  // 代表务实型（Pragmatic）的 SQL:2003 兼容性模式。
   @Deprecated // to be removed before 2.0
   SqlConformanceEnum PRAGMATIC_2003 = SqlConformanceEnum.PRAGMATIC_2003;
 
@@ -68,6 +80,8 @@ public interface SqlConformance {
    * Whether this dialect supports features from a wide variety of
    * dialects. This is enabled for the Babel parser, disabled otherwise.
    */
+  // 是否支持极其广泛的方言特性。
+  // 这通常用于 Babel 解析器（Calcite 的一个混合方言解析器）。开启后，解析器会变得非常“大度”，尝试接受各种数据库的专有语法。
   boolean isLiberal();
 
   /**
@@ -87,6 +101,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#SQL_SERVER_2008};
    * false otherwise.
    */
+  // 是否允许使用字符串字面量（单引号包裹）作为列别名。
+  // SELECT empno AS 'ID'。在 MySQL 中有效，在严格 SQL 标准中无效。
   boolean allowCharLiteralAlias();
 
   /**
@@ -100,6 +116,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#MYSQL_5};
    * false otherwise.
    */
+  // 是否允许在 GROUP BY 子句中使用 SELECT 列表中的别名
   boolean isGroupByAlias();
 
   /**
@@ -114,6 +131,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRESTO};
    * false otherwise.
    */
+  // 是否支持 GROUP BY 整数索引。
+  // GROUP BY 2 表示按 SELECT 列表中的第 2 列分组。
   boolean isGroupByOrdinal();
 
   /**
@@ -127,6 +146,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#MYSQL_5};
    * false otherwise.
    */
+  // 是否允许在 HAVING 子句中使用别名。
   boolean isHavingAlias();
 
   /**
@@ -147,6 +167,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#STRICT_92};
    * false otherwise.
    */
+  // 是否支持 ORDER BY 整数索引（如 ORDER BY 1）。
   boolean isSortByOrdinal();
 
   /**
@@ -165,6 +186,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#STRICT_92};
    * false otherwise.
    */
+  // 是否支持按别名排序。如果列名和别名冲突，开启此项会优先选择别名。
   boolean isSortByAlias();
 
   /**
@@ -175,6 +197,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#STRICT_92};
    * false otherwise.
    */
+  // 别名是否会遮蔽原始列名。
+  // 在 STRICT_92 模式下，如果定义了别名 x 指向列 c1，那么在 ORDER BY 中直接使用 c1 可能被视为无效，必须使用 x。
   boolean isSortByAliasObscures();
 
   /**
@@ -188,6 +212,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#STRICT_2003};
    * false otherwise.
    */
+  // SELECT 语句是否必须包含 FROM 子句。
+  // Oracle 强制要求（如 SELECT 1 FROM DUAL），而 MySQL/PostgreSQL 允许 SELECT 1。
   boolean isFromRequired();
 
   /**
@@ -198,6 +224,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#BIG_QUERY};
    * false otherwise.
    */
+  // 是否自动拆分带引号的表名。
+  // 开启后，`x.y.z` 会被解析为三部分：数据库 x，模式 y，表 z。主要用于 BigQuery。
   boolean splitQuotedTableName();
 
   /**
@@ -210,6 +238,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#BIG_QUERY};
    * false otherwise.
    */
+  // 是否允许表名中出现连字符 -
+  // SELECT * FROM my-table。
   boolean allowHyphenInUnquotedTableName();
 
   /**
@@ -225,6 +255,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRESTO};
    * false otherwise.
    */
+  // 是否允许使用 != 运算符。
   boolean isBangEqualAllowed();
 
   /**
@@ -238,6 +269,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRESTO};
    * false otherwise.
    */
+  // 是否允许使用 % 取模运算符（代替 MOD 函数）。
   boolean isPercentRemainderAllowed();
 
   /**
@@ -254,6 +286,7 @@ public interface SqlConformance {
    * <p>Note: MySQL does not support {@code MINUS} or {@code EXCEPT} (as of
    * version 5.5).
    */
+  // 是否允许使用 MINUS（Oracle 风格）代替 EXCEPT（标准 SQL）。
   boolean isMinusAllowed();
 
   /**
@@ -270,6 +303,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#BIG_QUERY};
    * true otherwise.
    */
+  // 正则表达式替换函数中，捕获组索引是否使用 $。
+  // MySQL 使用 $1，而 BigQuery 使用 \\1。
   boolean isRegexReplaceCaptureGroupDollarIndexed();
 
   /**
@@ -295,6 +330,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#SQL_SERVER_2008};
    * false otherwise.
    */
+  // 是否支持 CROSS APPLY 和 OUTER APPLY。
+  // 这是 SQL Server 和 Oracle 的特性，类似于标准 SQL 的 LATERAL JOIN。
   boolean isApplyAllowed();
 
   /**
@@ -317,6 +354,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRAGMATIC_2003};
    * false otherwise.
    */
+  // INSERT 语句在不写列名列表时，是否允许提供的 VALUES 数量少于表字段数。
+  // 如果开启，缺少的列将自动使用默认值填充。
   boolean isInsertSubsetColumnsAllowed();
 
   /**
@@ -334,6 +373,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRESTO};
    * false otherwise.
    */
+  // 在 UNNEST 操作中，是否允许直接给数组元素起别名。
+  // 主要针对 Presto 方言。
   boolean allowAliasUnnestItems();
 
   /**
@@ -360,6 +401,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#MYSQL_5};
    * false otherwise.
    */
+  // 无参函数是否允许带括号。
+  // CURRENT_DATE() 在标准 SQL 中不带括号，但在 MySQL 中可以带。
   boolean allowNiladicParentheses();
 
   /**
@@ -380,6 +423,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#PRESTO};
    * false otherwise.
    */
+  // 是否允许使用 ROW(e1, e2) 语法。
   boolean allowExplicitRowValueConstructor();
 
   /**
@@ -401,6 +445,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#LENIENT};
    * false otherwise.
    */
+  // 是否允许在 INSERT 语句中通过 EXTEND 语法定义临时扩展列。
   boolean allowExtend();
 
   /**
@@ -418,6 +463,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#MYSQL_5};
    * false otherwise.
    */
+  // 是否支持 LIMIT offset, count 语法（MySQL 风格）。
   boolean isLimitStartCountAllowed();
 
   /**
@@ -436,6 +482,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#LENIENT};
    * false otherwise.
    */
+  // 是否允许 OFFSET 在 LIMIT 之前。
   boolean isOffsetLimitAllowed();
 
   /**
@@ -449,6 +496,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#SQL_SERVER_2008};
    * false otherwise.
    */
+  // 是否允许地理空间扩展（如 GEOMETRY 类型）。
   boolean allowGeometry();
 
   /**
@@ -478,6 +526,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#SQL_SERVER_2008};
    * false otherwise.
    */
+  // UNION 操作中，不同长度的 CHAR 是否应转换为 VARCHAR。
+  // 开启后可以防止短字符串被自动填充空格
   boolean shouldConvertRaggedUnionTypesToVarying();
 
   /**
@@ -499,6 +549,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#SQL_SERVER_2008};
    * false otherwise.
    */
+  // TRIM 函数是否支持修剪多个字符（如 TRIM('abc' FROM '...abc')）
   boolean allowExtendedTrim();
 
   /**
@@ -514,6 +565,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#LENIENT};
    * false otherwise.
    */
+  // 时间间隔字面量是否允许复数形式（如 INTERVAL '2' DAYS）。
   boolean allowPluralTimeUnits();
 
   /**
@@ -539,6 +591,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#STRICT_2003};
    * true otherwise.
    */
+  // 使用 USING 或 NATURAL JOIN 时，是否允许限定公共列（如 emp.deptno）。
   boolean allowQualifyingCommonColumn();
 
   /**
@@ -551,6 +604,7 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#MYSQL_5};
    * false otherwise.
    */
+  // 是否允许使用 VALUE 关键字代替 VALUES
   boolean isValueAllowed();
 
   /**
@@ -577,6 +631,8 @@ public interface SqlConformance {
    * <li>otherwise returns {@link SqlLibrary#STANDARD}.
    * </ul>
    */
+  // 定义某些内置算子的底层语义逻辑。
+  // SUBSTRING 在标准 SQL 和 BigQuery 中对负数索引的处理完全不同，通过此方法返回对应的库标识。
   SqlLibrary semantics();
 
   /**
@@ -597,6 +653,8 @@ public interface SqlConformance {
    * {@link SqlConformanceEnum#BABEL},
    * false otherwise.
    */
+  // 是否允许宽松的类型强转。
+  // 允许将字符串字面量赋给数组，或者将 BOOLEAN 转为 INT。
   @Experimental
   boolean allowLenientCoercion();
 }
