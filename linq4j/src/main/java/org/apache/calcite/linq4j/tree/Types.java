@@ -111,7 +111,9 @@ public abstract class Types {
           "Unknown field '" + fieldName + "' in class " + clazz, e);
     }
   }
-
+  // 任务是：给定一个字段名和类型，返回一个能够访问该字段的统一描述符（PseudoField）。
+  // fieldName: 想要获取的字段名称（如 "name" 或 "length"）。
+  // type: 字段所属的宿主类型。
   static PseudoField getField(String fieldName, Type type) {
     if (type instanceof RecordType) {
       return getRecordField(fieldName, (RecordType) type);
@@ -121,7 +123,9 @@ public abstract class Types {
       return field(getField(fieldName, toClass(type)));
     }
   }
-
+  // 根据字段名称从给定的记录类型中查找对应的字段元数据。
+  // fieldName: 参数 1，想要查找的字段的字符串名称（例如 "userId"）。
+  // type: 参数 2，要从中进行查找的容器类型（即我们之前提到的 RecordType 或 SyntheticRecordType）。
   private static RecordField getRecordField(String fieldName, RecordType type) {
     for (RecordField field : type.getRecordFields()) {
       if (field.getName().equals(fieldName)) {
@@ -131,22 +135,29 @@ public abstract class Types {
     throw new RuntimeException(
         "Unknown field '" + fieldName + "' in type " + type);
   }
-
+  // 主要作用是为 Java 数组类型创建一个特殊的、虚拟的“长度（length）”字段元数据。
   private static RecordField getSystemField(final String fieldName,
       final Class clazz) {
     // The "length" field of an array does not appear in Class.getFields().
     return new ArrayLengthRecordField(fieldName, clazz);
   }
-
+  // java.lang.reflect.Type 是一个高级接口，包含了所有的类型（如普通类、泛型类、类型变量等）。
+  // 而 java.lang.Class 则是它的一个子类，代表运行时的具体类。
+  // 方法的核心作用是：通过递归和类型检查，将复杂的 Java 类型（Type）强制收敛或降级为最接近的物理类（Class）。
   public static Class toClass(Type type) {
+    // 如果传入的 type 本身就已经是一个 Class 对象（例如 String.class 或 Integer.class），则不需要任何转换，直接强转并返回。
     if (type instanceof Class) {
       return (Class) type;
     }
+    // ParameterizedType 代表带有泛型的类型，例如 List<String>。
     if (type instanceof ParameterizedType) {
       return toClass(((ParameterizedType) type).getRawType());
     }
+    // 处理类型变量（泛型参数）
+    // TypeVariable 代表泛型中的变量，例如 T 或 K, V。
     if (type instanceof TypeVariable) {
       TypeVariable typeVariable = (TypeVariable) type;
+      // getBounds() 方法获取该变量的“上界”。
       return toClass(typeVariable.getBounds()[0]);
     }
     throw new RuntimeException("unsupported type " + type); // TODO:
@@ -568,15 +579,21 @@ public abstract class Types {
    * code that references temporary types, then generate classes for those
    * types along with the code that uses them.
    */
+  // RecordType 的核心作用是描述那些“尚未存在于 JVM 中的类”。
+  // 在 SQL 查询优化和代码生成过程中，Calcite 经常需要创建临时的中间结构（例如：SELECT a, b + c FROM table 会产生一个包含两个字段的新结构）。
+  // 非物理绑定：普通的 java.lang.Class 要求类必须已经加载到 JVM 中。而 RecordType 允许 Calcite 在生成真正的 Java 类文件之前，先在内存中构建出这个类的“蓝图”。
+  // 代码生成导向：它给代码生成器提供了一个机会：先引用这些临时类型编写逻辑，最后再统一生成对应的物理 Java 类。
   public interface RecordType extends Type {
+    // 获取该记录类型中包含的所有字段列表。
     List<RecordField> getRecordFields();
-
+    // 获取该记录类型的名称。
     String getName();
   }
 
   /**
    * Field that belongs to a record.
    */
+  // 标识该字段在逻辑上是否允许存储 null 值。
   public interface RecordField extends PseudoField {
     boolean nullable();
   }

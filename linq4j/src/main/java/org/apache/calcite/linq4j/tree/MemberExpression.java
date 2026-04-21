@@ -25,8 +25,13 @@ import java.util.Objects;
 /**
  * Represents accessing a field or property.
  */
+// MemberExpression 的核心作用是 在表达式树中表示对类成员（Field）的访问操作。
+// 在生成的 Java 代码中，它通常表现为点号引用，例如 obj.fieldName 或 ClassName.staticFieldName。
+// 对于实体类（POJO）：当 Calcite 决定使用 CUSTOM 格式来存储行时，访问某一列就会被解析为一个 MemberExpression。
 public class MemberExpression extends Expression {
+  // 成员所属的对象实例。
   public final @Nullable Expression expression;
+  // 被访问的成员元数据。
   public final PseudoField field;
 
   public MemberExpression(Expression expression, Field field) {

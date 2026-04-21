@@ -25,12 +25,24 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
-/** 方法调用表达式，通过ExpressionType.Call标识
+/**
  * Represents a call to either a static or an instance method.
  */
+// MethodCallExpression 的核心作用是描述并生成 Java 方法调用的指令。
+// 在 Calcite 将 SQL 转化为 Enumerable（可枚举）算子的过程中，绝大多数逻辑（如字符串处理、日期计算、自定义函数调用）最终都会变成 Java 方法的调用。
+// 例如，SQL 中的 UPPER(name) 会被转换成一个 MethodCallExpression，其内容类似于 SqlFunctions.upper(name)。
+// 该类不仅存储了方法的元数据（Method），还记录了调用者（target）和参数（args），并支持将其渲染成源代码字符串或通过反射直接执行。
+
 public class MethodCallExpression extends Expression {
-  public final Method method; //方法
-  public final @Nullable Expression targetExpression; // null for call to static method，静态方法可以直接通过类名调用，实例方法需要实例话对象
+  // 存储 Java 反射包中的 Method 对象。
+  // 包含了方法的名称、返回类型、参数列表以及修饰符（是否静态等）
+  public final Method method;
+  // 调用该方法的对象表达式（即主语）
+  // 如果是实例方法（如 list.size()），则指向 list 的表达式。
+  // 如果是静态方法（如 Math.max(a, b)），该值为 null。
+  public final @Nullable Expression targetExpression;
+  // 方法调用的参数列表。
+  // 这是一个表达式列表，每个元素代表一个传递给方法的参数。
   public final List<Expression> expressions; //参数
   /** Cached hash code for the expression. */
   private int hash;

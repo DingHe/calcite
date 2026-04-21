@@ -523,19 +523,31 @@ public class RexImpTable {
   }
 
   /** Holds intermediate state from which a RexImpTable can be constructed. */
+  // 主要负责初始化并维护 SQL 运算符（Operators）与其对应的 Java 代码生成器（Implementors）之间的映射关系。
+  // 当需要将关系表达式（RexNode）翻译成可执行的 Java 代码（Linq4j）时，系统会通过这个 Builder 构建出的“查找表”来决定每个 SQL 函数应该如何生成代码。
+  // 集中注册机制：它是 Calcite 内置函数库（字符串、数学、日期、JSON等）的“总注册表”。
+  // 解耦映射：它将 SqlOperator（逻辑表示）与 RexCallImplementor（代码生成逻辑）解耦。
+  // 状态保持：在构建 RexImpTable 之前，它作为一个中间容器，持有各种不同类型算子（标量、聚合、窗口、表函数）的映射。
   private static class Builder {
+    // 存储标准标量函数（如 UPPER, ABS, +）的实现器。
     private final Map<SqlOperator, RexCallImplementor> map = new HashMap<>();
+    // 存储聚合函数（如 SUM, COUNT）的实现器。使用 Supplier 是为了在生成代码时能为每个聚合算子创建新的实例。
     private final Map<SqlAggFunction, Supplier<? extends AggImplementor>> aggMap =
         new HashMap<>();
+    // 存储窗口聚合函数（如 RANK, ROW_NUMBER, LEAD）的实现器。
     private final Map<SqlAggFunction, Supplier<? extends WinAggImplementor>> winAggMap =
         new HashMap<>();
+    // 存储用于 MATCH_RECOGNIZE 子句中模式匹配函数的实现器。
     private final Map<SqlMatchFunction, Supplier<? extends MatchImplementor>> matchMap =
         new HashMap<>();
+    // 存储表函数（Table-Valued Functions, TVF）的实现器。
     private final Map<SqlOperator, Supplier<? extends TableFunctionCallImplementor>>
         tvfImplementorMap = new HashMap<>();
 
     /** Populates this Builder with implementors for all Calcite built-in and
      * library operators. */
+    // 注册流程的入口。
+    // 首先定义基础的控制流、字符串处理（SUBSTRING, REPLACE）、数学运算和比较逻辑，然后调用 populate2。
     Builder populate() {
       defineMethod(THROW_UNLESS, BuiltInMethod.THROW_UNLESS.method, NullPolicy.NONE);
       defineMethod(ROW, BuiltInMethod.ARRAY.method, NullPolicy.ALL);
@@ -719,6 +731,8 @@ public class RexImpTable {
 
     /** Second step of population. The {@code populate} method grew too large,
      * and we factored this out. Feel free to decompose further. */
+    // 第二阶段注册。
+    // 处理日期时间（EXTRACT, FLOOR）、布尔逻辑、LIKE 匹配、数组与集合操作（CARDINALITY, ARRAY_CONCAT）以及 JSON 算子，最后调用 populate3。
     Builder populate2() {
       // datetime
       map.put(DATETIME_PLUS, new DatetimeArithmeticImplementor());
@@ -1018,6 +1032,8 @@ public class RexImpTable {
     }
 
     /** Third step of population. */
+    // 第三阶段注册。
+    // 注册系统函数（USER, CURRENT_TIME）、量化比较（SOME, ALL）以及所有的聚合/窗口函数实现器。
     Builder populate3() {
       // System functions
       final SystemFunctionImplementor systemFunctionImplementor =
@@ -1133,7 +1149,8 @@ public class RexImpTable {
         }
       };
     }
-
+    // 将 SQL 算子与特定的 Java 方法建立映射关系。
+    // 每当你在 SQL 中看到这个 operator 时，请生成调用这个 Java method 的代码，并按照指定的 nullPolicy 处理空值。
     private void defineMethod(SqlOperator operator, Method method,
         NullPolicy nullPolicy) {
       map.put(operator, new MethodImplementor(method, nullPolicy, false));
@@ -2719,9 +2736,14 @@ public class RexImpTable {
   }
 
   /** Implementor for the {@code TIMESTAMPADD} function. */
+  // Apache Calcite 中专门用于处理 TIMESTAMPADD SQL 函数的代码生成实现类
+  // TIMESTAMPADD(unit, interval, datetime) 函数的作用是在给定的日期或时间戳上加上指定单位的时间间隔（如加上 3 天、5 小时等）
+  // 根据 SQL 查询中返回结果的具体类型（是 DATE 还是 TIMESTAMP），决定在生成的 Java 代码中调用哪一个底层运行库方法（Runtime Method）。它实现了从 SQL 逻辑算子到物理 Java 方法调用的最后一步映射。
   private static class TimestampAddImplementor
       extends AbstractRexCallImplementor {
+    // 存储处理 时间戳（Timestamp） 类型加法的 Java 方法。
     final Method customTimestampMethod;
+    // 存储处理 日期（Date） 类型加法的 Java 方法。
     final Method customDateMethod;
 
     TimestampAddImplementor(Method customTimestampMethod,
@@ -2733,16 +2755,19 @@ public class RexImpTable {
 
     @Override Expression implementSafe(final RexToLixTranslator translator,
         final RexCall call, final List<Expression> argValueList) {
-      final Expression operand0 = argValueList.get(0);
-      final Expression operand1 = argValueList.get(1);
-      final Expression operand2 = argValueList.get(2);
+      // 1. 提取操作数
+      final Expression operand0 = argValueList.get(0); // 时间单位 (如 DAY, HOUR)
+      final Expression operand1 = argValueList.get(1); // 间隔数值
+      final Expression operand2 = argValueList.get(2); // 原始日期时间对象
       switch (call.getType().getSqlTypeName()) {
       case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
       case TIMESTAMP_TZ:
       case TIMESTAMP:
+        // // 如果结果是时间戳类型，生成调用 customTimestampMethod 的表达式
         return Expressions.call(customTimestampMethod, translator.getRoot(),
             operand0, operand1, operand2);
       default:
+        // 否则（通常是 DATE 类型），生成调用 customDateMethod 的表达式
         return Expressions.call(customDateMethod, translator.getRoot(),
             operand0, operand1, operand2);
       }
@@ -2750,6 +2775,8 @@ public class RexImpTable {
   }
 
   /** Implementor for the {@code TIMESTAMPDIFF} function. */
+  // 专门用于处理 TIMESTAMPDIFF SQL 函数的代码生成器类
+  // TIMESTAMPDIFF(unit, timestamp1, timestamp2) 函数的作用是计算两个日期或时间戳之间相差的单位数（如相差多少天、多少小时等）。
   private static class TimestampDiffImplementor
       extends AbstractRexCallImplementor {
     final Method customTimestampMethod;
@@ -2814,7 +2841,12 @@ public class RexImpTable {
   }
 
   /** Implementor for a function that generates calls to a given method. */
+  // 最通用的标量函数实现器
+  // 专门负责将 SQL 运算符映射为具体的 Java 方法调用
+  // 核心任务是：生成“方法调用表达式”
+  // 充当了 SQL 表达式与 Java 代码之间的“翻译官”。它能够识别一个 Java 方法是静态的还是实例的，并且能够处理 Java 中的变长参数（Varargs），确保生成的 Java 代码语法正确且能正常调用目标方法。
   private static class MethodImplementor extends AbstractRexCallImplementor {
+    // 存储目标 Java 方法的反射句柄。
     protected final Method method;
 
     MethodImplementor(String variableName, Method method, NullPolicy nullPolicy,
@@ -2831,24 +2863,29 @@ public class RexImpTable {
     @Override Expression implementSafe(RexToLixTranslator translator,
         RexCall call, List<Expression> argValueList) {
       if (isStatic(method)) {
+        // 静态方法：不需要调用对象（target 为 null）
         return call(method, null, argValueList);
       } else {
+        // // 实例方法：第一个参数必须是调用者对象（target），剩下的才是方法参数
         return call(method, argValueList.get(0), Util.skip(argValueList, 1));
       }
     }
-
+    // 生成一个符合 Java 语法规则的方法调用表达式（MethodCallExpression），特别是处理了麻烦的 变长参数（Varargs） 情况
     static Expression call(Method method, @Nullable Expression target,
         List<Expression> args) {
       if (method.isVarArgs()) {
+        // 路径 A：处理变长参数 (Varargs)
+        // 找到了变长参数在方法签名中的位置。
         final int last = method.getParameterCount() - 1;
         ImmutableList<Expression> vargs = ImmutableList.<Expression>builder()
-            .addAll(args.subList(0, last))
+            .addAll(args.subList(0, last)) // 提取前面的常规参数。
             .add(
-                Expressions.newArrayInit(method.getParameterTypes()[last],
+                Expressions.newArrayInit(method.getParameterTypes()[last], // 生成一个数组初始化表达式。
                     args.subList(last, args.size()).toArray(new Expression[0])))
             .build();
         return Expressions.call(target, method, vargs);
       } else {
+        // 路径 B：处理普通参数 (Fixed Arity)
         final Class<?> clazz = method.getDeclaringClass();
         return EnumUtils.call(target, clazz, method.getName(), args);
       }
@@ -3858,10 +3895,18 @@ public class RexImpTable {
   }
 
   /** Null-safe implementor of {@code RexCall}s. */
+  // 负责将 SQL 的逻辑函数调用（RexCall）转换为 Java 的物理执行代码（Linq4j 表达式）
+  // 在 Calcite 将逻辑计划（RelNode）转换为物理执行代码（Enumerable）的过程中，最难处理的就是 SQL 表达式（RexNode）。
+  // RexCall：代表 SQL 中的一个函数调用或运算符操作（例如 ABS(x)、x + y、CAST(a AS INT)）。
+  // RexCallImplementor：它的作用就是定义**“如何实现这个调用”**。它是一个策略接口，针对不同的 SQL 函数（如聚合函数、算术函数、字符串函数），会有不同的实现类来生成对应的 Java 代码。
   public interface RexCallImplementor {
     RexToLixTranslator.Result implement(
+        // 提供了翻译过程中的环境信息。
+        // 实现类可以调用 translator 来处理子表达式、获取当前的 BlockBuilder（用于添加语句）、或者处理类型转换。它是翻译过程中的“瑞士军刀”。
         RexToLixTranslator translator,
+        // 当前正在处理的 SQL 逻辑调用。
         RexCall call,
+        // call 中所有参数已经被预先翻译好的 Java 表达式结果。
         List<RexToLixTranslator.Result> arguments);
   }
 
@@ -3881,12 +3926,24 @@ public class RexImpTable {
    * </code>
    * </blockquote>
    */
+  // Apache Calcite 中 RexCallImplementor 接口的一个抽象实现。
+  // 它是将 SQL 逻辑表达式（RexCall）翻译为 Java 代码（Expression）的核心组件，特别处理了 SQL 三值逻辑（True, False, Unknown/Null）
+  // 在 SQL 中，处理 NULL 非常复杂（例如 1 + NULL = NULL）。如果直接在 Java 中翻译成 a + b，一旦 a 或 b 为 null，就会抛出空指针异常。
+  // 核心作用是：
+  // 空值保护（Null Safety）：它会自动生成条件判断代码（如 a == null || b == null ? null : a + b）。
+  // 标准化翻译流程：它定义了一套通用的模板，包括获取参数状态、生成判断条件、生成值语句、以及最后的类型转换。
+  // 类型协调（Harmonization）：确保多个操作数之间的类型是一致的（例如将 SMALLINT 和 INT 统一提升为 INT）。
   private abstract static class AbstractRexCallImplementor
       implements RexCallImplementor {
     /** Variable name should be meaningful. It helps us debug issues. */
+    // 生成的 Java 局部变量的基础名称。
     final String variableName;
-
+    // 定义处理 NULL 值的策略。
+    // STRICT/ANY：任一参数为 null，结果即为 null。
+    // ARG0：仅当第一个参数为 null 时，结果为 null
+    // NONE：不进行自动空值检查，由实现类自行处理。
     final NullPolicy nullPolicy;
+    // 开关标识，是否需要将所有参数的类型强制统一。
     final boolean harmonize;
 
     AbstractRexCallImplementor(String variableName,
@@ -3895,56 +3952,75 @@ public class RexImpTable {
       this.nullPolicy = requireNonNull(nullPolicy, "nullPolicy");
       this.harmonize = harmonize;
     }
-
+    // 实现了 SQL 到 Java 代码生成的“标准工业流水线”。
     @Override public RexToLixTranslator.Result implement(
         final RexToLixTranslator translator,
         final RexCall call,
         final List<RexToLixTranslator.Result> arguments) {
+      // 拆解输入参数
+      // arguments: 这是上游翻译器已经处理好的参数列表。每个参数都是一个 Result 对象，包含两个部分：
+      // valueVariable: 存储数据的变量（如 Integer v1）。
+      // isNullVariable: 存储该数据是否为 null 的布尔变量（如 boolean v1_isNull）。
       final List<Expression> argIsNullList = new ArrayList<>();
       final List<Expression> argValueList = new ArrayList<>();
       for (RexToLixTranslator.Result result : arguments) {
         argIsNullList.add(result.isNullVariable);
         argValueList.add(result.valueVariable);
       }
+      // 根据 NullPolicy（如 STRICT），它会把 argIsNullList 组合成一个大的布尔表达式。
       final Expression condition = getCondition(argIsNullList);
+      // 生成值声明语句 (Value Statement)
+      // 生成的 Java 代码样式:
+      // final Integer res_value = (a_isNull || b_isNull) ? (Integer) null : (a + b);
       final ParameterExpression valueVariable =
           genValueStatement(translator, call, argValueList, condition);
+      // 生成空值检查语句 (IsNull Statement)
       final ParameterExpression isNullVariable =
           genIsNullStatement(translator, valueVariable);
       return new RexToLixTranslator.Result(isNullVariable, valueVariable);
     }
 
     /** Figures out conditional expression according to NullPolicy. */
+    // 用于处理 SQL 空值逻辑（Null Semantics） 的核心决策函数
+    // 任务是根据预设的 NullPolicy（空值策略），生成一个布尔表达式，用来判断当前的函数调用是否应该因为参数含有 NULL 而直接返回 NULL。
     Expression getCondition(final List<Expression> argIsNullList) {
+      // 如果函数没有参数（如 CURRENT_TIMESTAMP()），则不可能因为参数为 NULL 而导致结果为 NULL。
       if (argIsNullList.isEmpty()
           || nullPolicy == NullPolicy.NONE) {
+        // FALSE_EXPR（即常量 false）。这意味着生成的代码中，三元表达式的判断条件永远不成立，直接进入真实计算逻辑。
         return FALSE_EXPR;
       }
+      // 策略一：仅检查首个参数 (ARG0)
       if (nullPolicy == NullPolicy.ARG0) {
         return argIsNullList.get(0);
       }
-
+      // 全部参数为 NULL (ALL)
       if (nullPolicy == NullPolicy.ALL) {
         // Condition for NullPolicy.ALL: v0 == null && v1 == null
         return Expressions.foldAnd(argIsNullList);
       }
 
       // Condition for regular cases: v0 == null || v1 == null
+      // 策略三：常规严格检查 (ANY / STRICT)
       return Expressions.foldOr(argIsNullList);
     }
 
     // E.g., "final Integer xxx_value = (a_isNull || b_isNull) ? null : plus(a, b)"
+    // 负责生成最终的计算语句。
+    // 它通过处理类型对齐、拆箱优化、逻辑实现和三元条件判断，生成一行安全且高效的 Java 代码。
     private ParameterExpression genValueStatement(
         final RexToLixTranslator translator,
         final RexCall call, final List<Expression> argValueList,
         final Expression condition) {
       List<Expression> optimizedArgValueList = argValueList;
+      // 如果开启了此开关，会将参数统一转换为更高精度的类型（例如 int 和 double 运算时，全部转为 double）
       if (harmonize) {
         optimizedArgValueList =
             harmonize(optimizedArgValueList, translator, call);
       }
+      // 在执行计算前，将包装类（如 Integer）转为基本类型（如 int）。这样在执行具体算法时可以避免繁琐的包装类开销。
       optimizedArgValueList = unboxIfNecessary(optimizedArgValueList);
-
+      // 调用子类必须实现的 implementSafe。
       final Expression callValue =
           implementSafe(translator, call, optimizedArgValueList);
 
@@ -3952,6 +4028,7 @@ public class RexImpTable {
       // and thus we should ensure the consistency.
       // However, for some special cases (e.g., TableFunction),
       // the implementation's type is correct, we can't convert it.
+      // 返回类型对齐与转换
       final SqlOperator op = call.getOperator();
       final Type returnType = translator.typeFactory.getJavaClass(call.getType());
       requireNonNull(returnType, "returnType");
@@ -3959,18 +4036,23 @@ public class RexImpTable {
           returnType == callValue.getType()
               || op instanceof SqlUserDefinedTableMacro
               || op instanceof SqlUserDefinedTableFunction;
+      // 如果生成的 callValue 类型与 SQL 类型不一致（例如计算结果是 double 但 SQL 定义返回 float），
+      // 则调用 EnumUtils.convert 生成强制转换代码。
       final Expression convertedCallValue =
           noConvert
               ? callValue
               : EnumUtils.convert(callValue, returnType);
-
+      // 构造三元条件表达式
       final Expression valueExpression =
           Expressions.condition(condition,
+              // getIfTrue：当参数为 NULL 时返回的值。对于大多数 SQL 函数，这里会返回 (Type) null。
               getIfTrue(convertedCallValue.getType(), argValueList),
               convertedCallValue);
+      // 声明并注册变量
       final ParameterExpression value =
           Expressions.parameter(convertedCallValue.getType(),
               translator.getBlockBuilder().newName(variableName + "_value"));
+      // 正式将这行代码写入当前的方法体块（Block）中。
       translator.getBlockBuilder().add(
           Expressions.declare(Modifier.FINAL, value, valueExpression));
       return value;
@@ -3981,11 +4063,15 @@ public class RexImpTable {
     }
 
     // E.g., "final boolean xxx_isNull = xxx_value == null"
+    // 负责生成一个布尔状态变量，专门用于记录上一步计算出的结果是否为 NULL。
+    // 这是 Calcite 处理 SQL 三值逻辑（True, False, Unknown）的关键步骤。
     protected final ParameterExpression genIsNullStatement(
         final RexToLixTranslator translator, final ParameterExpression value) {
+      // 创建布尔变量定义
       final ParameterExpression isNullVariable =
           Expressions.parameter(Boolean.TYPE,
               translator.getBlockBuilder().newName(variableName + "_isNull"));
+      // 根据 value 的类型生成对应的检查代码。
       final Expression isNullExpression = translator.checkNull(value);
       translator.getBlockBuilder().add(
           Expressions.declare(Modifier.FINAL, isNullVariable, isNullExpression));

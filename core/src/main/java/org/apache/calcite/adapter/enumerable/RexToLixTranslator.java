@@ -110,6 +110,14 @@ import static java.util.Objects.requireNonNull;
 // 处理三值逻辑：自动处理 SQL 中的 NULL 逻辑（通过之前提到的 Result 类中的双变量模式）。
 // 类型映射：将 SQL 数据类型映射为对应的 Java 类型（例如 VARCHAR 转 String）。
 // 算子落地：调用 RexImpTable 来寻找每个 SQL 算子（如 +, CASE, CAST）对应的 Java 实现代码。
+// 为什么没有实现visitSubQuery等方法
+// RexNode（Row Expressions）处理的是行级运算（如 a + b，CASE WHEN）。RelNode（Relational Expressions）处理的是集合级运算（如 Join，Filter，Project）。
+// 子查询（SubQuery）在本质上是一个集合运算。 当 SQL 中出现 WHERE x IN (SELECT ...) 时，虽然它在形式上嵌套在表达式里，但逻辑上它代表了一个完整的关系代数算子树。RexToLixTranslator 的定位是“标量翻译器”，它只负责把简单的 Java 表达式翻译出来，而没有能力去驱动一整套关系算子的执行引擎。
+// 2. 预处理阶段：子查询的“去相关化”（Decorrelation）
+// Calcite 在将逻辑计划（Logical Plan）转换为可执行代码之前，会通过一套名为 SubQueryRemoveRule 或 Decorrelate 的优化规则，将 RexSubQuery 节点从表达式树中剔除。
+// IN / EXISTS 通常会被重写为 Semi-Join 或 Anti-Join。
+// 标量子查询（Scalar SubQuery）通常会被重写为 Outer Join。
+// 等到进入代码生成（Code Generation）阶段时，原本的 RexSubQuery 节点已经转化成了物理算子树中的一部分（通常是 EnumerableJoin 或 EnumerableCorrelate）。因此，RexToLixTranslator 在运行时根本不应该遇到这些节点。
 public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result> {
   // 建立 Java 内置方法（如 String.toUpperCase）与 SQL 算子（UPPER）之间的映射关系。
   public static final Map<Method, SqlOperator> JAVA_TO_SQL_METHOD_MAP =
@@ -158,6 +166,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   /** Map from RexNode under specific storage type to its Result, to avoid
    * generating duplicate code. For {@code RexInputRef}, {@code RexDynamicParam}
    * and {@code RexFieldAccess}. */
+  // 缓存已经生成的代码片段。
   private final Map<Pair<RexNode, @Nullable Type>, Result> rexWithStorageTypeResultMap =
       new HashMap<>();
 
@@ -165,7 +174,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * For {@code RexLiteral} and {@code RexCall}. */
   // 缓存机制：记录已经翻译过的表达式。如果同一个 RexNode 被引用多次，翻译器会直接返回之前的变量引用，避免生成重复的 Java 代码。
   private final Map<RexNode, Result> rexResultMap = new HashMap<>();
-
+  // 期望的 Java 存储类型
   private @Nullable Type currentStorageType;
 
   private RexToLixTranslator(@Nullable RexProgram program,
@@ -252,7 +261,10 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     return new RexToLixTranslator(null, typeFactory, root, inputGetter, list,
         null, new RexBuilder(typeFactory), conformance, null);
   }
-
+  // 负责将 RexNode（逻辑表达式）转换为 Expression（Java 表达式）。它体现了 Calcite 如何将 SQL 的“空值敏感性”自动映射到 Java 语言。
+  // 根据表达式是否可能为空，选择最合适的 NullAs 策略。
+  // isNullable(expr)：检查当前的逻辑节点在 SQL 语义中是否允许为 NULL。
+  // 如果表达式不可为空（Nullable = false），它通常返回 NullAs.NOT_POSSIBLE。这意味着在后续翻译中，可以生成更精简的 Java 代码（例如直接用基本类型 int 而不是包装类型 Integer）。
   Expression translate(RexNode expr) {
     final RexImpTable.NullAs nullAs =
         RexImpTable.NullAs.of(isNullable(expr));
@@ -268,14 +280,18 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
         RexImpTable.NullAs.of(isNullable(expr));
     return translate(expr, nullAs, storageType);
   }
-
+  // 决定了逻辑节点最终如何变成一个可执行的 Java 表达式。
   Expression translate(RexNode expr, RexImpTable.NullAs nullAs,
       @Nullable Type storageType) {
+    // 将当前翻译任务期望的 Java 物理类型（如 int.class 或 Integer.class）存入全局状态。
     currentStorageType = storageType;
+    // 触发递归翻译。
     final Result result = expr.accept(this);
+    // 将翻译得到的变量强制转换为目标 storageType。
     final Expression translated =
         requireNonNull(EnumUtils.toInternal(result.valueVariable, storageType));
     // When we asked for not null input that would be stored as box, avoid unboxing
+    // 如果 nullAs 是 NOT_POSSIBLE，说明调用方确定此处不会为 null。
     if (RexImpTable.NullAs.NOT_POSSIBLE == nullAs
         && translated.type.equals(storageType)) {
       return translated;
@@ -861,6 +877,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   /** Dereferences an expression if it is a
    * {@link org.apache.calcite.rex.RexLocalRef}. */
   public RexNode deref(RexNode expr) {
+    // 判断传入的表达式是否为“本地引用”（RexLocalRef）
     if (expr instanceof RexLocalRef) {
       RexLocalRef ref = (RexLocalRef) expr;
       final RexNode e2 = requireNonNull(program, "program")
@@ -877,11 +894,13 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * @throws ControlFlowException if literal is null but {@code nullAs} is
    * {@link org.apache.calcite.adapter.enumerable.RexImpTable.NullAs#NOT_POSSIBLE}.
    */
+  // 核心职责是：根据指定的 NullAs 策略处理空值，并根据 SQL 类型将逻辑常量转换为物理 Java 表达式。
   public static Expression translateLiteral(
       RexLiteral literal,
       RelDataType type,
       JavaTypeFactory typeFactory,
       RexImpTable.NullAs nullAs) {
+    // 如果 SQL 值为 NULL，则根据上下文需求返回不同的结果。
     if (literal.isNull()) {
       switch (nullAs) {
       case TRUE:
@@ -898,6 +917,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
       }
     } else {
       switch (nullAs) {
+      // 处理非 NULL 时的布尔谓词优化
       case IS_NOT_NULL:
         return RexImpTable.TRUE_EXPR;
       case IS_NULL:
@@ -906,9 +926,11 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
         break;
       }
     }
+    // SQL 类型到 Java 物理类型的映射转换
     Type javaClass = typeFactory.getJavaClass(type);
     final Object value2;
     switch (literal.getType().getSqlTypeName()) {
+    // 如果物理目标是 float/double，直接转。否则，生成 new BigDecimal("...") 语句，避免由于浮点数精度问题导致的数值漂移。
     case DECIMAL:
       final BigDecimal bd = literal.getValueAs(BigDecimal.class);
       if (javaClass == float.class) {
@@ -1152,7 +1174,12 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * final boolean input_isNull = input_value == null;
    * }</pre></blockquote>
    */
+  // 作用是处理对输入行中某一列的引用（例如 SQL 中的 SELECT col_a）
   @Override public Result visitInputRef(RexInputRef inputRef) {
+    // 检查当前列引用是否已经被翻译过
+    // inputRef 是列的索引，currentStorageType 是期望的 Java 存储类型。
+    // Calcite 会缓存已经生成的代码片段。
+    // 如果同一个字段在同一个表达式中被多次引用，直接返回缓存的 Result，避免生成重复的变量声明（如定义多个 input_value1, input_value2）。
     final Pair<RexNode, @Nullable Type> key = Pair.of(inputRef, currentStorageType);
     // If the RexInputRef has been visited under current storage type already,
     // it is not necessary to visit it again, just return the result.
@@ -1161,43 +1188,54 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     }
     // Generate one line of code to get the input, e.g.,
     // "final Employee current =(Employee) inputEnumerator.current();"
+    // 生成“如何从输入流中获取这一列”的原始表达式
     final Expression valueExpression =
         requireNonNull(inputGetter, "inputGetter")
             .field(list, inputRef.getIndex(), currentStorageType);
 
     // Generate one line of code for the value of RexInputRef, e.g.,
     // "final Integer input_value = current.commission;"
+    // 定义一个 Java 变量来存储该列的值，并正式将声明语句加入生成的代码中。
     final ParameterExpression valueVariable =
         Expressions.parameter(
             valueExpression.getType(), list.newName("input_value"));
+    // 将这一行 Java 代码写入当前正在构建的代码块
     list.add(Expressions.declare(Modifier.FINAL, valueVariable, valueExpression));
 
     // Generate one line of code to check whether RexInputRef is null, e.g.,
     // "final boolean input_isNull = input_value == null;"
+    // 生成 Null 检查逻辑
     final Expression isNullExpression = checkNull(valueVariable);
     final ParameterExpression isNullVariable =
         Expressions.parameter(
             Boolean.TYPE, list.newName("input_isNull"));
+    // 生成判断该列是否为 NULL 的代码。
     list.add(Expressions.declare(Modifier.FINAL, isNullVariable, isNullExpression));
-
+    // Result 对象同时包含了变量的值（valueVariable）和它的空状态（isNullVariable）。
+    // 后续的计算（如加法、比较）会同时用到这两个变量。
     final Result result = new Result(isNullVariable, valueVariable);
 
     // Cache <RexInputRef, currentStorageType>'s result
     // Note: EnumerableMatch's PrevInputGetter changes index each time,
     // it is not right to reuse the result under such case.
+    // 如果 inputGetter 是 EnumerableMatch.PrevInputGetter（用于 MATCH_RECOGNIZE 这种需要跨行引用的场景），则不进行缓存。
+    // 因为在复杂匹配中，相同的索引在不同时间点可能指向不同的行（PREV 逻辑），复用缓存会导致数据错误。
     if (!(inputGetter instanceof EnumerableMatch.PrevInputGetter)) {
       rexWithStorageTypeResultMap.put(key, result);
     }
     return new Result(isNullVariable, valueVariable);
   }
-
+  // 负责处理 Lambda 表达式中的参数引用（RexLambdaRef）。
+  // 在 SQL 转换为 Java 代码的过程中，当遇到类似 ARRAY_MAP 或 FILTER 等高阶函数时，Calcite 会生成 Lambda 表达式。visitLambdaRef 就是用来定义这些 Lambda 内部引用的参数。
   @Override public Result visitLambdaRef(RexLambdaRef ref) {
+    // 创建一个代表 Lambda 参数的变量定义。
     final ParameterExpression valueVariable =
         Expressions.parameter(
             typeFactory.getJavaClass(ref.getType()), ref.getName());
 
     // Generate one line of code to check whether lambdaRef is null, e.g.,
     // "final boolean input_isNull = $0 == null;"
+    // 生成一个判断其是否为 NULL 的逻辑指令
     final Expression isNullExpression = checkNull(valueVariable);
     final ParameterExpression isNullVariable =
         Expressions.parameter(
@@ -1205,8 +1243,12 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     list.add(Expressions.declare(Modifier.FINAL, isNullVariable, isNullExpression));
     return new Result(isNullVariable, valueVariable);
   }
-
+  // 在 SQL 优化过程中，如果一个复杂的计算（如 a + b）被多次使用，优化器会将其提取为一个“本地引用（Local Reference）”。
+  // RexLocalRef 就像是一个指向“已计算结果”的指针。
+  // RexLocalRef 本身只包含一个索引（Index），指向一个存储在 RexProgram 中的表达式列表。
   @Override public Result visitLocalRef(RexLocalRef localRef) {
+    // deref 方法的作用是根据这个索引，从当前的上下文环境（通常是 RexProgram 的 exprs 列表）中找到真实的逻辑表达式（RexNode）
+    // 获取到真实的 RexNode 后，调用其 accept 方法，将当前的翻译器实例（this，即 RexToLixTranslator）作为访客传入。
     return deref(localRef).accept(this);
   }
 
@@ -1219,21 +1261,29 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    *   final boolean literal_isNull = false;
    * }
    */
+  // 负责将 SQL 中的字面量（如 10, 'Hello', NULL）转换为 Java 代码。它的逻辑不仅涉及值的翻译，还包含对常量池的优化和 NULL 值的处理。
   @Override public Result visitLiteral(RexLiteral literal) {
     // If the RexLiteral has been visited already, just return the result
+    // 检查该字面量是否已经翻译过。
+    // 避免为同一个常量（例如在 SQL 中多次出现的 10）生成重复的 Java 变量声明。
     if (rexResultMap.containsKey(literal)) {
       return rexResultMap.get(literal);
     }
     // Generate one line of code for the value of RexLiteral, e.g.,
     // "final int literal_value = 10;"
+    // 字面量值翻译（转换为 Expression）
+    // 如果是 SQL 中的 NULL 字面量，调用 getTypedNullLiteral。它会生成带类型的 null，例如 (Integer) null，确保 Java 类型系统不丢失信息。
+    // 如果是普通值，则根据其 SQL 类型（literal.getType()）转换为对应的 Java 常量。例如：SQL DATE 可能会被转换为整数（天数），VARCHAR 转换为 String。
     final Expression valueExpression = literal.isNull()
         // Note: even for null literal, we can't loss its type information
         ? getTypedNullLiteral(literal)
         : translateLiteral(literal, literal.getType(),
             typeFactory, RexImpTable.NullAs.NOT_POSSIBLE);
     final ParameterExpression valueVariable;
+    // 尝试将常量加入当前代码块的“常量池”。如果这个值之前已经以常量的形式存在，appendConstant 可能会返回一个已有的表达式。
     final Expression literalValue =
         appendConstant("literal_value", valueExpression);
+    // 如果 appendConstant 返回的是一个变量引用（ParameterExpression），则直接复用。
     if (literalValue instanceof ParameterExpression) {
       valueVariable = (ParameterExpression) literalValue;
     } else {
@@ -1246,6 +1296,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
 
     // Generate one line of code to check whether RexLiteral is null, e.g.,
     // "final boolean literal_isNull = false;"
+    // 生成 Null 检查标记
     final Expression isNullExpression =
         literal.isNull() ? RexImpTable.TRUE_EXPR : RexImpTable.FALSE_EXPR;
     final ParameterExpression isNullVariable =
@@ -1264,6 +1315,8 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * Returns an {@code Expression} for null literal without losing its type
    * information.
    */
+  // 在 SQL 中，NULL 是有类型的（例如 CAST(NULL AS INTEGER) 与 CAST(NULL AS VARCHAR) 不同），而 Java 的裸 null 会丢失这些类型信息。
+  // getTypedNullLiteral 的作用就是生成一个带有明确 Java 类型的 null 常量表达式，确保生成的 Java 代码在编译时不会出现歧义。
   private ConstantExpression getTypedNullLiteral(RexLiteral literal) {
     assert literal.isNull();
     Type javaClass = typeFactory.getJavaClass(literal.getType());
@@ -1303,55 +1356,74 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    * from {@code RexImpTable}. Several operators (e.g., CaseWhen) with special semantics
    * need to be implemented separately.
    */
+  // 负责将 SQL 中的函数调用、运算符和表达式（统称为 RexCall，如 a + b、ABS(x)、CASE WHEN...）翻译成对应的 Java 代码。
   @Override public Result visitCall(RexCall call) {
+    // 检查该函数调用是否已经被翻译过
     if (rexResultMap.containsKey(call)) {
       return rexResultMap.get(call);
     }
     final SqlOperator operator = call.getOperator();
+    // 处理 PREV 函数（通常用于 MATCH_RECOGNIZE 窗口操作），涉及跨行数据访问。
     if (operator == PREV) {
       return implementPrev(call);
     }
+    // 处理 CASE WHEN。
+    // CASE 具有短路效应（如果第一个条件成立，后面的表达式不应执行）。这需要生成 if-else 代码块，而不是简单的函数调用。
     if (operator == CASE) {
       return implementCaseWhen(call);
     }
+    // 处理 SEARCH 算子（通常由 IN 或 BETWEEN 优化而来）
+    // SEARCH 通常关联着复杂的 Sarg（搜索参数）。这里先将其展开为普通的逻辑判断（如 x >= 1 AND x <= 10），然后再递归调用 accept(this) 进行翻译。
     if (operator == SEARCH) {
       return RexUtil.expandSearch(builder, program, call).accept(this);
     }
+    // 从实现映射表（RexImpTable）中查找该算子的翻译逻辑。
+    // 大部分标准函数（如 +, -, SUBSTR, CAST）都在 RexImpTable 中注册了对应的 Implementor。
+    // 如果找不到，说明 Calcite 目前还不支持将该函数翻译为 Enumerable Java 代码。
     final RexImpTable.RexCallImplementor implementor =
         RexImpTable.INSTANCE.get(operator);
     if (implementor == null) {
       throw new RuntimeException("cannot translate call " + call);
     }
+    // 获取函数各个参数（操作数）的物理存储类型。
     final List<RexNode> operandList = call.getOperands();
     final List<@Nullable Type> storageTypes = EnumUtils.internalTypes(operandList);
     final List<Result> operandResults = new ArrayList<>();
+    // 在翻译函数本身之前，先翻译它的参数。
     for (int i = 0; i < operandList.size(); i++) {
       final Result operandResult =
           implementCallOperand(operandList.get(i), storageTypes.get(i), this);
       operandResults.add(operandResult);
     }
+    // 调用实现器生成最终的计算代码，并缓存结果。
     callOperandResultMap.put(call, operandResults);
     final Result result = implementor.implement(this, call, operandResults);
     rexResultMap.put(call, result);
     return result;
   }
-
+  // 核心任务是：在翻译函数的参数（操作数）时，确保参数的物理存储类型（Storage Type）符合预期。
   private static Result implementCallOperand(final RexNode operand,
       final @Nullable Type storageType, final RexToLixTranslator translator) {
     final Type originalStorageType = translator.currentStorageType;
+    // 暂时改变翻译器的“当前存储类型”状态。
     translator.currentStorageType = storageType;
+    // 正式开始翻译该参数。
     Result operandResult = operand.accept(translator);
     if (storageType != null) {
+      // 如果自动生成的变量类型与目标类型仍有差距，进行最后的“兜底”转换
       operandResult = translator.toInnerStorageType(operandResult, storageType);
     }
     translator.currentStorageType = originalStorageType;
     return operandResult;
   }
-
+  // 直接返回一个 Expression 对象，而不是封装好的 Result 对象。
+  // 常用于那些不需要处理 SQL 三值逻辑（即不需要 isNull 标记）或者已经知道结果必然不为空的内部调用场景。
   private static Expression implementCallOperand2(final RexNode operand,
       final @Nullable Type storageType, final RexToLixTranslator translator) {
+    // 保存翻译器当前的 currentStorageType 状态，并将其切换为当前操作数期望的 storageType。
     final Type originalStorageType = translator.currentStorageType;
     translator.currentStorageType = storageType;
+    // 调用 translate 方法将逻辑节点 RexNode 转换为物理表达式 Expression。
     final Expression result =  translator.translate(operand);
     translator.currentStorageType = originalStorageType;
     return result;
@@ -1381,14 +1453,21 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    *   from (values (1),(0)) ax(s);
    * }
    */
+  // 实现了 CASE WHEN 算子的代码生成逻辑。正如代码注释中所提到的，CASE 算子非常特殊，因为它必须遵循 短路效应（Short-circuiting）：
+  // 只有当前面的 WHEN 条件不成立时，才去执行后面的表达式。如果像普通函数那样先翻译所有参数，可能会导致类似 100/0 的运行时错误。
   private Result implementCaseWhen(RexCall call) {
+    // 初始化目标变量
+    // 在 Java 代码中定义一个用于存储 CASE 最终结果的变量。
     final Type returnType = typeFactory.getJavaClass(call.getType());
     final ParameterExpression valueVariable =
         Expressions.parameter(returnType,
             list.newName("case_when_value"));
     list.add(Expressions.declare(0, valueVariable, null));
     final List<RexNode> operandList = call.getOperands();
+    // 核心递归逻辑，用于生成嵌套的 if-else 结构。
+    // operandList 包含了所有的 WHEN、THEN 以及最后的 ELSE 表达式。
     implementRecursively(this, operandList, valueVariable, 0);
+    // 确定最终结果是否为 NULL。
     final Expression isNullExpression = checkNull(valueVariable);
     final ParameterExpression isNullVariable =
         Expressions.parameter(
@@ -1426,6 +1505,8 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    *      }
    * }</pre></blockquote>
    */
+  // 实现 CASE WHEN 逻辑的核心递归方法。
+  // 它的任务是生成嵌套的 if-else 结构，以确保 SQL 的短路语义（Short-circuiting）在 Java 代码中得到正确体现。
   private static void implementRecursively(RexToLixTranslator currentTranslator,
       List<RexNode> operandList, ParameterExpression valueVariable, int pos) {
     final BlockBuilder currentBlockBuilder =
@@ -1433,7 +1514,10 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     final List<@Nullable Type> storageTypes =
         EnumUtils.internalTypes(operandList);
     // [ELSE] clause
+    // 当递归到操作数列表的最后一个元素时，说明已经到达了 ELSE 部分（或者没有显式 ELSE 时的隐式 ELSE）。
     if (pos == operandList.size() - 1) {
+      // 翻译该表达式。
+      // 生成赋值语句：case_when_value = res;。
       Expression res =
           implementCallOperand2(operandList.get(pos), storageTypes.get(pos),
               currentTranslator);
@@ -1444,6 +1528,9 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
       return;
     }
     // Condition code: !a_isNull && a_value
+    // 生成条件判断逻辑 (WHEN)
+    // 生成 if 括号里的布尔表达式。
+    // SQL 中的 WHEN a 意味着 a 必须为真且不能为 NULL。
     final RexNode testerNode = operandList.get(pos);
     final Result testerResult =
         implementCallOperand(testerNode, storageTypes.get(pos),
@@ -1452,9 +1539,14 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
         Expressions.andAlso(Expressions.not(testerResult.isNullVariable),
             testerResult.valueVariable);
     // Code for {if} branch
+    // 构建 THEN 分支块
+    // 生成当条件成立时执行的代码块。
+    // 创建一个新的 BlockBuilder 来隔离作用域。
+    // 在该块内翻译 THEN 后的表达式 ifTrueNode。
     final RexNode ifTrueNode = operandList.get(pos + 1);
     final BlockBuilder ifTrueBlockBuilder =
         new BlockBuilder(true, currentBlockBuilder);
+    // 进入新的代码块
     final RexToLixTranslator ifTrueTranslator =
         currentTranslator.setBlock(ifTrueBlockBuilder);
     final Expression ifTrueRes =
@@ -1467,12 +1559,16 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
                 EnumUtils.convert(ifTrueRes, valueVariable.getType()))));
     final BlockStatement ifTrue = ifTrueBlockBuilder.toBlock();
     // There is no [ELSE] clause
+    // 递归处理下一个 WHEN 或结束
+    // 如果没有后续的 WHEN 了，直接生成单分支 if 语句。
     if (pos + 1 == operandList.size() - 1) {
       currentBlockBuilder.add(
           Expressions.ifThen(tester, ifTrue));
       return;
     }
     // Generate code for {else} branch recursively
+    // 构建 ELSE 分支块（递归核心）
+    // 当当前 WHEN 不成立时，进入 ELSE 块继续判断下一个 WHEN。
     final BlockBuilder ifFalseBlockBuilder =
         new BlockBuilder(true, currentBlockBuilder);
     final RexToLixTranslator ifFalseTranslator =
@@ -1497,13 +1593,16 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     final ParameterExpression isNullVariable = result.isNullVariable;
     return new Result(isNullVariable, valueVariable);
   }
-
+  // 负责处理 SQL 中的动态参数（即占位符，如 SELECT * FROM emp WHERE id = ? 中的 ?）。
+  // 在生成的 Java 代码中，这些参数需要从运行时的上下文（DataContext）中动态获取。
   @Override public Result visitDynamicParam(RexDynamicParam dynamicParam) {
+    // 根据动态参数节点和当前的存储类型检查缓存
     final Pair<RexNode, @Nullable Type> key =
         Pair.of(dynamicParam, currentStorageType);
     if (rexWithStorageTypeResultMap.containsKey(key)) {
       return rexWithStorageTypeResultMap.get(key);
     }
+    // 确定该参数在 Java 中应该表现为什么类型。如果是数值类型（如 INT, DOUBLE），则设置 isNumeric 标记。
     final Type storageType = currentStorageType != null
         ? currentStorageType : typeFactory.getJavaClass(dynamicParam.getType());
 
@@ -1511,6 +1610,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
 
     // For numeric types, use java.lang.Number to prevent cast exception
     // when the parameter type differs from the target type
+    // 代码通过 root（通常指 DataContext）获取参数值。针对数值类型做了一个特殊的两步转换（Double Cast）：
     final Expression valueExpression = isNumeric
         ? EnumUtils.convert(
             EnumUtils.convert(
@@ -1749,40 +1849,63 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   }
 
   /** Stores a constant expression in a variable. */
+  // 核心逻辑是根据当前的执行上下文，决定将一个常量表达式存储在静态字段（类级别）还是局部变量（方法级别）中。
   private Expression appendConstant(String name, Expression e) {
     if (staticList != null) {
       // If name is "camelCase", upperName is "CAMEL_CASE".
+      // 如果 staticList 不为空，说明 Calcite 认为这个常量应该被提取到类级别（作为 static final 字段），这样在整个查询执行期间它只会被初始化一次，从而提高性能。
       final String upperName =
           CaseFormat.LOWER_CAMEL.to(CaseFormat.UPPER_UNDERSCORE, name);
       return staticList.append(upperName, e);
     } else {
+      // 如果不支持静态存储，则将常量作为局部变量存入当前的 BlockBuilder（即 list）。
       return list.append(name, e);
     }
   }
 
   /** Translates a field of an input to an expression. */
+  // 主要用于 Linq4j 表达式生成 过程中，负责将输入数据源的列（字段）映射为 Java 表达式。
+  // InputGetter 的核心任务是**“解耦”**逻辑列与物理存储。
+  // 在 Calcite 将 SQL 逻辑转化为可执行的 Java 代码时，需要处理类似 SELECT name FROM emp 的逻辑。此时，emp 表的 name 字段在生成的 Java 代码中可能是多种形式：
+  // 如果输入是 POJO 对象：生成 input_row.name。
+  // 如果输入是数组：生成 ((Object[])input_row)[0]。
+  // 如果输入是单个值：直接生成 input_row。
+  // InputGetter 就负责定义：“当我需要第 index 个字段时，你应该给我生成什么样的 Java 代码表达式。”
+  // BlockBuilder list (代码构建器),生成 Java 方法体的“容器”。
+  // 如果获取字段的过程很复杂（例如需要先进行空值判断或复杂的类型转换），翻译器会向这个 list 中添加临时的变量声明语句，然后再返回最终的表达式。
+  // int index (字段索引) 目标字段在输入行中的物理位置。
+  // C. @Nullable Type storageType (存储类型)  期望的 Java 类型。告诉 Getter 你希望生成的表达式返回什么类型的值。
   public interface InputGetter {
     Expression field(BlockBuilder list, int index, @Nullable Type storageType);
   }
 
   /** Implementation of {@link InputGetter} that calls
    * {@link PhysType#fieldReference}. */
+  // InputGetterImpl 是 InputGetter 接口的一个标准实现类。
+  // 它的核心逻辑是：管理多个输入源（Inputs），并根据全局索引（index）计算出该字段属于哪一个输入源，然后生成访问代码。
+  // 在 Calcite 的 Join（联接）操作中，这种实现非常常见，因为 Join 会把两个或多个输入表的字段合并在一起。
+  // 类的作用：多数据源的字段映射器
+  // InputGetterImpl 的主要作用是**“路由”**。
+  // 当你调用 field(index) 时，它会遍历内部维护的所有输入源。如果第一个输入源有 5 个字段，你查第 6 个字段（index=5），它会自动跳到第二个输入源去查找。
   public static class InputGetterImpl implements InputGetter {
-    private final ImmutableMap<Expression, PhysType> inputs; //表达式和物理类型的对饮关系
+    // 存储 Java 表达式与物理类型（PhysType）的映射关系。
+    // Key (Expression)：代表当前输入行的变量名（例如 left_row, right_row）。
+    // Value (PhysType)：代表该输入行的物理类型信息（它知道该字段是存在数组里、对象里、还是其他地方）。
+    private final ImmutableMap<Expression, PhysType> inputs;
 
     @Deprecated // to be removed before 2.0
     public InputGetterImpl(List<Pair<Expression, PhysType>> inputs) {
       this(mapOf(inputs));
     }
-
+    // 用于单输入场景（如 Project 或 Filter），只管理一个数据源
     public InputGetterImpl(Expression e, PhysType physType) {
       this(ImmutableMap.of(e, physType));
     }
-
+    // 用于多输入场景（如 Join），同时管理左右两个（或多个）输入源。
     public InputGetterImpl(Map<Expression, PhysType> inputs) {
       this.inputs = ImmutableMap.copyOf(inputs);
     }
-
+    // 用于将 Pair 列表转换为 ImmutableMap。
     private static <K, V> Map<K, V> mapOf(
         Iterable<? extends Map.Entry<K, V>> entries) {
       ImmutableMap.Builder<K, V> b = ImmutableMap.builder();
@@ -1791,15 +1914,20 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     }
 
     @Override public Expression field(BlockBuilder list, int index, @Nullable Type storageType) {
+      // 偏移量累加器
       int offset = 0;
       for (Map.Entry<Expression, PhysType> input : inputs.entrySet()) {
         final PhysType physType = input.getValue();
-        int fieldCount = physType.getRowType().getFieldCount();
+        int fieldCount = physType.getRowType().getFieldCount(); // 获取当前输入源的列总数
+        // 1. 判断目标 index 是否落在当前输入源范围内
         if (index >= offset + fieldCount) {
           offset += fieldCount;
           continue;
         }
+        // list.append("current", ...) 会在生成代码中创建一个临时变量（如 var current = input_row;）
         final Expression left = list.append("current", input.getKey());
+        // 3. 委派给具体的物理类型（PhysType）去生成真正的字段访问表达式
+        // index - offset 是将全局索引转换为当前源的局部索引
         return physType.fieldReference(left, index - offset, storageType);
       }
       throw new IllegalArgumentException("Unable to find field #" + index);

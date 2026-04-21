@@ -55,12 +55,24 @@ import static org.apache.calcite.adapter.enumerable.EnumUtils.overridingMethodDe
 import static java.util.Objects.requireNonNull;
 
 /** Implementation of {@link PhysType}. */
+// PhysTypeImpl 是物理类型（Physical Type）的核心实现类。它充当了**逻辑关系类型（RelDataType）与物理 Java 表达（JavaRowFormat）**之间的桥梁。
+// PhysTypeImpl 的核心作用是指导代码生成（Code Generation）。
+// 在将 SQL 执行计划转换为 Java 源代码（基于 linq4j 表达式树）的过程中，Calcite 需要知道如何“操作”一行数据。PhysTypeImpl 封装了所有与行布局相关的逻辑：
+// 数据访问：生成访问特定列的代码（如 obj[0] 或 obj.name）。
+// 记录创建：生成构造新行的代码。
+// 类型转换：在不同的物理格式（如从 Object[] 到自定义 POJO）之间转换。
+// 比较与排序：生成用于 ORDER BY、GROUP BY 或 JOIN 的比较器（Comparator）和选择器（Selector）。
 public class PhysTypeImpl implements PhysType {
-  private final JavaTypeFactory typeFactory;  //类型工厂
-  private final RelDataType rowType; //行的关系数据类型
-  private final Type javaRowClass; //行的java类型
-  private final List<Class> fieldClasses = new ArrayList<>(); //每个字段的java类型
-  final JavaRowFormat format; //java中如何表示一行数据
+  // 类型工厂，用于在 SQL 类型和 Java 类型之间进行映射。
+  private final JavaTypeFactory typeFactory;
+  // 逻辑行类型，定义了列的名称、类型和是否可为空。
+  private final RelDataType rowType;
+  // 该行在 Java 中的物理类（例如 Object[].class 或某个生成的 POJO 类）。
+  private final Type javaRowClass;
+  // 缓存每一列对应的 Java Class，提高代码生成效率。
+  private final List<Class> fieldClasses = new ArrayList<>();
+  // 物理布局格式（如 ARRAY, CUSTOM, SCALAR 等），决定了生成的代码风格。
+  final JavaRowFormat format;
 
   /** Creates a PhysTypeImpl. */
   PhysTypeImpl(
@@ -124,13 +136,20 @@ public class PhysTypeImpl implements PhysType {
   @Override public PhysType project(List<Integer> integers, JavaRowFormat format) {
     return project(integers, false, format);
   }
-  //投影此物理类型到另一个物理类型
+  // Enumerable 算子生成代码时处理 SELECT（投影） 逻辑的核心。其本质是根据索引列表创建一个新的“精简版”物理类型。
+  // integers 存放了目标列在原始行中的索引
+  // 什么是 Indicator：在 SQL 的某些操作（如 GROUPING SETS 或特定的 Join）中，需要额外的布尔列来标记对应的列是否为“聚合生成的 null”或是该行是否存在。
+  // 逻辑：如果 indicator 为 true，它会为每一个投影列额外生成一个以 i$ 开头的布尔列。
+  // 结果：如果投影了 Name 列，结果集中会多出一列 i$Name，类型为不可为空的 BOOLEAN。
   @Override public PhysType project(List<Integer> integers, boolean indicator,
       JavaRowFormat format) {
     final RelDataTypeFactory.Builder builder = typeFactory.builder();
-    for (int index : integers) { //选出投影的列
+    // 根据传入的 integers 列表（存放了目标列在原始行中的索引），从原始的 rowType 中提取对应的字段。
+    // 示例：如果原始行是 [ID, Name, Age, Salary]，integers 为 [1, 0]，那么 builder 会构建出 [Name, ID]。
+    for (int index : integers) {
       builder.add(rowType.getFieldList().get(index));
     }
+    // Indicator（指示符）处理逻辑
     if (indicator) {
       final RelDataType booleanType =
           typeFactory.createTypeWithNullability(
@@ -149,7 +168,8 @@ public class PhysTypeImpl implements PhysType {
       List<Integer> fields) {
     return generateSelector(parameter, fields, format);
   }
-
+  // 核心任务是生成一个 Lambda 表达式（选择器），用于从原始行中提取特定字段，并将其封装成目标格式。
+  // 执行 Join 的 Key 提取、GroupBy 的分组键提取等操作时至关重要
   @Override public Expression generateSelector(
       ParameterExpression parameter,
       List<Integer> fields,
@@ -157,36 +177,47 @@ public class PhysTypeImpl implements PhysType {
     // Optimize target format
     switch (fields.size()) {
     case 0:
+      // 如果不需要提取字段（0个），设为 LIST（通常返回空列表）。
       targetFormat = JavaRowFormat.LIST;
       break;
     case 1:
+      // 如果只提取 1 个字段，强制转为 SCALAR。这意味着生成的代码不会返回 Object[]，而是直接返回该字段的值（如 Integer）
       targetFormat = JavaRowFormat.SCALAR;
       break;
     default:
       break;
     }
+    // 创建目标物理类型
+    // 通过 project 方法，基于选定的字段索引和优化后的格式，创建一个新的 PhysType 实例
     final PhysType targetPhysType =
         project(fields, targetFormat);
     switch (format) {
     case SCALAR:
+      // 如果当前行本身就是一个标量（只有一列），且我们要提取的通常也是这一列，那么直接返回 identity 函数（即 x -> x）。不需要做任何转换。
       return Expressions.call(BuiltInMethod.IDENTITY_SELECTOR.method);
     default:
+      // 路径 B：常规格式（如 ARRAY, CUSTOM）
       return Expressions.lambda(Function1.class,
           targetPhysType.record(fieldReferences(parameter, fields)), parameter);
     }
   }
-
+  // 核心作用是生成一个带有 Indicator（指示符） 的选择器，通常用于处理 SQL 中的 Grouping Sets、Cube 或 Rollup 等高级聚合操作。
+  // 在这种场景下，查询需要区分一个 NULL 值是数据本身存在的，还是因为聚合（汇总）而产生的“虚拟”空值。
   @Override public Expression generateSelector(final ParameterExpression parameter,
       final List<Integer> fields, List<Integer> usedFields,
       JavaRowFormat targetFormat) {
+    // 注意这里的 true 参数，它对应 project 方法中的 indicator 形参。
+    // 这意味着生成的 targetPhysType 结构将是：[原始字段列...] + [对应的布尔指示符列...]。
     final PhysType targetPhysType =
         project(fields, true, targetFormat);
     final List<Expression> expressions = new ArrayList<>();
     for (Ord<Integer> ord : Ord.zip(fields)) {
       final Integer field = ord.e;
+      // 情况 1：该字段在当前聚合级别中被使用
       if (usedFields.contains(field)) {
         expressions.add(fieldReference(parameter, field));
       } else {
+        // 情况 2：该字段未被使用（例如在汇总行中），填充默认值（通常是 null 或 0）
         final Primitive primitive =
             Primitive.of(targetPhysType.fieldClass(ord.i));
         expressions.add(
@@ -195,17 +226,20 @@ public class PhysTypeImpl implements PhysType {
       }
     }
     for (Integer field : fields) {
+      // 如果字段未被使用，指示符为 true（表示这是一个由聚合产生的 null）
       expressions.add(Expressions.constant(!usedFields.contains(field)));
     }
+    // 最后将合并后的 expressions（包含数据值和布尔标记）通过 targetPhysType.record 包装成目标 Java 对象。
     return Expressions.lambda(Function1.class,
         targetPhysType.record(expressions), parameter);
   }
-
+  // generateSelector 生成的是一个完整的 Lambda 表达式对象，而 selector 返回的是构造该选择器所需的“原材料”（类型和表达式列表）
   @Override public Pair<Type, List<Expression>> selector(
       ParameterExpression parameter,
       List<Integer> fields,
       JavaRowFormat targetFormat) {
     // Optimize target format
+    // 目标格式的自动优化
     switch (fields.size()) {
     case 0:
       targetFormat = JavaRowFormat.LIST;
@@ -216,17 +250,22 @@ public class PhysTypeImpl implements PhysType {
     default:
       break;
     }
+    // 创建一个描述“提取后的行”的物理类型。这个 targetPhysType 决定了返回值的第一个元素 Type。
     final PhysType targetPhysType =
         project(fields, targetFormat);
     switch (format) {
     case SCALAR:
+      // 如果当前行本身就是一个标量，那么提取的结果类型就是参数 parameter 的类型，表达式就是参数本身。
       return Pair.of(parameter.getType(), ImmutableList.of(parameter));
     default:
+      // 左值 (Type)：targetPhysType.getJavaRowType()。这是提取后的 Java 类型（可能是 Object[]、Integer 或某个 POJO）。
+      // 右值 (List<Expression>)：fieldReferences(parameter, fields)。这是一组访问指令，例如 [v1[0], v1[2]]。
       return Pair.of(targetPhysType.getJavaRowType(),
           fieldReferences(parameter, fields));
     }
   }
-
+  // 作用是为一组给定的列索引（argList）生成对应的属性访问表达式列表，并确保这些表达式的结果类型与物理类型定义的 Java 类完全匹配。
+  // 该方法接收一个基础表达式 v1（通常代表一行数据）和一个索引列表 argList（代表你想要提取哪些列）。
   @Override public List<Expression> accessors(Expression v1, List<Integer> argList) {
     final List<Expression> expressions = new ArrayList<>();
     for (int field : argList) {
@@ -237,7 +276,8 @@ public class PhysTypeImpl implements PhysType {
     }
     return expressions;
   }
-
+  // 作用是创建一个当前物理类型的“可空版本”。
+  // 这在执行 Left/Right Outer Join 或处理带有 Filter 的聚合时非常重要，因为这些操作可能会产生原本定义为非空的列变为 NULL 的情况。
   @Override public PhysType makeNullable(boolean nullable) {
     if (!nullable) {
       return this;
@@ -251,26 +291,39 @@ public class PhysTypeImpl implements PhysType {
   @Override public Expression convertTo(Expression exp, PhysType targetPhysType) {
     return convertTo(exp, targetPhysType.getFormat());
   }
-
+  // 核心作用是生成将数据从一种物理格式转换为另一种物理格式的代码。
+  // 在 Calcite 的执行计划中，不同的算子可能期望不同的数据布局（例如，一个算子输出 Object[]，而下游算子为了性能希望接收 POJO 或单个 SCALAR 值）。
+  // convertTo 就是连接这些不同布局的“适配器”。
   @Override public Expression convertTo(Expression exp, JavaRowFormat targetFormat) {
+    // 首先检查源格式（this.format）是否已经与目标格式相同。如果是，则不需要任何转换，直接返回原始表达式 exp
     if (format == targetFormat) {
       return exp;
     }
+    // 创建一个名为 o 的参数表达式，其类型是当前的 javaRowClass。
+    // 它代表转换过程中的“输入行”。同时获取总列数，确保转换时覆盖所有字段。
     final ParameterExpression o_ =
         Expressions.parameter(javaRowClass, "o");
     final int fieldCount = rowType.getFieldCount();
     // The conversion must be strict so optimizations of the targetFormat should not be performed
     // by the code that follows. If necessary the target format can be optimized before calling
     // this method.
+    // 构建目标物理类型（严格模式）
     PhysType targetPhysType =
         PhysTypeImpl.of(typeFactory, rowType, targetFormat, false);
+    // fieldReferences(o_, ...)：生成从当前行 o 提取所有字段的指令。
+    // targetPhysType.record(...)：将提取出的所有字段，按照目标格式的要求重新封装。
     final Expression selector =
         Expressions.lambda(Function1.class,
             targetPhysType.record(fieldReferences(o_, Util.range(fieldCount))),
             o_);
+    // 在原始表达式 exp（通常是一个 Enumerable 对象）上调用 .select(selector) 方法。
     return Expressions.call(exp, BuiltInMethod.SELECT.method, selector);
   }
-
+  // 核心作用是为排序（Sort）操作生成两个组件：一个是提取排序列的选择器（Selector），另一个是执行比较逻辑的比较器（Comparator）。
+  // 当你在 SQL 中使用 ORDER BY 时，Enumerable 算子就会通过这个方法生成高效的 Java 字节码来处理数据的顺序。
+  // 该方法根据排序列的数量（collations.size()）采取了两种完全不同的策略：
+  // 单列排序优化：提取那一列，并使用预定义的通用比较器。
+  // 多列复合排序：生成一个自定义的 Comparator 匿名类，内部手动实现逐列对比逻辑。
   @Override public Pair<Expression, Expression> generateCollationKey(
       final List<RelFieldCollation> collations) {
     final Expression selector;
@@ -577,6 +630,9 @@ public class PhysTypeImpl implements PhysType {
     return format.comparer();
   }
 
+  // 针对一组指定的字段索引，批量生成访问这些字段的延迟加载（Lazy Loading）表达式列表。
+  // final Expression parameter: 代表输入行对象的表达式（例如变量名 row 或 current）。
+  // final List<Integer> fields: 一个整数列表，包含了你想要获取的字段在行结构中的索引位置。例如 [0, 2, 5] 表示你想获取第 1、3、6 列。
   private List<Expression> fieldReferences(
       final Expression parameter, final List<Integer> fields) {
     return new AbstractList<Expression>() {
@@ -589,7 +645,7 @@ public class PhysTypeImpl implements PhysType {
       }
     };
   }
-
+  // 返回列的java类型
   @Override public Class fieldClass(int field) {
     return fieldClasses.get(field);
   }
@@ -717,21 +773,25 @@ public class PhysTypeImpl implements PhysType {
       Expression expression, int field) {
     return fieldReference(expression, field, null);
   }
-
+  // 作用是生成访问特定字段的表达式，并在此过程中处理复杂的类型映射，特别是针对 SQL 日期/时间类型与 Java 存储类型之间的差异。
+  // Expression expression: 代表当前行对象的表达式（例如变量名 row）。
+  // int field: 目标字段在行结构中的索引（从 0 开始）。
+  // @Nullable Type storageType: 期望的 Java 存储类型。如果外部指定了类型，生成代码时会尽量符合该类型。
   @Override public Expression fieldReference(
       Expression expression, int field, @Nullable Type storageType) {
     Type fieldType;
     if (storageType == null) {
-      storageType = fieldClass(field);
-      fieldType = null;
+      storageType = fieldClass(field); // 获取该字段在物理层默认的 Java 类
+      fieldType = null; // 逻辑类型设为 null，表示直接按物理类处理
     } else {
-      fieldType = fieldClass(field);
-      if (fieldType != java.sql.Date.class
+      fieldType = fieldClass(field); // 获取该字段真实的逻辑类型
+      if (fieldType != java.sql.Date.class  // Calcite 的一个重要设计。SQL 的 DATE、TIME、TIMESTAMP 在 Java 内部通常存储为 int (天数) 或 long (毫秒数)。
           && fieldType != java.sql.Time.class
           && fieldType != java.sql.Timestamp.class) {
         fieldType = null;
       }
     }
+    // 具体的“取数”代码生成交给了 format 对象。
     return format.field(expression, field, fieldType, storageType);
   }
 }

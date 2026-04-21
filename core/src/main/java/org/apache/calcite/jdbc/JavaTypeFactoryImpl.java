@@ -364,9 +364,15 @@ public class JavaTypeFactoryImpl
   }
 
   /** Synthetic record type. */
+  // SyntheticRecordType 的核心作用是充当一个“动态类的蓝图”。
+  // 合成性（Synthetic）：它代表一个“合成”的类型，即在运行时根据需要动态构建出来的类。
+  // 元数据容器：它收集并持有所有属于该类型的字段信息（RecordField）。
   public static class SyntheticRecordType implements Types.RecordType {
+    // 存储该记录类型包含的所有字段。
     final List<Types.RecordField> fields = new ArrayList<>();
+    // 关联的 Calcite 关系表达式数据类型。
     final @Nullable RelDataType relType;
+    // 该合成类型的全限定名或简单名。
     private final String name;
 
     private SyntheticRecordType(@Nullable RelDataType relType, String name) {
@@ -391,11 +397,26 @@ public class JavaTypeFactoryImpl
   }
 
   /** Implementation of a field. */
+  // RecordFieldImpl 的核心作用是作为一个“数据载体（DTO）”，存储关于记录字段的元数据。
+  // 在 Calcite 生成动态代码的过程中，经常需要创建一些“合成记录类型”（Synthetic Record Types），
+  // 这些类型在编译前并不存在。RecordFieldImpl 用于在内存中描述这些动态生成的类中的每一个字段。
+  // 不可变性：所有属性都由 final 修饰，一旦构造完成不可更改。
+  // 桥梁作用：它连接了 SQL 的逻辑结构（是否可为空、字段名）和 Java 的物理结构（Type、修饰符）。
+  // 轻量化：它主要用于元数据描述，而不负责具体的反射取值操作（其 get 方法抛出异常）。
   private static class RecordFieldImpl implements Types.RecordField {
+    // 指向该字段所属的容器类型。
+    // SyntheticRecordType 是 Calcite 自定义的类型，代表动态生成的记录类。这建立了字段与类之间的归属关系。
     private final SyntheticRecordType syntheticType;
+    // 字段的名称。
+    // 对应 SQL 中的列名或生成的 Java 类中的成员变量名。
     private final String name;
+    // 字段的 Java 类型。
+    // 存储为 java.lang.reflect.Type，可以是基本类型、包装类或复杂的泛型类型。
     private final Type type;
+    // 字段是否允许为 null。
     private final boolean nullable;
+    // Java 访问修饰符。
+    // 如 public (1), private (2), static (8) 等的位掩码值。
     private final int modifiers;
 
     RecordFieldImpl(

@@ -354,6 +354,7 @@ public abstract class Expressions {
    * Creates a MethodCallExpression that represents a call to a
    * static method that has arguments, using varargs.
    */
+  // 主要作用是快速构建一个表示静态方法调用的表达式节点
   public static MethodCallExpression call(Method method,
       Expression... arguments) {
     return new MethodCallExpression(method, null, toList(arguments));
@@ -893,9 +894,12 @@ public abstract class Expressions {
   /**
    * Creates a MemberExpression that represents accessing a field.
    */
+  // 构建一个表示“访问字段”的 Java 表达式（MemberExpression）
+  // 简单来说，如果你想在生成的 Java 代码中实现类似 emp.name 或 array.length 的逻辑，这个方法就是用来生成这段代码的“指令”。
   public static MemberExpression field(@Nullable Expression expression, Type type,
       String fieldName) {
     PseudoField field = Types.getField(fieldName, type);
+    // 将“对象”和“字段元数据”组合成一个完整的访问树。
     return makeMemberAccess(expression, field);
   }
 
@@ -1206,6 +1210,10 @@ public abstract class Expressions {
    *
    * <p>It can be used when the delegate type is not known at compile time.
    */
+  // 构建 Lambda 表达式的最底层、最完整的工厂方法。
+  // 相比于之前看到的重载版本，它直接接收预先构建好的语句块（BlockStatement），提供了最高的灵活性。
+  // T: Lambda 执行后的返回结果类型。
+  // F: 目标函数式接口类型（如 Function1, Predicate1 等）。
   public static <T, F extends Function<? extends T>> FunctionExpression<F>
       lambda(Class<F> type, BlockStatement body,
       Iterable<? extends ParameterExpression> parameters) {
@@ -1241,6 +1249,12 @@ public abstract class Expressions {
    *
    * <p>It can be used when the delegate type is not known at compile time.
    */
+  // 将一段逻辑代码（body）和一组参数（parameters）封装成一个符合特定函数式接口（如 Function 或 Predicate）的表达式节点
+  // T 代表 Lambda 返回值的类型。
+  // F 必须是 Linq4j 自定义的 Function 接口的子类（如 Function1, Function2 等）。
+  // Class<F> type：指定该 Lambda 表达式最终要实现的函数式接口类。
+  // Expression body：Lambda 的主体部分，即 () -> { body } 中的 body。
+  // ParameterExpression... parameters：Lambda 的形式参数（输入变量）。
   public static <T, F extends Function<? extends T>> FunctionExpression<F> lambda(
       Class<F> type, Expression body, ParameterExpression... parameters) {
     return lambda(type, Blocks.toFunctionBlock(body), toList(parameters));
@@ -1613,6 +1627,8 @@ public abstract class Expressions {
   /**
    * Creates a MemberExpression that represents accessing a field.
    */
+  // @Nullable Expression expression: 代表被访问的对象（实例）。如果是实例成员（如 emp.name）：expression 是指向 emp 变量的表达式。
+  // PseudoField member: 这是关键的元数据对象。
   public static MemberExpression makeMemberAccess(@Nullable Expression expression,
       PseudoField member) {
     return new MemberExpression(expression, member);

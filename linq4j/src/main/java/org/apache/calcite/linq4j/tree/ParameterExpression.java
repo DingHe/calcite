@@ -22,11 +22,19 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** 表达式树中传递的一个参数。它类似于函数或方法的参数，ParameterExpression x = Expressions.parameter(Integer.class, "x")，// 创建一个名为 'x' 的参数，类型为 Integer
- * Represents a named parameter expression. 通过ExpressionType.Parameter表示参数表达式
+/**
+ * Represents a named parameter expression.
  */
+// ParameterExpression 的核心作用是 代表一个命名的参数或局部变量。
+// 在 Calcite 将 SQL 转换为 Java 代码的过程中，它需要处理各种变量。例如，在 Lambda 表达式 (Employee e) -> e.deptno 中，e 就是一个 ParameterExpression。
+// 关键职能包括：
+// 定义变量标识符：为生成的 Java 代码提供合法的变量名（如 p0, p1 或自定义名称）。
+// 持有类型信息：明确该变量在 Java 运行时的物理类型（如 int, String 或自定义的 POJO 类）。
+// 闭包与作用域管理：在构建复杂的表达式树时，通过引用同一个 ParameterExpression 实例，确保生成的代码中指向的是同一个变量。
 public class ParameterExpression extends Expression {
-  private static final AtomicInteger SEQ = new AtomicInteger(); //用于生成函数名
+  // 全局序列生成器。
+  // 这是一个静态的线程安全计数器。当用户创建一个参数但没有指定名称时，类会使用它来生成唯一的默认名称（如 p0, p1, p2...），确保在同一个代码块中变量名不冲突。
+  private static final AtomicInteger SEQ = new AtomicInteger();
 
   public final int modifier; //修饰符
   public final String name; //参数名称
