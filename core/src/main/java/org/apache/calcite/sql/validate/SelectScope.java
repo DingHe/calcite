@@ -89,21 +89,29 @@ import static java.util.Objects.requireNonNull;
  *
  * @see SelectNamespace
  */
+// 专门负责处理 SELECT 查询语句的作用域。
+// 在 SQL 中，同一个标识符（如字段名）在 SELECT、WHERE、GROUP BY 中的含义和可见性是不同的。SelectScope 的职责就是定义哪些对象对当前 SELECT 子句可见。
+// 可见性控制：在 SELECT 子句中，你可以看到 FROM 子句中定义的所有表（Namespaces）以及来自父查询（Parent Scope）的对象。
+// 作为 SqlValidatorScope：用于校验内部表达式。例如在 SELECT gender ... 中，它负责通过 FROM 子句找到 gender 属于哪张表。
+// 作为 SqlValidatorNamespace：对于外部查询，当前的 SELECT 块本身就是一个数据源。例如子查询 SELECT * FROM (SELECT id FROM emp)，外层查询将这个 SelectScope 视为一个结果集。
 public class SelectScope extends ListScope {
   //~ Instance fields --------------------------------------------------------
-
+  // 指向该作用域对应的 SQL 解析树节点（即具体的 SELECT 语句）。
   private final SqlSelect select;
+  // 存储当前作用域中定义的窗口名称（来自 WINDOW 子句）。
   protected final List<String> windowNames = new ArrayList<>();
-
+  // 存储“展开”后的 Select 列表。例如将 SELECT * 替换为具体的 SELECT col1, col2...。
   private @Nullable List<SqlNode> expandedSelectList = null;
 
   /**
    * List of column names which sort this scope. Empty if this scope is not
    * sorted. Null if has not been computed yet.
    */
+  // 存储对该作用域进行排序的列。如果该作用域没有排序或者是初次计算，则可能为空。
   private @MonotonicNonNull SqlNodeList orderList;
 
   /** Scope to use to resolve windows. */
+  // 用于解析窗口的父作用域。通常窗口的定义可以继承自更外层的定义。
   private final SqlValidatorScope windowParent;
 
   //~ Constructors -----------------------------------------------------------

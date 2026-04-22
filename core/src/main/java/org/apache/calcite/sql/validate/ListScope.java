@@ -42,12 +42,19 @@ import static java.util.Objects.requireNonNull;
  * Abstract base for a scope which is defined by a list of child namespaces and
  * which inherits from a parent scope.
  */
+// 代表了一种由多个子命名空间组成的范围。
+// 在 SQL 校验中，有些子句会同时引入多个数据源，例如 FROM 子句（包含多个 Join 的表）。ListScope 的主要职责是：
+// 管理成员列表：维护一个 children 列表，记录该作用域内定义的所有表、子查询或别名。
+// 局部优先查找：当解析一个标识符（如列名）时，ListScope 会先检查自己的 children 列表中是否有匹配项。
+// 支持多表环境：它实现了在多个 Namespace 之间进行歧义检查（Ambiguity Check）的逻辑，确保列名引用是唯一的。
 public abstract class ListScope extends DelegatingScope {
   //~ Instance fields --------------------------------------------------------
 
   /**
    * List of child {@link SqlValidatorNamespace} objects and their names.
    */
+  // 存储当前作用域内的所有子项。
+  // 每个 ScopeChild 包含该子项的索引（ordinal）、别名（name）、对应的命名空间（namespace）以及是否可为空（nullable）。
   public final List<ScopeChild> children = new ArrayList<>();
 
   //~ Constructors -----------------------------------------------------------
