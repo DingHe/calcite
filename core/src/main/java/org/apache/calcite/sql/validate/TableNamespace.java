@@ -43,8 +43,17 @@ import static org.apache.calcite.util.Static.RESOURCE;
 import static java.util.Objects.requireNonNull;
 
 /** Namespace based on a table from the catalog. */
+// Namespace（命名空间） 代表一个产生行数据的源（如表、子查询、JOIN 结果等）。
+// 数据源标识：它封装了来自元数据目录（Catalog）的表对象（SqlValidatorTable）。
+// 类型校验：负责解析并返回该表在 SQL 校验阶段的行类型（Row Type）。
+// 动态扩展（Extension）：支持某些数据库特有的“扩展列”功能（如 Apache Phoenix 的 HBase 映射），允许在查询时动态声明表中原本未定义的隐藏列。
+
 class TableNamespace extends AbstractNamespace {
+  // 存储底层元数据表对象。
+  // 是校验器与元数据层（Schema）之间的桥梁，包含了表的列信息、统计信息等。
   private final SqlValidatorTable table;
+  // 存储该命名空间特有的“扩展列”列表
+  // 这些列不属于标准表定义，而是通过 SQL 语法（如 EXTEND 子句）动态加入的。
   public final ImmutableList<RelDataTypeField> extendedFields;
 
   /** Creates a TableNamespace. */
@@ -58,23 +67,26 @@ class TableNamespace extends AbstractNamespace {
   TableNamespace(SqlValidatorImpl validator, SqlValidatorTable table) {
     this(validator, table, ImmutableList.of());
   }
-
+  // 负责在校验阶段确定表的最终结构（Row Type）。它主要完成了两件事：识别“必须过滤”的敏感字段，以及合并动态扩展的字段。
   @Override protected RelDataType validateImpl(RelDataType targetRowType) {
     this.mustFilterFields = ImmutableBitSet.of();
+    // SemanticTable: 这是 Calcite 提供的一个接口，用于给表增加“语义”约束
+    // 尝试将底层的 table 对象转换为 SemanticTable。
     table.maybeUnwrap(SemanticTable.class)
         .ifPresent(semanticTable ->
             this.mustFilterFields =
                 table.getRowType().getFieldList().stream()
-                    .map(RelDataTypeField::getIndex)
-                    .filter(semanticTable::mustFilter)
+                    .map(RelDataTypeField::getIndex)//如果转换成功，则遍历该表的所有字段（getFieldList）。
+                    .filter(semanticTable::mustFilter)// 询问：“这个索引处的字段是否强制要求在 SQL 的 WHERE 子句中出现？”
                     .collect(toImmutableBitSet()));
 
     if (extendedFields.isEmpty()) {
       return table.getRowType();
     }
+    // 类型合并与构建 (Extended Fields Logic)
     final RelDataTypeFactory.Builder builder =
         validator.getTypeFactory().builder();
-    builder.addAll(table.getRowType().getFieldList());
+    builder.addAll(table.getRowType().getFieldList()); // 先添加原始字段
     builder.addAll(extendedFields);
     return builder.build();
   }
@@ -99,6 +111,9 @@ class TableNamespace extends AbstractNamespace {
    * <p>Extended fields are "hidden" or undeclared fields that may nevertheless
    * be present if you ask for them. Phoenix uses them, for instance, to access
    * rarely used fields in the underlying HBase table. */
+  // 创建一个包含扩展列的新 TableNamespace。
+  // 用于支持 SQL 中的 SELECT ... FROM table EXTEND (col1 type1, ...) 语法。
+  // 校验扩展列是否重复，检查类型是否与原表冲突，并尝试调用底层 RelOptTable.extend（如果支持）。
   public TableNamespace extend(SqlNodeList extendList) {
     final List<SqlNode> identifierList = Util.quotientList(extendList, 2, 0);
     SqlValidatorUtil.checkIdentifierListForDuplicates(
@@ -130,6 +145,8 @@ class TableNamespace extends AbstractNamespace {
    * Gets the data-type of all columns in a table. For a view table, includes
    * columns of the underlying table.
    */
+  // 获取表的最基础行类型。
+  // 如果是 ModifiableViewTable（可修改视图），则递归解包获取其底层原始表的类型。
   private RelDataType getBaseRowType() {
     final Table schemaTable =
         requireNonNull(table.unwrap(Table.class),

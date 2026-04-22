@@ -26,9 +26,15 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 /**
  * Namespace representing the row type produced by joining two relations.
  */
+// 专门用于处理 SQL 中的 JOIN（连接） 操作
+// 负责定义两个数据源连接后产生的结果集结构。
+// 在 SQL 校验阶段，每个 FROM 子句中的数据源（如单表、子查询、JOIN 等）都被抽象为一个 SqlValidatorNamespace。
+// JoinNamespace 的核心作用是：
+// 类型合成：根据 JOIN 的左右操作数（Left/Right Operands）和 JOIN 类型（INNER, LEFT, FULL 等），合成一个新的行类型（Row Type）。
+// 空值推导（Nullability Analysis）：这是该类最重要的逻辑。它决定了在执行外连接（Outer Join）时，哪些原本不可为空（NOT NULL）的列在结果集中需要变成可为空（NULLABLE）。
 class JoinNamespace extends AbstractNamespace {
   //~ Instance fields --------------------------------------------------------
-
+  // 存储解析树中的 SqlJoin 节点。
   private final SqlJoin join;
 
   //~ Constructors -----------------------------------------------------------
@@ -39,8 +45,9 @@ class JoinNamespace extends AbstractNamespace {
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  // 定义了 JOIN 之后结果集的行类型
   @Override protected RelDataType validateImpl(RelDataType targetRowType) {
+    // 1. 获取左右两侧的命名空间并推导它们的行类型
     RelDataType leftType =
         validator.getNamespaceOrThrow(join.getLeft()).getRowType();
     RelDataType rightType =
