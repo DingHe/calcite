@@ -116,6 +116,14 @@ import java.util.function.UnaryOperator;
  * to resolve
  * names in a particular clause of a SQL statement.
  */
+// SqlValidator 的主要职责是执行 SQL 的语义校验（Semantic Validation）。仅仅语法正确（Parser 通过）是不够的，还需要确保 SQL 在逻辑上是有意义的。
+// 语义校验阶段的核心接口。它位于 SQL 解析（Parser）之后、逻辑计划转换（SqlToRelConverter）之前。
+// 其核心职责是：将“看起来像 SQL”的语法树（SqlNode）转变为“语义正确且含义明确”的校验树，并为树中的每个节点分配数据类型（RelDataType）。
+// 名称解析（Name Resolution）：将 SQL 中的标识符（如 empno）映射到元数据中的具体对象（如 EMP 表的第 1 列）。
+// 类型推导（Type Derivation）：确定每个表达式、函数调用、查询结果集的返回类型。
+// 合法性检查（Validation）：检查 SQL 是否违反语义规则（如：聚合查询中引用了非聚合列、函数参数类型不匹配、表不存在等）。
+// SQL 重写（Rewriting）：为了消除歧义或简化结构，校验器会重写部分语法树（如展开 SELECT * 为具体的列名列表）。
+// 维护命名空间与作用域：管理查询中不同位置（如 WHERE、GROUP BY）可见的表和列。
 @Value.Enclosing
 public interface SqlValidator {
   //~ Methods ----------------------------------------------------------------
@@ -125,6 +133,7 @@ public interface SqlValidator {
    *
    * @return catalog reader
    */
+  // 获取元数据读取器，用于从数据库 Schema 中查找表、函数和字段。
   @Pure
   SqlValidatorCatalogReader getCatalogReader();
 
@@ -133,6 +142,7 @@ public interface SqlValidator {
    *
    * @return operator table
    */
+  // 获取运算符表，包含 SQL 注册的所有内置和自定义函数/运算符。
   @Pure
   SqlOperatorTable getOperatorTable();
 
@@ -143,6 +153,8 @@ public interface SqlValidator {
    * @param topNode top of expression tree to be validated
    * @return validated tree (possibly rewritten)
    */
+  // 最重要的入口。
+  // 对整棵 SQL 语法树进行深度优先遍历校验，返回校验后（可能被重写）的树。
   SqlNode validate(SqlNode topNode);
 
   /**
@@ -154,6 +166,7 @@ public interface SqlValidator {
    *                      resolve {@link SqlIdentifier} references
    * @return validated tree (possibly rewritten)
    */
+  // 校验带有动态参数的表达式，允许传入名称到类型的映射。
   SqlNode validateParameterizedExpression(
       SqlNode topNode,
       Map<String, RelDataType> nameToTypeMap);
@@ -177,6 +190,7 @@ public interface SqlValidator {
    *                      type 'unknown'.
    * @throws RuntimeException if the query is not valid
    */
+  // 专门校验查询类节点（SELECT、UNION 等），检查结果集是否符合目标行类型。
   void validateQuery(SqlNode node, SqlValidatorScope scope,
       RelDataType targetRowType);
 
@@ -186,6 +200,7 @@ public interface SqlValidator {
    * @param node the node of interest
    * @return validated type, never null
    */
+  // 获取已校验节点推导出的数据类型。若未推导出则抛出异常。
   RelDataType getValidatedNodeType(SqlNode node);
 
   /**
@@ -197,6 +212,7 @@ public interface SqlValidator {
    * @param node the node of interest
    * @return validated type, or null if unknown or not applicable
    */
+  // 尝试获取类型，若未知则返回 null（常用于别名解析）。
   @Nullable RelDataType getValidatedNodeTypeIfKnown(SqlNode node);
 
   /**
@@ -212,6 +228,7 @@ public interface SqlValidator {
    * @param call Call
    * @return List of operands' types, or null if not known or 'obvious'
    */
+  // 获取一个函数调用中各个操作数的校验后类型。
   @Nullable List<RelDataType> getValidatedOperandTypes(SqlCall call);
 
   /**
@@ -220,6 +237,7 @@ public interface SqlValidator {
    * @param id    Identifier
    * @param scope Naming scope
    */
+  // 校验标识符（表名、列名），将其与作用域绑定。
   void validateIdentifier(SqlIdentifier id, SqlValidatorScope scope);
 
   /**
@@ -227,6 +245,7 @@ public interface SqlValidator {
    *
    * @param literal Literal
    */
+  // 校验常量（数字、字符串）。
   void validateLiteral(SqlLiteral literal);
 
   /**
@@ -234,6 +253,7 @@ public interface SqlValidator {
    *
    * @param qualifier Interval qualifier
    */
+  // 校验时间间隔限定符（如 YEAR TO MONTH）。
   void validateIntervalQualifier(SqlIntervalQualifier qualifier);
 
   /**
@@ -241,6 +261,7 @@ public interface SqlValidator {
    *
    * @param insert INSERT statement
    */
+  // 校验插入语句的源与目标匹配性。
   void validateInsert(SqlInsert insert);
 
   /**
@@ -248,6 +269,7 @@ public interface SqlValidator {
    *
    * @param update UPDATE statement
    */
+  // 校验更新语句。
   void validateUpdate(SqlUpdate update);
 
   /**
@@ -255,6 +277,7 @@ public interface SqlValidator {
    *
    * @param delete DELETE statement
    */
+  // 校验删除语句。
   void validateDelete(SqlDelete delete);
 
   /**
@@ -262,6 +285,7 @@ public interface SqlValidator {
    *
    * @param merge MERGE statement
    */
+  // 校验 MERGE 语句。
   void validateMerge(SqlMerge merge);
 
   /**
@@ -269,6 +293,7 @@ public interface SqlValidator {
    *
    * @param dataType Data type
    */
+  // 校验 SQL 中的类型声明（如 CAST(x AS INT) 中的 INT）。
   void validateDataType(SqlDataTypeSpec dataType);
 
   /**
@@ -276,6 +301,7 @@ public interface SqlValidator {
    *
    * @param dynamicParam Dynamic parameter
    */
+  // 校验动态参数（问号占位符）。
   void validateDynamicParam(SqlDynamicParam dynamicParam);
 
   /**
@@ -290,6 +316,7 @@ public interface SqlValidator {
    * @param call       the SqlNode if a function call if the window is attached
    *                   to one.
    */
+  // 校验窗口函数（OVER 子句）。
   void validateWindow(
       SqlNode windowOrId,
       SqlValidatorScope scope,
@@ -300,6 +327,7 @@ public interface SqlValidator {
    *
    * @param pattern MATCH_RECOGNIZE clause
    */
+  // 校验复杂事件处理（CEP）中的 MATCH_RECOGNIZE 子句。
   void validateMatchRecognize(SqlCall pattern);
 
   /**
@@ -310,6 +338,7 @@ public interface SqlValidator {
    *
    * @param lambdaExpr Lambda expression
    */
+  // 校验 Lambda 表达式（通常用于高级函数）
   void validateLambda(SqlLambda lambdaExpr);
 
   /**
@@ -318,6 +347,7 @@ public interface SqlValidator {
    * @param call  Operator call
    * @param scope Naming scope
    */
+  // 校验运算符或函数调用。
   void validateCall(
       SqlCall call,
       SqlValidatorScope scope);
@@ -333,6 +363,7 @@ public interface SqlValidator {
    *                     or null
    * @param scope        Syntactic scope
    */
+  // 专门校验聚合函数的参数（如 DISTINCT、FILTER、ORDER BY 等）。
   void validateAggregateParams(SqlCall aggCall, @Nullable SqlNode filter,
       @Nullable SqlNodeList distinctList, @Nullable SqlNodeList orderList,
       SqlValidatorScope scope);
@@ -342,6 +373,7 @@ public interface SqlValidator {
    * arguments and requires no parentheses (for example "CURRENT_USER"),
    * returns a call to that function, otherwise returns null.
    */
+  // 如果标识符是不带括号的函数（如 CURRENT_USER），则将其转为函数调用。
   @Nullable SqlCall makeNullaryCall(SqlIdentifier id);
 
   /**
@@ -352,6 +384,7 @@ public interface SqlValidator {
    * @param operand Parse tree node
    * @return Type of the SqlNode. Should never return <code>NULL</code>
    */
+  // 根据给定的作用域推导表达式的类型。
   RelDataType deriveType(
       SqlValidatorScope scope,
       SqlNode operand);
@@ -368,6 +401,7 @@ public interface SqlValidator {
    * @param e    The validation error
    * @return Exception containing positional information, never null
    */
+  // 创建一个带有行列位置信息的校验错误异常。
   CalciteContextException newValidationError(
       SqlNode node,
       Resources.ExInst<SqlValidatorException> e);
@@ -381,6 +415,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return whether SELECT statement is an aggregation
    */
+  // 判断一个 SELECT 语句是否包含聚合操作。
   boolean isAggregate(SqlSelect select);
 
   /**
@@ -405,6 +440,7 @@ public interface SqlValidator {
    * @return A window
    * @throws RuntimeException Validation exception if window does not exist
    */
+  // 将窗口引用（别名）解析为完整的窗口规格。
   SqlWindow resolveWindow(
       SqlNode windowOrRef,
       SqlValidatorScope scope);
@@ -439,6 +475,7 @@ public interface SqlValidator {
    * @param node Parse tree node
    * @return namespace of node
    */
+  // 获取节点对应的命名空间。
   @Nullable SqlValidatorNamespace getNamespace(SqlNode node);
 
   /**
@@ -451,6 +488,7 @@ public interface SqlValidator {
    * @return derived alias, or null if no alias can be derived and ordinal is
    * less than zero
    */
+  // 为表达式推导别名（如果没有显式别名，则生成 EXPR$n）。
   @Nullable String deriveAlias(
       SqlNode node,
       int ordinal);
@@ -464,6 +502,7 @@ public interface SqlValidator {
    * @param includeSystemVars Whether to include system variables
    * @return expanded select clause
    */
+  // 将 SELECT * 或 SELECT table.* 展开为具体的字段列表
   SqlNodeList expandStar(SqlNodeList selectList, SqlSelect query,
       boolean includeSystemVars);
 
@@ -475,6 +514,7 @@ public interface SqlValidator {
    * @param select Query
    * @return naming scope of WHERE clause
    */
+  // 获取 WHERE 子句的作用域。
   SqlValidatorScope getWhereScope(SqlSelect select);
 
   /**
@@ -482,6 +522,7 @@ public interface SqlValidator {
    *
    * @return type factory
    */
+  // 获取类型工厂，用于创建和管理 SQL 运行时的各种数据类型。
   @Pure
   RelDataTypeFactory getTypeFactory();
 
@@ -494,6 +535,7 @@ public interface SqlValidator {
    * @param node A SQL parse tree node, never null
    * @param type Its type; must not be null
    */
+  // 手动为某个节点绑定校验后的类型。
   @API(status = API.Status.INTERNAL, since = "1.24")
   void setValidatedNodeType(SqlNode node, RelDataType type);
 
@@ -502,6 +544,7 @@ public interface SqlValidator {
    *
    * @param node node to be removed
    */
+  // 从缓存中移除某个节点的类型信息。
   void removeValidatedNodeType(SqlNode node);
 
   /**
@@ -509,6 +552,7 @@ public interface SqlValidator {
    *
    * @return unknown type
    */
+  // 返回表示“未知类型”的对象。
   RelDataType getUnknownType();
 
   /**
@@ -544,6 +588,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for SELECT statement
    */
+  // 获取 SELECT 子句的作用域。
   SqlValidatorScope getSelectScope(SqlSelect select);
 
   /**
@@ -554,6 +599,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for SELECT statement, sans any aggregating scope
    */
+  // 获取原始 SELECT 作用域（不含聚合逻辑）。
   @Nullable SelectScope getRawSelectScope(SqlSelect select);
 
   /**
@@ -563,6 +609,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for FROM clause
    */
+  // 获取 FROM 子句的作用域。
   SqlValidatorScope getFromScope(SqlSelect select);
 
   /**
@@ -574,6 +621,7 @@ public interface SqlValidator {
    * @return naming scope for JOIN clause
    * @see #getFromScope
    */
+  // 获取 JOIN 内部（ON/USING）的作用域。
   SqlValidatorScope getJoinScope(SqlNode node);
 
   /**
@@ -583,6 +631,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for GROUP BY clause
    */
+  // 获取 GROUP BY 子句的作用域。
   SqlValidatorScope getGroupScope(SqlSelect select);
 
   /**
@@ -592,6 +641,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for HAVING clause
    */
+  // 获取 HAVING 子句的作用域。
   SqlValidatorScope getHavingScope(SqlSelect select);
 
   /**
@@ -603,6 +653,7 @@ public interface SqlValidator {
    * @param select SELECT statement
    * @return naming scope for ORDER BY clause
    */
+  // 获取 ORDER BY 子句的作用域。
   SqlValidatorScope getOrderScope(SqlSelect select);
 
   /**
@@ -611,6 +662,7 @@ public interface SqlValidator {
    * @param node Match recognize
    * @return naming scope for Match recognize clause
    */
+  // 获取 MATCH_RECOGNIZE 的作用域。
   SqlValidatorScope getMatchRecognizeScope(SqlMatchRecognize node);
 
   /**
@@ -619,11 +671,13 @@ public interface SqlValidator {
    * @param node Lambda expression
    * @return naming scope for lambda expression
    */
+  // 获取 Lambda 表达式内部的作用域。
   SqlValidatorScope getLambdaScope(SqlLambda node);
 
   /**
    * Returns a scope that cannot see anything.
    */
+  // 获取一个什么也看不见的空作用域。
   SqlValidatorScope getEmptyScope();
 
   /**
@@ -632,16 +686,19 @@ public interface SqlValidator {
    * @param select select expression associated with the cursor
    * @param scope  scope of the parent query associated with the cursor
    */
+  // 将 SELECT 声明为游标。
   void declareCursor(SqlSelect select, SqlValidatorScope scope);
 
   /**
    * Pushes a new instance of a function call on to a function call stack.
    */
+  // 维护函数调用栈，用于递归校验。
   void pushFunctionCall();
 
   /**
    * Removes the topmost entry from the function call stack.
    */
+  // 维护函数调用栈，用于递归校验。
   void popFunctionCall();
 
   /**
@@ -651,6 +708,7 @@ public interface SqlValidator {
    * @param columnListParamName name of the column list parameter
    * @return name of the parent cursor
    */
+  // 获取引用的父游标名称。
   @Nullable String getParentCursor(String columnListParamName);
 
   /**
@@ -663,6 +721,7 @@ public interface SqlValidator {
    * @param argTypes              Types of arguments
    * @return Resolved type of constructor
    */
+  // 推导构造函数的类型。
   RelDataType deriveConstructorType(
       SqlValidatorScope scope,
       SqlCall call,
@@ -680,6 +739,7 @@ public interface SqlValidator {
    * @param argTypes           Types of arguments
    * @param argNames           Names of arguments, or null if call by position
    */
+  // 当找不到匹配的函数时，处理并返回描述性错误。
   CalciteException handleUnresolvedFunction(SqlCall call,
       SqlOperator unresolvedFunction, List<RelDataType> argTypes,
       @Nullable List<String> argNames);
@@ -703,6 +763,7 @@ public interface SqlValidator {
    * @param orderExpr Expression in the ORDER BY clause.
    * @return Expression translated into SELECT clause semantics
    */
+  // 将 ORDER BY 2 中的序号或别名展开为具体的表达式。
   SqlNode expandOrderExpr(SqlSelect select, SqlNode orderExpr);
 
   /**
@@ -712,6 +773,7 @@ public interface SqlValidator {
    * @param scope Scope
    * @return Expanded expression
    */
+  // 展开表达式。
   SqlNode expand(SqlNode expr, SqlValidatorScope scope);
 
   /** Resolves a literal.
@@ -719,6 +781,7 @@ public interface SqlValidator {
    * <p>Usually returns the literal unchanged, but if the literal is of type
    * {@link org.apache.calcite.sql.type.SqlTypeName#UNKNOWN} looks up its type
    * and converts to the appropriate literal subclass. */
+  // 将未知类型的常量解析为具体的子类（如将字符串解析为 Date 常量）。
   SqlLiteral resolveLiteral(SqlLiteral literal);
 
   /**
@@ -730,6 +793,7 @@ public interface SqlValidator {
    * @param field Field
    * @return whether field is a system field
    */
+  // 判断字段是否为系统内置字段。
   boolean isSystemField(RelDataTypeField field);
 
   /**
@@ -744,6 +808,7 @@ public interface SqlValidator {
    * @return Description of how each field in the row type maps to a schema
    * object
    */
+  // 获取结果集中每一列的原始出处（表名、列名）。
   List<@Nullable List<String>> getFieldOrigins(SqlNode sqlQuery);
 
   /**
@@ -753,6 +818,7 @@ public interface SqlValidator {
    * @param sqlQuery Query
    * @return Record type
    */
+  // 获取查询中所有动态参数构成的行类型。
   RelDataType getParameterRowType(SqlNode sqlQuery);
 
   /**
@@ -761,6 +827,7 @@ public interface SqlValidator {
    * @param node Node
    * @return Scope
    */
+  // 获取窗口或 VALUES 节点的作用域。
   SqlValidatorScope getOverScope(SqlNode node);
 
   /**
@@ -773,21 +840,24 @@ public interface SqlValidator {
    *             modality
    * @return whether query supports the given modality
    */
+  // 校验查询是否支持流式（Streaming）或关系型（Relational）模式。
   boolean validateModality(SqlSelect select, SqlModality modality,
       boolean fail);
-
+  // 校验 CTE（WITH 语句）。
   void validateWith(SqlWith with, SqlValidatorScope scope);
-
+  // 校验 CTE 中的单个定义项。
   void validateWithItem(SqlWithItem withItem);
-
+  // 校验序列值（如 NEXT VALUE FOR）。
   void validateSequenceValue(SqlValidatorScope scope, SqlIdentifier id);
-
+  // 获取 WITH 定义项的作用域。
   SqlValidatorScope getWithScope(SqlNode withItem);
 
   /** Get the type coercion instance. */
+  // 获取隐式类型转换（Coercion）的实例。
   TypeCoercion getTypeCoercion();
 
   /** Returns the type mapping rule. */
+  // 获取类型映射规则（决定类型转换是否宽松）。
   default SqlTypeMappingRule getTypeMappingRule() {
     return config().conformance().allowLenientCoercion()
         ? SqlTypeCoercionRule.lenientInstance()
@@ -795,6 +865,7 @@ public interface SqlValidator {
   }
 
   /** Returns the config of the validator. */
+  // 获取校验器的配置信息。
   Config config();
 
   /**
@@ -804,10 +875,12 @@ public interface SqlValidator {
    * <p>This is mainly used for tests, otherwise constructs a {@link Config} directly
    * through the constructor.
    */
+  // 变换校验器的配置并返回一个新的实例。
   @API(status = API.Status.INTERNAL, since = "1.23")
   SqlValidator transform(UnaryOperator<SqlValidator.Config> transform);
 
   /** Returns the set of allowed time frames. */
+  // 返回该校验器允许的时间框架集合（用于时间区间处理）
   TimeFrameSet getTimeFrameSet();
 
   /** Validates a time frame.
@@ -820,6 +893,7 @@ public interface SqlValidator {
    *
    * <p>Returns a time frame, or throws.
    */
+  // 校验自定义或内置的时间框架。
   TimeFrame validateTimeFrame(SqlIntervalQualifier intervalQualifier);
 
   //~ Inner Class ------------------------------------------------------------
@@ -838,6 +912,7 @@ public interface SqlValidator {
     /**
      * Returns whether to enable rewrite of "macro-like" calls such as COALESCE.
      */
+    // 是否允许将宏调用（如 COALESCE）重写。
     @Value.Default default boolean callRewrite() {
       return true;
     }
@@ -849,6 +924,7 @@ public interface SqlValidator {
 
     /** Returns how NULL values should be collated if an ORDER BY item does not
      * contain NULLS FIRST or NULLS LAST. */
+    // 默认的 NULL 排序规则（高位或低位）。
     @Value.Default default NullCollation defaultNullCollation() {
       return NullCollation.HIGH;
     }
@@ -858,6 +934,7 @@ public interface SqlValidator {
     Config withDefaultNullCollation(NullCollation nullCollation);
 
     /** Returns whether column reference expansion is enabled. */
+    // 是否允许展开列引用。
     @Value.Default default boolean columnReferenceExpansion() {
       return true;
     }
@@ -877,6 +954,7 @@ public interface SqlValidator {
      * method and always use this variable (or better, move preferences like
      * this to a separate "parameter" class).
      */
+    // 是否允许展开标识符。
     @Value.Default default boolean identifierExpansion() {
       return false;
     }
@@ -900,6 +978,7 @@ public interface SqlValidator {
      * <p>If false (the default behavior), an unknown function call causes a
      * validation error to be thrown.
      */
+    // 是否开启宽松模式（找不到函数时不报错，返回 UNKNOWN 类型）。
     @Value.Default default boolean lenientOperatorLookup() {
       return false;
     }

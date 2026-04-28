@@ -179,6 +179,22 @@ import static java.util.Objects.requireNonNull;
 /**
  * Default implementation of {@link SqlValidator}.
  */
+// 该类的作用可以概括为以下四个核心环节：
+// 标识符解析（Identifier Resolution）：
+// 将 SQL 文本中的名字（如 EMP 表、sal 列）与数据库元数据（Catalog）中的真实对象对应起来。它会处理别名、隐式表引用以及复杂的嵌套字段。
+// 类型推导（Type Derivation）：
+// 通过递归遍历，计算每个表达式的最终数据类型。例如，1 + 1.5 会推导出 DOUBLE，COUNT(*) 会推导出 BIGINT。
+// 语义规则检查（Semantic Constraint Checking）：
+// 执行 SQL 标准和方言规定的各种限制检查。例如：
+// GROUP BY 查询中，SELECT 的列是否合法。
+// 函数参数的个数和类型是否匹配。
+// 子查询的嵌套是否合法。
+// 语法树重写（AST Rewriting）：
+// 为了方便后续转换，它会对树进行物理变形。例如：
+// 将 SELECT * 展开为具体的列名列表。
+// 将 UPDATE 语句重写为 MERGE 语句（在某些配置下）。
+// 处理隐式的类型转换（Type Coercion）。
+
 public class SqlValidatorImpl implements SqlValidatorWithHints {
   //~ Static fields/initializers ---------------------------------------------
 
@@ -201,26 +217,31 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   public static final String UPDATE_ANON_PREFIX = "SYS$ANON";
 
   //~ Instance fields --------------------------------------------------------
-
+  // 运算符表，存储了所有的函数（如 SUM, CONCAT）和操作符（如 +, -）
   private final SqlOperatorTable opTab;
+  // 目录读取器，是连接元数据的桥梁，用于查找表和 Schema 信息。
   final SqlValidatorCatalogReader catalogReader;
 
   /**
    * Maps {@link SqlParserPos} strings to the {@link SqlIdentifier} identifier
    * objects at these positions.
    */
+  // 记录标识符在源代码中的位置，用于报错时精准定位行号
   protected final Map<String, IdInfo> idPositions = new HashMap<>();
 
   /**
    * Maps {@link SqlNode query node} objects to the {@link SqlValidatorScope}
    * scope created from them.
    */
+  // 映射 SqlNode 到 SqlValidatorScope。
+  // Scope 决定了在 SQL 的某个位置（如 WHERE 子句内部）哪些名字是可见的。
   protected final IdentityHashMap<SqlNode, SqlValidatorScope> scopes =
       new IdentityHashMap<>();
 
   /**
    * Maps a {@link SqlSelect} and a clause to the scope used by that clause.
    */
+  // 细化管理 SELECT 各个子句（FROM, WHERE, GROUP BY 等）对应的特定作用域。
   private final Map<IdPair<SqlSelect, Clause>, SqlValidatorScope>
       clauseScopes = new HashMap<>();
 
@@ -234,6 +255,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * {@link SqlValidatorNamespace namespace} which describes what columns they
    * contain.
    */
+  // 映射 SqlNode 到 SqlValidatorNamespace。
+  // Namespace 描述了一个数据源（如表、子查询）包含哪些列。
   protected final IdentityHashMap<SqlNode, SqlValidatorNamespace> namespaces =
       new IdentityHashMap<>();
 
@@ -242,6 +265,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * only the top-level SELECT is a cursor; Calcite extends this with
    * cursors as inputs to table functions.
    */
+  // 记录哪些 SELECT 被声明为游标（Cursor）
   private final Set<SqlNode> cursorSet = Sets.newIdentityHashSet();
 
   /**
@@ -249,11 +273,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * is needed to handle nested function calls. The function call currently
    * being validated is at the top of the stack.
    */
+  // 函数调用栈，处理嵌套函数调用时的参数验证。
   protected final Deque<FunctionParamInfo> functionCallStack =
       new ArrayDeque<>();
 
   private int nextGeneratedId;
+  // 类型工厂，用于创建逻辑数据类型（RelDataType）。
   protected final RelDataTypeFactory typeFactory;
+  // 预定义的常用数据类型单例。
   protected final RelDataType unknownType;
   private final RelDataType booleanType;
 
@@ -264,21 +291,23 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * since in some cases (such as null literals) we need to discriminate by
    * instance.
    */
+  // 这是一个 IdentityHashMap，存储了每个 SqlNode 及其校验后的 RelDataType。
+  // 这是校验结果的主要产出。
   private final IdentityHashMap<SqlNode, RelDataType> nodeToTypeMap =
       new IdentityHashMap<>();
 
   /** Provides the data for {@link #getValidatedOperandTypes(SqlCall)}. */
   public final IdentityHashMap<SqlCall, List<RelDataType>> callToOperandTypesMap =
       new IdentityHashMap<>();
-
+  // 一系列探测器，用于在语法树中快速查找是否存在聚合函数、窗口函数或分组标识。
   private final AggFinder aggFinder;
   private final AggFinder aggOrOverFinder;
   private final AggFinder aggOrOverOrGroupFinder;
   private final AggFinder groupFinder;
   private final AggFinder overFinder;
-
+  // 校验器的配置信息（如是否允许隐式转换、标识符扩展规则等）。
   private Config config;
-
+  // 记录重写前的原始表达式，主要用于内部追溯。
   private final Map<SqlNode, SqlNode> originalExprs = new HashMap<>();
 
   private @Nullable SqlNode top;
@@ -293,6 +322,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       new SqlValidatorImpl.ValidationErrorFunction();
 
   // TypeCoercion instance used for implicit type coercion.
+  // 隐式类型转换处理器，负责在类型不匹配时（如 int 与 varchar 比较）自动插入转换逻辑。
   private final TypeCoercion typeCoercion;
 
   //~ Constructors -----------------------------------------------------------
@@ -314,25 +344,36 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     this.catalogReader = requireNonNull(catalogReader, "catalogReader");
     this.typeFactory = requireNonNull(typeFactory, "typeFactory");
     final RelDataTypeSystem typeSystem = typeFactory.getTypeSystem();
+    // 从 typeSystem 中导出了 timeFrameSet，用于处理 SQL 中的时间单位和时间窗口。
     this.timeFrameSet =
         requireNonNull(typeSystem.deriveTimeFrameSet(TimeFrames.CORE),
             "timeFrameSet");
+    // 决定了校验器的具体行为（如是否允许隐式转换）
     this.config = requireNonNull(config, "config");
 
     // It is assumed that unknown type is nullable by default
+    // 被初始化为 Nullable（可为空）的未知类型。当 SQL 遇到 NULL 字面量或者无法立即推断类型的表达式时，会先标记为此类型。
     unknownType = typeFactory.createTypeWithNullability(typeFactory.createUnknownType(), true);
+    // 标准的 SQL 布尔类型，常用于 WHERE 子句和逻辑判断。
     booleanType = typeFactory.createSqlType(SqlTypeName.BOOLEAN);
 
     final SqlNameMatcher nameMatcher = catalogReader.nameMatcher();
+    // 校验器创建了多个不同配置的 AggFinder 实例。AggFinder 是一个访问器（Visitor），用于在 SQL 语法树中查找特定类型的函数。
+    // 只找普通的聚合函数（如 SUM, AVG）。
     aggFinder = new AggFinder(opTab, false, true, false, null, nameMatcher);
+    // 查找聚合函数或窗口函数（OVER）。
     aggOrOverFinder =
         new AggFinder(opTab, true, true, false, null, nameMatcher);
+    // 专门查找窗口函数。
     overFinder =
         new AggFinder(opTab, true, false, false, aggOrOverFinder, nameMatcher);
+    // 查找分组标识。
     groupFinder = new AggFinder(opTab, false, false, true, null, nameMatcher);
+    // 全能探测器，查找以上所有内容。
     aggOrOverOrGroupFinder =
         new AggFinder(opTab, true, true, true, null, nameMatcher);
     @SuppressWarnings("argument.type.incompatible")
+    // 隐式类型转换 (Type Coercion) 的策略配置
     TypeCoercion typeCoercion = config.typeCoercionFactory().create(typeFactory, this);
     this.typeCoercion = typeCoercion;
 

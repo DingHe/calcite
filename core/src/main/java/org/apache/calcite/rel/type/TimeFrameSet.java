@@ -46,9 +46,25 @@ import static java.util.Objects.requireNonNull;
  * <p>Every SQL statement has a time frame set, and is accessed via
  * {@link RelDataTypeSystem#deriveTimeFrameSet(TimeFrameSet)}. If you want to
  * use a custom set of time frames, you should override that method. */
+
+// TimeFrameSet 是 Apache Calcite 中用于定义和管理时间框架（Time Frames）集合的核心类。
+// 它在 SQL 解析、验证和执行过程中起着至关重要的作用，特别是处理涉及时间单位（如 YEAR, MONTH, WEEK, MINUTE 等）的 FLOOR, CEIL, EXTRACT 以及时间加减运算时。
+// TimeFrameSet 的主要作用是提供一个一致的时间坐标系。
+// 在 SQL 中，时间操作往往不仅限于标准的国际单位。不同的业务场景可能有自定义的时间周期（比如“15分钟一档”、“财务年度”等）。TimeFrameSet 的作用包括：
+// 存储与索引：管理所有已知的时间框架名称及其定义。
+// 时间对齐（Floor/Ceil）：计算某个时间点所属的周期起点或终点。
+// 算术运算：处理时间间隔（Interval）的加减，以及两个时间点之间的差值计算。
+// 转换与上卷（Rollup）：确定不同时间粒度之间是否可以相互转换（例如：天可以上卷到月，但周通常不能直接上卷到年，因为年不一定从周一启动）。
+
 public class TimeFrameSet {
+  // 核心存储容器。
+  // 以键值对形式存储时间框架名称（字符串）到其实现类（TimeFrameImpl）的映射。使用不可变 Map 确保线程安全。
   final ImmutableMap<String, TimeFrames.TimeFrameImpl> map;
+  // 定义“上卷”关系映射。
+  // 记录哪些时间框架可以聚合到更高级别的时间框架。例如，它可以记录 DAY 到 MONTH 的上卷关系。
   final ImmutableMultimap<TimeFrames.TimeFrameImpl, TimeFrames.TimeFrameImpl> rollupMap;
+  // 支持大小写不敏感的查找。
+  // Calcite 的工具类，包装了 map，使得在 SQL 解析时不区分大小写也能找到对应的时间框架（例如 year 和 YEAR）
   private final NameMap<TimeFrames.TimeFrameImpl> nameMap;
 
   TimeFrameSet(ImmutableMap<String, TimeFrames.TimeFrameImpl> map,
@@ -59,12 +75,15 @@ public class TimeFrameSet {
   }
 
   /** Creates a Builder. */
+  // 静态工厂方法，
+  // 返回一个 TimeFrameSet.Builder 实例，用于构建自定义的时间框架集。
   public static Builder builder() {
     return new TimeFrames.BuilderImpl();
   }
 
   /** Returns the time frame with the given name (case-insensitive),
    * or returns null. */
+  // 根据名称查找时间框架。如果名称是别名（Alias），会自动递归找到其底层原始框架。找不到则返回 null。
   public @Nullable TimeFrame getOpt(String name) {
     final NavigableMap<String, TimeFrames.TimeFrameImpl> range =
         nameMap.range(name, false);
@@ -79,6 +98,7 @@ public class TimeFrameSet {
   /** Returns the time frame with the given name,
    * or throws {@link IllegalArgumentException} if not found.
    * If {@code name} is an alias, resolves to the underlying frame. */
+  // 根据名称查找，如果找不到则抛出异常。
   public TimeFrame get(String name) {
     TimeFrame timeFrame = getOpt(name);
     if (timeFrame == null) {
@@ -89,12 +109,14 @@ public class TimeFrameSet {
 
   /** Returns the time frame with the given name,
    * or throws {@link IllegalArgumentException}. */
+  // 允许直接传入 Java 枚举 TimeUnit 来获取对应的框架。
   public TimeFrame get(TimeUnit timeUnit) {
     return get(timeUnit.name());
   }
 
   /** Computes "FLOOR(date TO frame)", where {@code date} is the number of
    * days since UNIX Epoch. */
+  // 针对日期类型（Unix Epoch 以来的天数）。计算该日期所属周期的起始天数或截止天数。
   public int floorDate(int date, TimeFrame frame) {
     return floorCeilDate(date, frame, false);
   }
@@ -107,6 +129,7 @@ public class TimeFrameSet {
 
   /** Computes "FLOOR(timestamp TO frame)" or "FLOOR(timestamp TO frame)",
    * where {@code date} is the number of days since UNIX Epoch. */
+  // 实际的计算逻辑中心。
   private int floorCeilDate(int date, TimeFrame frame, boolean ceil) {
     final TimeFrame dayFrame = get(TimeUnit.DAY);
     final BigFraction perDay = frame.per(dayFrame);
@@ -141,6 +164,7 @@ public class TimeFrameSet {
 
   /** Computes "FLOOR(timestamp TO frame)", where {@code ts} is the number of
    * milliseconds since UNIX Epoch. */
+  // 针对时间戳类型（Unix Epoch 以来的毫秒数）。计算该时间戳所属周期的起始或截止毫秒数。
   public long floorTimestamp(long ts, TimeFrame frame) {
     return floorCeilTimestamp(ts, frame, false);
   }
@@ -198,7 +222,7 @@ public class TimeFrameSet {
     TimeFrame timeFrame1 = getOpt(timeUnit.name());
     return Objects.equals(timeFrame1, timeFrame) ? timeUnit : null;
   }
-
+  // 给指定日期增加一定数量的时间框架。例如：date + 3 WEEKS。
   public int addDate(int date, int interval, TimeFrame frame) {
     final TimeFrame dayFrame = get(TimeUnit.DAY);
     final BigFraction perDay = frame.per(dayFrame);
@@ -219,7 +243,7 @@ public class TimeFrameSet {
     // Unknown time frame. Return the original value unchanged.
     return date;
   }
-
+  // 给时间戳增加间隔。处理逻辑会区分“毫秒级”单位（秒、分、时）和“月级”单位。
   public long addTimestamp(long timestamp, long interval, TimeFrame frame) {
     final TimeFrame msFrame = get(TimeUnit.MILLISECOND);
     final BigFraction perMilli = frame.per(msFrame);
@@ -240,7 +264,7 @@ public class TimeFrameSet {
     // Unknown time frame. Return the original value unchanged.
     return timestamp;
   }
-
+  // 计算两个日期之间相差多少个指定的时间框架。
   public int diffDate(int date, int date2, TimeFrame frame) {
     final TimeFrame dayFrame = get(TimeUnit.DAY);
     final BigFraction perDay = frame.per(dayFrame);
@@ -263,7 +287,7 @@ public class TimeFrameSet {
     // Unknown time frame. Return the original value unchanged.
     return date;
   }
-
+  // 计算两个时间戳之间的差值。
   public long diffTimestamp(long timestamp, long timestamp2, TimeFrame frame) {
     final TimeFrame msFrame = get(TimeUnit.MILLISECOND);
     final BigFraction perMilli = frame.per(msFrame);
