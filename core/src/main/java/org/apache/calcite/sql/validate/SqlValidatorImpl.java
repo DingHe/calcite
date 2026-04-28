@@ -297,8 +297,10 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       new IdentityHashMap<>();
 
   /** Provides the data for {@link #getValidatedOperandTypes(SqlCall)}. */
+  // 函数调用的参数数据类型
   public final IdentityHashMap<SqlCall, List<RelDataType>> callToOperandTypesMap =
       new IdentityHashMap<>();
+
   // 一系列探测器，用于在语法树中快速查找是否存在聚合函数、窗口函数或分组标识。
   private final AggFinder aggFinder;
   private final AggFinder aggOrOverFinder;
@@ -7260,18 +7262,32 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * Utility object used to maintain information about the parameters in a
    * function call.
    */
+  // 主要作用是在解析和验证自定义函数（尤其是表函数 Table Functions）时，维护参数之间的关联信息。
+  // 核心作用是管理函数调用中的复杂参数依赖关系。
+  // 在高级 SQL 函数（如 Calcite 的表函数）中，参数不仅仅是简单的常量或列名，还可以是：
+  // 游标参数 (Cursor Parameters)：一个完整的 SELECT 查询作为参数传入。
+  // 列列表参数 (Column List Parameters)：一组列名，它们通常必须引用同一个函数调用中的某个游标参数。
+  // 该类通过建立映射关系，确保验证器知道哪个 SELECT 语句对应哪个游标位置，以及哪些列列表属于哪个游标。
   protected static class FunctionParamInfo {
     /**
      * Maps a cursor (based on its position relative to other cursor
      * parameters within a function call) to the SELECT associated with the
      * cursor.
      */
+    // 记录游标参数的位置与其对应的查询语句。
+    // Key (Integer)：游标参数在函数参数列表中的相对位置（索引）。
+    // Value (SqlSelect)：该游标对应的具体 SELECT 语法树节点。
+    // 场景：当函数定义为 FUNC(CURSOR(SELECT ...), 'arg') 时，此 Map 会记录索引 0 对应后面的 SqlSelect 对象。
     public final Map<Integer, SqlSelect> cursorPosToSelectMap;
 
     /**
      * Maps a column list parameter to the parent cursor parameter it
      * references. The parameters are id'd by their names.
      */
+    // 维护列列表参数与其所属游标参数之间的绑定关系。
+    // Key (String)：列列表参数的名称。
+    // Value (String)：该列列表所引用的父游标参数的名称。
+    // 场景：在一些表函数中，你需要指定要处理的列，例如 SET_SEMANTICS_TABLE_FUNCTION(input_table, COLUMN_LIST(id, name))。验证器需要确保 (id, name) 这些列确实存在于 input_table 中。
     public final Map<String, String> columnListParamToParentCursorMap;
 
     public FunctionParamInfo() {
@@ -7711,14 +7727,19 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   }
 
   /** Allows {@link #clauseScopes} to have multiple values per SELECT. */
+  // 主要用于管理 SELECT 语句中不同子句的范围（Scope） 以及 别名（Alias）的替换策略
+  // Clause 枚举的主要作用是：
+  // 标识上下文：在处理 SELECT 语句时，标记当前验证器正处于哪个子句中（如 WHERE 或 GROUP BY）。
+  // 控制别名展开（Alias Expansion）：定义在特定的子句中，是否应该将“列别名”替换为其实际的“原始表达式”。
+  // 例如，在某些数据库配置下，GROUP BY alias 是不允许的，必须将其重写为 GROUP BY original_expression。这个类负责判定是否需要执行这种转换。
   private enum Clause {
-    WHERE,
-    GROUP_BY,
-    SELECT,
-    ORDER,
-    CURSOR,
-    HAVING,
-    QUALIFY;
+    WHERE, // 对应 WHERE 子句。
+    GROUP_BY, // 对应 GROUP_BY 子句。
+    SELECT, // 对应 SELECT 投影列表。
+    ORDER, // 对应 ORDER BY 子句。
+    CURSOR, // 用于处理 CURSOR 表达式（Calcite 特有的流式或多行处理概念）。
+    HAVING, // 对应 HAVING 过滤子句。
+    QUALIFY; // 对应 QUALIFY 子句（通常用于在执行窗口函数后进行过滤，类似于 HAVING 之于 GROUP BY）。
 
     /**
      * Determines if the extender should replace aliases with expanded values.
@@ -7741,6 +7762,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
      * @param config The configuration
      * @return Whether we should replace the alias with its expanded value
      */
+    // 决定在当前的子句上下文中，是否需要将别名（Alias）替换为展开后的原始值。
+    // 参数：Config config。Calcite 的配置对象，包含了 SqlConformance（SQL 兼容性标准），因为不同的 SQL 方言对别名的支持不同。
     boolean shouldReplaceAliases(Config config) {
       switch (this) {
       case GROUP_BY:

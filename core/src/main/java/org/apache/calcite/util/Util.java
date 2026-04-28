@@ -2759,11 +2759,16 @@ public class Util {
   /**
    * Exception used to interrupt a tree walk of any kind.
    */
+  // FoundOne 是 ControlFlowException 的具体实现类。它的作用就像是一个“探测信号”：在遍历复杂的语法树时，一旦找到了目标对象，就通过抛出这个异常来立即中断遍历并传回结果。
   public static class FoundOne extends ControlFlowException {
+    // 存储被找到的那个对象（通常是一个 SqlNode）。
+    // 它是异常携带的“货物”。通过这个属性，顶层的 catch 块可以直接获取到触发中断的那个节点。
     private final @Nullable Object node;
 
     /** Singleton instance. Can be used if you don't care about node. */
     @SuppressWarnings("ThrowableInstanceNeverThrown")
+    // 单例预定义实例。
+    // 如果开发者仅仅想知道“是否存在”某个东西，而不在乎具体是哪个节点，可以使用这个单例。这样可以避免重复创建异常对象，进一步提升性能。
     public static final FoundOne NULL = new FoundOne(null);
 
     public FoundOne(@Nullable Object node) {
