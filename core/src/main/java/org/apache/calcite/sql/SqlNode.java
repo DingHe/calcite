@@ -221,6 +221,7 @@ public abstract class SqlNode implements Cloneable {
    *                  tree
    * @param rightPrec The precedence of the {@link SqlNode} immediately
    */
+  // AST 转回 SQL
   public abstract void unparse(
       SqlWriter writer,
       int leftPrec,
@@ -265,6 +266,7 @@ public abstract class SqlNode implements Cloneable {
    *                  completion hints are requested for
    * @param hintList  list of valid options
    */
+  // 为 SQL 编辑器或 IDE 提供自动补全提示（Completion Hints）
   public void findValidOptions(
       SqlValidator validator,
       SqlValidatorScope scope,
@@ -297,6 +299,7 @@ public abstract class SqlNode implements Cloneable {
    * <p>The type parameter <code>R</code> must be consistent with the type
    * parameter of the visitor.
    */
+  // 用于 Visitor 模式遍历 AST。
   public abstract <R> R accept(SqlVisitor<R> visitor);
 
   /**
@@ -309,6 +312,7 @@ public abstract class SqlNode implements Cloneable {
    * (2 + 3), because the '+' operator is left-associative</li>
    * </ul>
    */
+  // 度比较两个 SQL 节点是否在结构上完全相等（忽略对象引用，比较节点内容和子节点）。
   public abstract boolean equalsDeep(@Nullable SqlNode node, Litmus litmus);
 
   @Deprecated // to be removed before 2.0
@@ -348,6 +352,7 @@ public abstract class SqlNode implements Cloneable {
    *
    * @param scope Scope
    */
+  // 获取表达式的单调性（递增、递减、常量等），这在流式计算中非常重要。
   public SqlMonotonicity getMonotonicity(SqlValidatorScope scope) {
     return SqlMonotonicity.NOT_MONOTONIC;
   }
@@ -376,6 +381,8 @@ public abstract class SqlNode implements Cloneable {
    * @return a {@code Collector} that collects all the input elements into a
    * {@link SqlNodeList}, in encounter order
    */
+  // 静态工具方法，返回一个 Collector。
+  // 方便在 Java Stream API 中将 SqlNode 流收集到一个 SqlNodeList 中
   public static <T extends SqlNode> Collector<T, ArrayList<@Nullable SqlNode>, SqlNodeList>
       toList() {
     return toList(SqlParserPos.ZERO);
