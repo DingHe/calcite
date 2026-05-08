@@ -85,6 +85,9 @@ abstract class AggVisitor extends SqlBasicVisitor<Void> {
     this.nameMatcher = Objects.requireNonNull(nameMatcher, "nameMatcher");
   }
   // 定义了识别聚合函数的逻辑规则：
+  // 为什么查找聚合函数的visitor只实现了visit(SqlCall call) ，其他节点就没有聚合函数吗
+  // 回答是：在标准 SQL 语义中，聚合动作（如 SUM, AVG, COUNT）在语法层面上必然表现为一个“调用（Call）”。
+  // 聚合函数的本质是 SqlCall
   @Override public Void visit(SqlCall call) {
     final SqlOperator operator = call.getOperator();
     // If nested aggregates disallowed or found an aggregate at invalid level

@@ -279,8 +279,15 @@ public class Resources {
   }
 
   /** Element in a resource (either a resource or a property). */
+  // Element 类通常出现在处理资源（Resources）和国际化（i18n）的工具代码中。
+  // 它是一个内部静态类，主要用于建立 Java 方法 与 资源配置文件（.properties）中的键 之间的映射关系。
+  // 将一个定义在接口中的方法（Method）转化为一个可检索的键（Key）。
+  // 元数据绑定：它封装了方法对象及其对应的资源键，使得程序可以通过调用接口方法来获取对应的国际化字符串或错误消息。
+  // 解耦：通过它可以灵活地从注解或方法名中提取键名，而不需要在代码中硬编码字符串。
   public static class Element {
+    // 反射方法对象。指向在资源接口中定义的方法。Calcite 通过这个方法来识别具体请求的是哪条资源。
     protected final Method method;
+    // 资源键。这是最终用于在 .properties 文件中查找具体文本的标识符
     protected final String key;
 
     @SuppressWarnings("method.invocation.invalid")
@@ -288,13 +295,16 @@ public class Resources {
       this.method = method;
       this.key = deriveKey();
     }
-
+    // 派生/推导资源的键名（Key）。这是该类的核心逻辑。
     protected String deriveKey() {
+      // 检查注解：首先尝试获取该方法上的 @Resource 注解。
       final Resource resource = method.getAnnotation(Resource.class);
       if (resource != null) {
         return resource.value();
       } else {
+        //获取方法的名称（例如方法名为 invalidArgument）。
         final String name = method.getName();
+        // 将方法名的首字母大写（转化为 InvalidArgument）。
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
       }
     }
@@ -303,9 +313,18 @@ public class Resources {
   /** Resource instance. It contains the resource method (which
    * serves to identify the resource), the locale with which we
    * expect to render the resource, and any arguments. */
+  // Inst 类（Instance 的缩写）是核心逻辑实体。它继承自 Element 类，代表了一个已绑定具体参数和语言环境（Locale）的资源实例。
+  // Inst 类的主要作用是将静态的资源定义（由 Method 表达）转化为动态的可渲染对象。
+  // 状态持有者：它不仅知道要找哪个资源（通过父类 Element 的 key 和 method），还持有了渲染该资源所需的上下文，如语言环境（Locale）和填充占位符的参数（args）。
+  // 渲染引擎：负责将 .properties 文件中的模板字符串（如 Hello {0}!）与参数结合，生成最终展示给用户的字符串。
+  // 验证器：它提供了一套极其严格的验证机制，确保 Java 代码中的注解定义、方法参数与外部资源文件（.properties）完全匹配，防止运行时出现资源缺失或类型不匹配的问题。
   public static class Inst extends Element {
+    // 语言环境。决定了从哪个语言版本的资源文件中读取数据，以及日期、数字的格式化方式。
     private final Locale locale;
+    // 资源包基名。
+    // 通常是资源文件的路径前缀（如 org.apache.calcite.runtime.CalciteResource）
     protected final String base;
+    // 格式化参数。对应资源模板中的 {0}, {1} 等占位符的具体值。
     protected final @Nullable Object[] args;
 
     public Inst(String base, Locale locale, Method method, @Nullable Object... args) {
@@ -327,15 +346,17 @@ public class Resources {
     @Override public int hashCode() {
       return Arrays.asList(locale, method, Arrays.asList(args)).hashCode();
     }
-
+    // 获取 Java 标准的 ResourceBundle。
+    // 根据 base（路径）和 locale（语言）加载对应的属性文件。
     public ResourceBundle bundle() {
       return ResourceBundle.getBundle(base, locale);
     }
-
+    // 以当前的资源定义和参数为基础
+    // 仅更换 locale 并返回一个新的 Inst 实例。
     public Inst localize(Locale locale) {
       return new Inst(base, locale, method, args);
     }
-
+    // 用于静态或运行时检查资源的正确性
     public void validate(EnumSet<Validation> validations) {
       final ResourceBundle bundle = bundle();
       for (Validation validation : validations) {
@@ -428,7 +449,7 @@ public class Resources {
         }
       }
     }
-
+    // 统计字符串中单引号 ' 的数量。用于 EVEN_QUOTES 验证逻辑，因为在 MessageFormat 中单引号是特殊转义符，不成对出现会导致解析错误。
     private static int countQuotesIn(String message) {
       int count = 0;
       for (int i = 0, n = message.length(); i < n; i++) {
@@ -438,14 +459,15 @@ public class Resources {
       }
       return count;
     }
-
+    // 获取格式化后的最终字符串。
+    // 调用 raw() 获取原始模板，使用 MessageFormat 根据当前 locale 将 args 填入占位符。
     public String str() {
       String message = raw();
       MessageFormat format = new MessageFormat(message);
       format.setLocale(locale);
       return format.format(args);
     }
-
+    // 获取未经参数填充的原始消息字符串。
     public String raw() {
       try {
         return bundle().getString(key);
@@ -457,7 +479,8 @@ public class Resources {
             () -> "@BaseMessage is missing for resource '" + method.getName() + "'").value();
       }
     }
-
+    // 获取与该资源关联的额外元数据属性。
+    // 检查方法上是否有 @Property 注解，如果有，则将其名值对存入 Map 返回，否则返回空 Map。
     public Map<String, String> getProperties() {
       // At present, annotations allow at most one property per resource. We
       // could design new annotations if any resource needed more.
@@ -472,19 +495,30 @@ public class Resources {
 
   /** Sub-class of {@link Inst} that can throw an exception. Requires caused
    * by exception.*/
+  // 专门用于生成带有异常原因（Cause）的异常实例的类。
+  // 它继承自 Inst，并引入了泛型 $T$ 来表示具体要抛出的异常类
+  // 动态异常创建：它不直接持有异常对象，而是持有创建异常所需的所有信息（资源键、参数、语言环境）。当真正需要抛出异常时，它通过反射动态实例化泛型参数 $T$ 所指定的异常类。
+  // 异常链支持：专门处理 Throwable cause，确保底层的错误原因可以被正确地包装在高级别的国际化异常中。
+  // 该类主要继承了父类 Inst 的属性（base, locale, method, args），自身没有引入新的实例变量，但它通过泛型参数 T 约束了返回类型。
+  // 典型使用场景
+  // 在 Calcite 的资源定义接口中，你会看到如下定义：
+  // @BaseMessage("Column '{0}' not found")
+  // ExInstWithCause<SqlValidatorException> columnNotFound(String columnName);
   public static class ExInstWithCause<T extends Exception> extends Inst {
     public ExInstWithCause(String base, Locale locale, Method method,
         @Nullable Object... args) {
       super(base, locale, method, args);
     }
-
+    // 创建一个新的、针对特定语言环境的异常工厂实例。
     @Override public Inst localize(Locale locale) {
       return new ExInstWithCause<T>(base, locale, method, args);
     }
-
+    // 该类最核心的方法
+    // 负责反射生成异常对象
     public T ex(@Nullable Throwable cause) {
       try {
         //noinspection unchecked
+        // 确定异常类。调用 getExceptionClass 获取泛型 $T$ 的实际 Class 对象。
         final Class<T> exceptionClass =
             getExceptionClass(method.getGenericReturnType());
         Constructor<T> constructor;

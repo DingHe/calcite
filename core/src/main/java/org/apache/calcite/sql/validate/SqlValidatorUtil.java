@@ -1032,10 +1032,14 @@ public class SqlValidatorUtil {
    *
    * @return TypeEntry with a table with the given name, or null
    */
+  // 主要作用是在指定的元数据架构（Schema）层次结构中，根据给定的 SQL 标识符（SqlIdentifier）寻找对应的自定义类型条目（TypeEntry）
   public static CalciteSchema.@Nullable TypeEntry getTypeEntry(
       CalciteSchema rootSchema, SqlIdentifier typeName) {
+    // 定义两个变量，name 用于存储类型的最终名称（即最末尾的标识符），path 用于存储到达该类型所经过的父级 Schema 路径。
     final String name;
     final List<String> path;
+    // 判断 typeName 是否只有一个部分（例如直接是 MY_TYPE）。
+    // 如果是简单的名字，则路径为空列表，名称即为该标识符本身。
     if (typeName.isSimple()) {
       path = ImmutableList.of();
       name = typeName.getSimple();
@@ -1044,11 +1048,13 @@ public class SqlValidatorUtil {
       name = Util.last(typeName.names);
     }
     CalciteSchema schema = rootSchema;
+    // 遍历路径寻找子 Schema
     for (String p : path) {
       if (schema == rootSchema
           && SqlNameMatchers.withCaseSensitive(true).matches(p, schema.getName())) {
         continue;
       }
+      // 获取并返回类型条目
       schema = schema.getSubSchema(p, true);
       if (schema == null) {
         return null;

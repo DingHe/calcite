@@ -205,6 +205,7 @@ public class CalciteCatalogReader implements Prepare.CatalogReader {
   @Override public @Nullable RelDataType getNamedType(SqlIdentifier typeName) {
     CalciteSchema.TypeEntry typeEntry = SqlValidatorUtil.getTypeEntry(getRootSchema(), typeName);
     if (typeEntry != null) {
+      // 采用工厂根据逻辑类型创建物理类型
       return typeEntry.getType().apply(typeFactory);
     } else {
       return null;

@@ -434,17 +434,28 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   @Override public TimeFrameSet getTimeFrameSet() {
     return timeFrameSet;
   }
-
-  @Override public SqlNodeList expandStar(SqlNodeList selectList,
-      SqlSelect select, boolean includeSystemVars) {
+  // 核心任务是将 SQL 查询中的星号（*）或限定星号（如 table.*）展开为具体的列名列表。
+  // 作用：重写了接口方法。输入是一个原始的 SELECT 列表（可能包含 *），当前的 SELECT 语法树节点，以及一个是否包含系统变量的布尔标志。
+  // 返回值：返回一个展开后的 SqlNodeList，其中所有的星号都已被替换为实际的列标识符（SqlIdentifier）。
+  @Override public SqlNodeList expandStar(SqlNodeList selectList, // 原始的select字段列表
+      SqlSelect select, // 当前select语法树节点
+      boolean includeSystemVars) {
     final List<SqlNode> list = new ArrayList<>();
     final PairList<String, RelDataType> types = PairList.of();
+    // 遍历用户在 SQL 中写的每一个 SELECT 项。例如 SELECT a, *, b FROM t，这里会依次处理 a、* 和 b。
     for (SqlNode selectItem : selectList) {
+      // 尝试从验证器的缓存中获取当前项（selectItem）的类型。如果这个项之前已经被部分验证过，我们可以直接拿到它的类型。
       final RelDataType originalType = getValidatedNodeTypeIfKnown(selectItem);
+      // 展开单个项
+      // expandSelectItem 是一个递归或分发方法，它会判断 selectItem 是不是星号：
+      // 如果是普通列：直接将其加入到 list 中。
+      // 如果是星号 (*)：根据 select 的作用域（Scope），查找到对应的表，获取该表的所有列名，并逐个生成 SqlIdentifier 放入 list。
       expandSelectItem(selectItem, select, first(originalType, unknownType),
           list, catalogReader.nameMatcher().createSet(), types,
           includeSystemVars);
     }
+    // getRawSelectScopeNonNull(select)：获取该 SELECT 语句对应的验证作用域（SelectScope）。作用域记录了哪些表和列在这个查询中是可见的。
+    // setExpandedSelectList(list)：将展开后的列表缓存到作用域中。这是一个重要的副作用，确保后续的验证步骤（如 ORDER BY 或 HAVING 子句的验证）可以使用展开后的列。
     getRawSelectScopeNonNull(select).setExpandedSelectList(list);
     return new SqlNodeList(list, SqlParserPos.ZERO);
   }
@@ -501,10 +512,18 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param includeSystemVars If true include system vars in lists
    * @return Whether the node was expanded
    */
-  private boolean expandSelectItem(final SqlNode selectItem, SqlSelect select,
-      RelDataType targetType, List<SqlNode> selectItems, Set<String> aliases,
-      PairList<String, RelDataType> fields, boolean includeSystemVars) {
+  // Apache Calcite 验证器中处理 SELECT 列表中单个项的核心逻辑。
+  // 它不仅负责展开星号（*），还负责对普通表达式进行全限定化、类型推断和别名处理。
+  private boolean expandSelectItem(final SqlNode selectItem, // 当前正在处理的原始 SQL 节点，它可以是星号（*）、限定星号（T.*）、普通的列名（col）、或者是复杂的表达式（CASE WHEN ...）。它是该方法的处理对象。
+      SqlSelect select, // 当前项所属的整个 SELECT 查询语句。用于获取该查询的各种作用域（Scope），比如 WhereScope 或 SelectScope。它是定位当前项语法位置的基础。
+      RelDataType targetType,// 期望的目标类型。在某些场景下（如 INSERT INTO ... SELECT ...），我们已经知道目标表对应的列类型。这个参数用于辅助推断 selectItem 中那些类型不明的节点（如 NULL 或动态参数 ?）。
+      List<SqlNode> selectItems, // [输出参数] 展开后的节点列表。如果是星号，展开后的多列会加入其中；如果是普通项，改写后的节点会加入其中。最终这个列表会构成验证后的 SELECT 列表。
+      Set<String> aliases, // [状态记录] 已存在的别名集合。用于记录当前 SELECT 列表中已经使用了哪些别名。在展开过程中，它帮助系统生成唯一的、不冲突的列名。
+      PairList<String, RelDataType> fields, // [输出参数] 最终列名与类型的配对列表。每处理完一个项，该项的最终别名和推导出的数据类型（RelDataType）都会存入此列表。它直接定义了该查询结果集的“行结构（Row Type）”。
+      boolean includeSystemVars) { // 决定在展开星号时，是否包含数据库系统定义的隐藏变量或元数据列。通常情况下为 false。
+    // 获取当前 SELECT 语句的 WhereScope。
     final SelectScope scope = (SelectScope) getWhereScope(select);
+    // 检查 selectItem 是否为 * 或 table.*。如果是，该方法会将展开后的所有列直接添加到 selectItems、aliases 和 fields 中，并返回 true 表示处理完毕。
     if (expandStar(selectItems, aliases, fields, includeSystemVars, scope,
         selectItem)) {
       return true;
@@ -513,12 +532,16 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     // Expand the select item: fully-qualify columns, and convert
     // parentheses-free functions such as LOCALTIME into explicit function
     // calls.
+    // 对表达式进行“预处理”。例如，将 col 转换为 table.col（全限定化），或将不带括号的函数（如 CURRENT_DATE）转换为标准的函数调用形式。
     SqlNode expanded = expandSelectExpr(selectItem, scope, select);
+    // 根据原始的 selectItem 推导一个别名。如果用户没写 AS，Calcite 会根据列名或序号生成一个。
     final String alias =
         SqlValidatorUtil.alias(selectItem, aliases.size());
 
     // If expansion has altered the natural alias, supply an explicit 'AS'.
+    // 检查展开后的 expanded 是否与原始 selectItem 不同。
     final SqlValidatorScope selectScope = getSelectScope(select);
+    // 如果不同（发生了改写），且改写后自动生成的别名与原始别名不一致，则强制创建一个 AS 调用。
     if (expanded != selectItem) {
       String newAlias =
           SqlValidatorUtil.alias(expanded, aliases.size());
@@ -531,12 +554,15 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         deriveTypeImpl(selectScope, expanded);
       }
     }
-
+    // 更新结果列表
+    // 将处理完毕的语法节点和对应的别名存入结果容器中。
     selectItems.add(expanded);
     aliases.add(alias);
-
+    // 未知类型推断
+    // 如果 expanded 中包含某些类型待定的节点（如动态参数 ? 或某些 NULL 常量），根据 targetType 进行类型推断。
     inferUnknownTypes(targetType, selectScope, expanded);
-
+    // 类型推导
+    // 计算该表达式的结果类型。
     RelDataType type = deriveType(selectScope, expanded);
     // Re-derive SELECT ITEM's data type that may be nullable in
     // AggregatingSelectScope when it appears in advanced grouping elements such
@@ -545,28 +571,36 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     //   FROM t
     //   GROUP BY CUBE(x)
     // the 'x' should be nullable even if x's literal values are not null.
+    // 在 GROUP BY ROLLUP(x) 中，即使 x 列在表中定义为 NOT NULL，在聚合结果的某些行（汇总行）中 x 也会呈现为 NULL。
+    // 如果当前处于聚合作用域，调用 nullifyType 根据分组情况修正类型的可空性（Nullability）。
     if (selectScope instanceof AggregatingSelectScope) {
       type = requireNonNull(selectScope.nullifyType(stripAs(expanded), type));
     }
+    // 缓存验证结果
     setValidatedNodeType(expanded, type);
     fields.add(alias, type);
     return false;
   }
-
-  private static SqlNode expandExprFromJoin(SqlJoin join,
-      SqlIdentifier identifier, SelectScope scope) {
+  // Apache Calcite 处理 JOIN ... USING 语义的最终落地逻辑。
+  // 它的任务是：如果一个标识符是 USING 子句中的公共列，就将其改写为 COALESCE(left.col, right.col)，以确保在外连接（Outer Join）等场景下结果的正确性。
+  private static SqlNode expandExprFromJoin(SqlJoin join, // 当前正在处理的连接节点。
+      SqlIdentifier identifier,  // 待检查和展开的标识符（即用户在 SELECT 中写的简单列名）。
+      SelectScope scope) { // 当前查询的作用域，用于获取元数据和表的信息。
+    // 如果当前的 JOIN 不是使用 USING 关键字连接的（例如是 ON 条件），则不符合公共列合并的逻辑，直接返回原标识符。
     if (join.getConditionType() != JoinConditionType.USING) {
       return identifier;
     }
-
+    // 获取当前作用域中字段与其别名的映射关系，用于后续判断是否需要显式添加 AS 子句。
     final Map<String, String> fieldAliases = getFieldAliases(scope);
-
+    // 获取 USING(c1, c2) 中的列名列表。如果用户 SELECT 的列名 identifier 恰好是其中之一，说明找到了“公共列”。
     for (String name
         : SqlIdentifier.simpleNames((SqlNodeList) getCondition(join))) {
       if (identifier.getSimple().equals(name)) {
         final List<SqlNode> qualifiedNode = new ArrayList<>();
+        // 遍历作用域中的所有子表（child）
         for (ScopeChild child : requireNonNull(scope, "scope").children) {
           if (child.namespace.getRowType().getFieldNames().contains(name)) {
+            // 如果该表包含这个公共列名，则构造一个带表名前缀的标识符（如 T1.col）
             final SqlIdentifier exp =
                 new SqlIdentifier(
                     ImmutableList.of(child.name, name),
@@ -574,12 +608,12 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             qualifiedNode.add(exp);
           }
         }
-
+        // 对于一个二元连接，公共列必然且只能来自左右两个数据源，所以大小应为 2。同时检查该列是否已有别名。
         assert qualifiedNode.size() == 2;
 
         // If there is an alias for the column, no need to wrap the coalesce with an AS operator
         boolean haveAlias = fieldAliases.containsKey(name);
-
+        // 核心改写步骤。将 col 改写为 COALESCE(left.col, right.col)
         final SqlCall coalesceCall =
             SqlStdOperatorTable.COALESCE.createCall(SqlParserPos.ZERO, qualifiedNode.get(0),
             qualifiedNode.get(1));
@@ -587,6 +621,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         if (haveAlias) {
           return coalesceCall;
         } else {
+          // 如果用户没有提供别名，Calcite 会自动加上 AS name，以保持结果列名与用户原始输入一致
           return SqlStdOperatorTable.AS.createCall(SqlParserPos.ZERO, coalesceCall,
               new SqlIdentifier(name, SqlParserPos.ZERO));
         }
@@ -595,6 +630,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
     // Only need to try to expand the expr from the left input of join
     // since it is always left-deep join.
+    // SQL 解析通常将多表连接构造成左深树结构。
+    // 如果当前 join 的左节点还是一个 SqlJoin，则递归向上查找，直到在某个 JOIN 层级找到匹配的 USING 条件。
     final SqlNode node = join.getLeft();
     if (node instanceof SqlJoin) {
       return expandExprFromJoin((SqlJoin) node, identifier, scope);
@@ -649,26 +686,31 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         getNamespaceOrThrow(join.getLeft()).getRowType(),
         getNamespaceOrThrow(join.getRight()).getRowType());
   }
-
-  private static SqlNode expandCommonColumn(SqlSelect sqlSelect,
-      SqlNode selectItem, SelectScope scope, SqlValidatorImpl validator) {
+  // Calcite 处理 JOIN ... USING 或 NATURAL JOIN 语义的关键方法。它的核心作用是：识别并展开那些在连接子句中被标记为“公共列”的选择项。
+  // 在 SQL 标准中，如果你使用了 USING(col)，那么 SELECT 列表中的 col 不再属于某张特定的表，而是代表连接双方的共同结果。
+  private static SqlNode expandCommonColumn(SqlSelect sqlSelect,// 当前正在处理的完整 SELECT 语法树节点，用于从中获取 FROM 子句信息。
+      SqlNode selectItem,  // 正在校验/展开的 SELECT 列表项（例如 SELECT a, b 中的 a）。
+      SelectScope scope, // 当前 SELECT 语句的作用域，保存了数据源的元数据。
+      SqlValidatorImpl validator) { // 验证器实例，用于获取配置信息（如 SQL 兼容性 conformance）或执行特定的错误校验。
     if (!(selectItem instanceof SqlIdentifier)) {
       return selectItem;
     }
-
+    // 只有 FROM 子句是 SqlJoin 类型（即存在显式的 JOIN 语法）时，才可能存在 USING 或 NATURAL JOIN 产生的公共列。如果是单表查询，直接返回。
     final SqlNode from = sqlSelect.getFrom();
     if (!(from instanceof SqlJoin)) {
       return selectItem;
     }
-
+    // isSimple(): 判断是否为简单名称（如 deptno）。如果带了前缀（如 emp.deptno），则不是简单名称。
     final SqlIdentifier identifier = (SqlIdentifier) selectItem;
+    // 合规性检查：根据 SQL 标准，USING 中的列不建议带表名前缀。
+    // 如果用户写了 emp.deptno 且配置不允许限定公共列，则调用 validateQualifiedCommonColumn 进行合法性校验。
     if (!identifier.isSimple()) {
       if (!validator.config().conformance().allowQualifyingCommonColumn()) {
         validateQualifiedCommonColumn((SqlJoin) from, identifier, scope, validator);
       }
       return selectItem;
     }
-
+    // 调用 expandExprFromJoin。该方法会深入查找 SqlJoin 节点的连接条件（USING 或 NATURAL）
     return expandExprFromJoin((SqlJoin) from, identifier, scope);
   }
 
@@ -698,10 +740,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       validateQualifiedCommonColumn((SqlJoin) node, identifier, scope, validator);
     }
   }
-
-  private boolean expandStar(List<SqlNode> selectItems, Set<String> aliases,
-      PairList<String, RelDataType> fields, boolean includeSystemVars,
-      SelectScope scope, SqlNode node) {
+  // 处理 SELECT * 或 SELECT table.* 的核心逻辑。它将抽象的星号通配符转换为具体的列名列表。
+  private boolean expandStar(List<SqlNode> selectItems, // [输出参数] 存放展开后的 SQL 节点（通常是 SqlIdentifier）。
+      Set<String> aliases, // [输出参数] 存放展开后每一列对应的别名。
+      PairList<String, RelDataType> fields, // [输出参数] 存放最终列名与对应的物理数据类型（RelDataType）的键值对。
+      boolean includeSystemVars,
+      SelectScope scope, // 当前 SELECT 语句的作用域，包含 FROM 子句中引入的所有表和列信息。
+      SqlNode node) { // 待检查的节点（即当前的 SELECT 项）。
+    // 只有当节点是标识符（SqlIdentifier）且其属性为“星号”（isStar() 返回 true）时才继续，否则说明这不是一个 * 操作，直接退出。
     if (!(node instanceof SqlIdentifier)) {
       return false;
     }
@@ -713,15 +759,20 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     final SqlParserPos startPosition = identifier.getParserPosition();
     switch (identifier.names.size()) {
     case 1:
+      // 情况 A：处理单个星号 SELECT * (case 1)
       SqlNode from = scope.getNode().getFrom();
+      // 没有 FROM 子句却用 *，报错
       if (from == null) {
         throw newValidationError(identifier, RESOURCE.selectStarRequiresFrom());
       }
 
       boolean hasDynamicStruct = false;
+      // 遍历 FROM 子句中的每一个数据源（Child）：
+      // 循环遍历 FROM 里的每个表。如果是动态表，不展开具体列，而是插入一个特殊的“动态星号”标识；如果是普通表，遍历其元数据中的所有字段，生成 表名.列名 的标识符并加入列表。
       for (ScopeChild child : scope.children) {
         final int before = fields.size();
         if (child.namespace.getRowType().isDynamicStruct()) {
+          // 处理动态表（如 HBase/MongoDB，列是不固定的）
           hasDynamicStruct = true;
           // don't expand star if the underneath table is dynamic.
           // Treat this star as a special field in validation/conversion and
@@ -739,19 +790,30 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                scope,
                includeSystemVars);
         } else {
+          // 处理普通结构化表
+          // 从当前的作用域子项（child）中获取对应的 SqlNode。
+          // child 代表 FROM 子句中的一个数据源（如一张表或一个子查询）
           final SqlNode from2 = SqlNonNullableAccessors.getNode(child);
+          // 找到该节点对应的 Namespace（命名空间）
           final SqlValidatorNamespace fromNs = getNamespaceOrThrow(from2, scope);
           final RelDataType rowType = fromNs.getRowType();
+          // 遍历列字段
+          // 开始遍历 rowType 中的每一个字段（RelDataTypeField），并获取其原始列名。
           for (RelDataTypeField field : rowType.getFieldList()) {
             String columnName = field.getName();
 
             // TODO: do real implicit collation here
+            // 构造全限定标识符
             final SqlIdentifier exp =
                 new SqlIdentifier(
                     ImmutableList.of(child.name, columnName),
                     startPosition);
             // Don't add expanded rolled up columns
+            // 排除上卷列（OLAP 场景）
+            // 调用 isRolledUpColumn 判断该列是否是一个“上卷列”。
+            // 在某些 OLAP 引擎（如 Druid 或 Kylin）中，某些列是经过预聚合的（Rolled Up）。在某些特定的查询上下文中，直接对这些列进行 SELECT * 展开可能会导致语义错误或性能问题。
             if (!isRolledUpColumn(exp, scope)) {
+              // 执行最终的字段添加
               addOrExpandField(
                       selectItems,
                       aliases,
@@ -763,11 +825,17 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             }
           }
         }
+        // 外连接（Outer Join）导致的结果集可空性变化。
+        // 当 SELECT * 展开时，如果某个表是通过 LEFT JOIN 或 RIGHT JOIN 引入的，那么该表原本定义为 NOT NULL 的列，在结果集中也必须变成 NULLABLE。
+        // child 代表 FROM 子句中的一个表。child.nullable 为 true 通常意味着这个表处于 LEFT JOIN 的右侧、RIGHT JOIN 的左侧 或 FULL JOIN 的任一侧。
         if (child.nullable) {
+          // before 是在处理该表之前 fields 列表的大小。
+          // 从 fields 列表中取出第 i 个字段的元数据（包括列名和数据类型 RelDataType）。
           for (int i = before; i < fields.size(); i++) {
             final Map.Entry<String, RelDataType> entry = fields.get(i);
             final RelDataType type = entry.getValue();
             if (!type.isNullable()) {
+              // 强制转换类型为“可空（Nullable）”
               fields.set(i,
                   entry.getKey(),
                   typeFactory.createTypeWithNullability(type, true));
@@ -777,30 +845,56 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
       // If NATURAL JOIN or USING is present, move key fields to the front of
       // the list, per standard SQL. Disabled if there are dynamic fields.
+      // 处理的是 SQL 标准中关于 NATURAL JOIN 或 USING 子句的一个特殊显示规则。
+      // 在这些特定的连接方式下，作为连接条件的列（Join Keys）在 SELECT * 展开时，必须排在结果集的最前面，且同名列只能出现一次。
+      // !hasDynamicStruct：如果当前查询涉及动态表（如 NoSQL 数据源），通常不执行重排，因为动态表的列在运行前是不确定的。
       if (!hasDynamicStruct || Bug.CALCITE_2400_FIXED) {
         // If some fields before star identifier,
         // we should move offset.
+        // calculatePermuteOffset(selectItems)：计算在当前星号之前，已经有多少个显式的选择项。
+        // originalSize：方法开始时记录的 selectItems 长度。
+        // 作用：确定从哪个位置开始应用重排规则。如果 SQL 是 SELECT col1, * FROM ...，偏移量能保证 col1 的位置不动，只对 * 展开的部分进行重排。
         int offset = Math.min(calculatePermuteOffset(selectItems), originalSize);
+        // new Permute(from, offset)：创建一个重排器。它会分析 FROM 子句中的连接关系。
+        // 普通等值连接：
+        //SELECT * FROM t1 JOIN t2 ON t1.id = t2.id
+        //
+        //结果集顺序：t1.id, t1.name, t2.id, t2.age（包含两个 id 列）。
+        //
+        //USING 连接：
+        //SELECT * FROM t1 JOIN t2 USING (id)
+        //
+        //结果集顺序：id, t1.name, t2.age。
+        //
+        //规则：连接键 id 必须被提到最前面，且合并为一列。
         new Permute(from, offset).permute(selectItems, fields);
       }
       return true;
 
     default:
+      // 情况 B：处理带前缀的星号 SELECT table.* (default)
+      // 去掉末尾的星号。例如，如果原始输入是 schema.table.*，则 prefixId 变为 schema.table。
       final SqlIdentifier prefixId = identifier.skipLast(1);
       final SqlValidatorScope.ResolvedImpl resolved =
           new SqlValidatorScope.ResolvedImpl();
       final SqlNameMatcher nameMatcher =
           scope.validator.catalogReader.nameMatcher();
+      // 在当前的作用域中查找这个前缀到底指向什么。它可能指向一个表别名、一个实际的表名，甚至是一个结构化的列（如 struct 类型）。
       scope.resolve(prefixId.names, nameMatcher, true, resolved);
+      // 如果 resolve 结果为空，说明你在 SELECT 中引用的前缀（如 s.*）在 FROM 子句或上下文中根本不存在，直接抛出“未知标识符”的验证错误。
       if (resolved.count() == 0) {
         // e.g. "select s.t.* from e"
         // or "select r.* from e"
         throw newValidationError(prefixId,
             RESOURCE.unknownIdentifier(prefixId.toString()));
       }
+      // 从解析结果中提取该前缀对应的行类型（RelDataType）。这个类型描述了该对象包含哪些列。
       final RelDataType rowType = resolved.only().rowType();
+      // 情况一：处理动态结构（Dynamic Struct）
       if (rowType.isDynamicStruct()) {
         // don't expand star if the underneath table is dynamic.
+        // 如果前缀指向的是一个动态表（例如 HBase 或 Schema-less 数据源）。
+        // 不进行具体的列展开。相反，它会构造一个带有“动态星号前缀”的特殊标识符。这相当于告诉执行引擎：“这里有一个星号，但目前我不知道具体有哪些列，请在运行时（Runtime）再根据实际数据决定”。
         addToSelectList(
             selectItems,
             aliases,
@@ -809,6 +903,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             scope,
             includeSystemVars);
       } else if (rowType.isStruct()) {
+        // 情况二：处理标准结构（Record/Struct Type）
         for (RelDataTypeField field : rowType.getFieldList()) {
           String columnName = field.getName();
 
@@ -823,6 +918,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
               field);
         }
       } else {
+        // 情况三：非法类型
         throw newValidationError(prefixId, RESOURCE.starRequiresRecordType());
       }
       return true;
@@ -848,13 +944,22 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         : SqlStdOperatorTable.CAST.createCall(SqlParserPos.ZERO,
             node, SqlTypeUtil.convertTypeToSpec(desiredType));
   }
-
-  private boolean addOrExpandField(List<SqlNode> selectItems, Set<String> aliases,
-      PairList<String, RelDataType> fields, boolean includeSystemVars,
-      SelectScope scope, SqlIdentifier id, RelDataTypeField field) {
+  // Apache Calcite 在展开星号（*）过程中的一个决策点。
+  // 它的核心作用是：判断一个字段是作为普通列直接添加，还是作为一个“嵌套结构”需要进一步递归展开。
+  private boolean addOrExpandField(List<SqlNode> selectItems, // [输出参数] 最终生成的 SELECT 节点列表
+      Set<String> aliases, // [状态记录] 已使用的别名集合，用于防重。
+      PairList<String, RelDataType> fields, // [输出参数] 存储最终列名及其数据类型的配对列表。
+      boolean includeSystemVars,
+      SelectScope scope, // 当前查询的作用域，提供类型推导所需的上下文。
+      SqlIdentifier id, // 当前字段的 SQL 标识符（通常是 表名.列名）。
+      RelDataTypeField field) { // 当前字段在元数据中的定义，包含字段名、索引和数据类型（RelDataType）。
     switch (field.getType().getStructKind()) {
+    // 获取该字段数据类型的“结构种类（StructKind）”
+    // PEEK 语义：这通常用于处理某些特殊的嵌套结构（如 Map 或 Record 类型），
+    // 这些类型在 SQL 语义中被视为“透明”的，即当你查询包含该结构的表时，可能希望自动展开其中的子列。
     case PEEK_FIELDS:
     case PEEK_FIELDS_DEFAULT:
+      // 将当前的标识符加上星号。例如，如果 id 是 address，则变成 address.*。
       final SqlNode starExp = id.plusStar();
       expandStar(
           selectItems,
@@ -864,7 +969,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
           scope,
           starExp);
       return true;
-
+    // 默认处理：作为普通字段添加
     default:
       addToSelectList(
           selectItems,
@@ -1184,31 +1289,41 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     TRACER.trace("After validation: {}", outermostNode);
     return outermostNode;
   }
-
-  @Override public void validateQuery(SqlNode node, SqlValidatorScope scope,
-      RelDataType targetRowType) {
+  // 通用的查询验证入口，负责确保一个 SQL 节点（如 SELECT、UNION、TABLESAMPLE 等）在语义上是合法且可访问的。
+  // 触发命名空间验证：通过 SqlValidatorNamespace 启动深层验证（如解析子查询或加载表元数据）。
+  // 处理采样逻辑 (TABLESAMPLE)：验证采样率是否在合法范围（0% 到 100%）。
+  // 权限与访问控制：检查用户是否有权对该资源执行 SELECT 操作。
+  // 快照与流处理验证：处理时间版本查询（SNAPSHOT）以及流式查询的模态验证。
+  @Override public void validateQuery(SqlNode node, // 当前需要验证的 SQL 节点。
+      SqlValidatorScope scope,
+      RelDataType targetRowType) { // 期望的行类型。用于类型推导，如果外部已知结果结构，会传递给此参数。
     final SqlValidatorNamespace ns = getNamespaceOrThrow(node, scope);
+    // 处理 TABLESAMPLE 子句
     if (node.getKind() == SqlKind.TABLESAMPLE) {
       List<SqlNode> operands = ((SqlCall) node).getOperandList();
+      // 提取采样规范（例如采样比例）
       SqlSampleSpec sampleSpec = SqlLiteral.sampleValue(operands.get(1));
       if (sampleSpec instanceof SqlSampleSpec.SqlTableSampleSpec) {
         // The sampling percentage must be between 0 (0%) and 1 (100%).
         BigDecimal samplePercentage =
             ((SqlSampleSpec.SqlTableSampleSpec) sampleSpec).sampleRate;
         // Check the samplePercentage whether is between 0 and 1
+        // 核心校验：采样率必须在 [0, 1] 之间
         if (samplePercentage.compareTo(BigDecimal.ZERO) < 0
             || samplePercentage.compareTo(BigDecimal.ONE) > 0) {
           throw SqlUtil.newContextException(node.getParserPosition(),
               RESOURCE.invalidSampleSize());
         }
+        // 校验是否支持标准采样特性 (T613)
         validateFeature(RESOURCE.sQLFeature_T613(), node.getParserPosition());
       } else if (sampleSpec
           instanceof SqlSampleSpec.SqlSubstitutionSampleSpec) {
+        // 校验是否支持扩展的替换采样特性
         validateFeature(RESOURCE.sQLFeatureExt_T613_Substitution(),
             node.getParserPosition());
       }
     }
-
+    // 调用 ns.validate(targetRowType)，进而触发具体节点的深度验证（例如，如果是 SELECT 节点，会在这里触发 validateSelect）
     validateNamespace(ns, targetRowType);
     switch (node.getKind()) {
     case EXTEND:
@@ -1218,14 +1333,16 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     default:
       break;
     }
+    // 如果是最外层（Top）查询，检查其模态（Modality）。主要用于验证流式 SQL（Streaming SQL），确保查询是纯流式或纯批处理，不会出现非法的混合。
     if (node == top) {
       validateModality(node);
     }
+    // 检查当前节点对应的表是否允许 SELECT 操作。
     validateAccess(
         node,
         ns.getTable(),
         SqlAccessEnum.SELECT);
-
+    // 验证时间旅行查询（FOR SYSTEM_TIME AS OF ...），确保快照表达式在当前作用域内是合法的。
     validateSnapshot(node, scope, ns);
   }
 
@@ -1236,8 +1353,10 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param targetRowType Desired row type, must not be null, may be the data
    *                      type 'unknown'.
    */
-  protected void validateNamespace(final SqlValidatorNamespace namespace,
-      RelDataType targetRowType) {
+  // 作用是触发特定命名空间（Namespace）的内部验证逻辑，并确保验证结果符合全局约束（如安全过滤策略）
+  // SqlValidatorNamespace 负责维护一个 SQL 节点及其对应的类型信息，而 validateNamespace 则是确保这些信息被正确填充和校验的桥梁
+  protected void validateNamespace(final SqlValidatorNamespace namespace,// 可能代表一张表、一个子查询、一个 JOIN 结果或一个 VALUES 子句。该对象持有该节点的 RelDataType（行类型）
+      RelDataType targetRowType) { // 期望的行类型
     namespace.validate(targetRowType);
     SqlNode node = namespace.getNode();
     if (node != null) {
@@ -1265,7 +1384,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   @Override public SqlValidatorScope getEmptyScope() {
     return new EmptyScope(this);
   }
-
+  // 用于从缓存中获取特定 SQL 子句对应的作用域（Scope）。
+  // 同一个 SELECT 语句在处理不同子句（如 FROM、WHERE、GROUP BY）时，其可见的变量和解析规则是不一样的，这些规则被封装在不同的 SqlValidatorScope 对象中。
   private SqlValidatorScope getScope(SqlSelect select, Clause clause) {
     return requireNonNull(
         clauseScopes.get(IdPair.of(select, clause)),
@@ -1275,7 +1395,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   public SqlValidatorScope getCursorScope(SqlSelect select) {
     return getScope(select, Clause.CURSOR);
   }
-
+  // 获取指定 SELECT 语句中 WHERE 子句对应的验证作用域。
   @Override public SqlValidatorScope getWhereScope(SqlSelect select) {
     return getScope(select, Clause.WHERE);
   }
@@ -1341,10 +1461,13 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   private SqlValidatorScope getScopeOrThrow(SqlNode node) {
     return requireNonNull(scopes.get(node), () -> "scope for " + node);
   }
-
-  private @Nullable SqlValidatorNamespace getNamespace(SqlNode node,
-      SqlValidatorScope scope) {
+  // 根据给定的 SQL 节点（SqlNode）和当前的作用域（Scope），找到该节点对应的“命名空间”（Namespace）
+  // SqlValidatorNamespace 代表了一个能够产生行数据的集合（比如一张表、一个子查询或一个函数结果）
+  private @Nullable SqlValidatorNamespace getNamespace(SqlNode node, // 需要查找命名空间的语法树节点。它通常是一个表名（SqlIdentifier）、一个带别名的表达式（AS）、或者是一个表引用（TABLE_REF）
+      SqlValidatorScope scope) { // 作用域决定了在该节点位置哪些表、列或别名是“可见”的
     if (node instanceof SqlIdentifier && scope instanceof DelegatingScope) {
+      // 如果是一个简单的标识符（如表名 EMP）且作用域是“委托作用域”
+      // 试从当前 scope 的父级作用域中去查找。这通常用于处理嵌套查询中，内部节点引用外部定义的表或别名的情况
       final SqlIdentifier id = (SqlIdentifier) node;
       final DelegatingScope idScope =
           (DelegatingScope) ((DelegatingScope) scope).getParent();
@@ -1353,9 +1476,13 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       // Handle extended identifiers.
       final SqlCall call = (SqlCall) node;
       switch (call.getOperator().getKind()) {
+      // 剥离 TABLE_REF 包装。在某些方言中，表引用会被包装，这里递归获取其内部真实的表标识符。
       case TABLE_REF:
         return getNamespace(call.operand(0), scope);
+      // 动态列扩展
       case EXTEND:
+        // *   **作用**：处理带有动态列定义的表（如 `SELECT * FROM T (c1 INT)`）。
+        // *   **逻辑**：它会取第一个操作数（即原始表名），忽略掉后面的列定义，因为 Namespace 是绑定在原始表名上的。
         final SqlNode operand0 = call.getOperandList().get(0);
         final SqlIdentifier identifier = operand0.getKind() == SqlKind.TABLE_REF
             ? ((SqlCall) operand0).operand(0)
@@ -1378,13 +1505,16 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
     return getNamespace(node);
   }
-
-  private @Nullable SqlValidatorNamespace getNamespace(SqlIdentifier id,
+  // 在指定的作用域（Scope）内查找并解析标识符
+  // 当 SQL 中出现一个表名或别名时，它可能指向当前 SELECT 的 FROM 子句，也可能指向外部查询的表（关联子查询）。该方法通过调用 scope.resolve 逻辑，在层级化的作用域链中定位该名字对应的命名空间。
+  private @Nullable SqlValidatorNamespace getNamespace(SqlIdentifier id, // 要解析的 SQL 标识符（如表名 EMP 或别名 E）
       @Nullable DelegatingScope scope) {
-    if (id.isSimple()) {
+    if (id.isSimple()) {// 返回 true 表示该标识符只有一个部分（例如 EMP），而不是多级限定名（例如 CATALOG.SCHEMA.EMP）
       final SqlNameMatcher nameMatcher = catalogReader.nameMatcher();
+      // 一个结果收集器，用于存储解析过程中找到的所有匹配项
       final SqlValidatorScope.ResolvedImpl resolved =
           new SqlValidatorScope.ResolvedImpl();
+      // 执行作用域解析（核心逻辑）
       requireNonNull(scope, () -> "scope needed to lookup " + id)
           .resolve(id.names, nameMatcher, false, resolved);
       if (resolved.count() == 1) {
@@ -1393,23 +1523,29 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
     return getNamespace(id);
   }
-
+  // 查找或推导给定 SQL 节点（SqlNode）关联的命名空间（SqlValidatorNamespace）。
+  // 在 Calcite 中，Namespace 代表一个可以产生行的集合（如表、子查询、联接结果等），它保存了该集合的列名和类型信息。
   @Override public @Nullable SqlValidatorNamespace getNamespace(SqlNode node) {
     switch (node.getKind()) {
     case AS:
-
+    // 先尝试从 namespaces 缓存 Map 中直接获取。
+    // 如果找到了（说明该别名重新定义了结构），直接返回。
+    // 如果没有找到（说明只是简单的表别名 AS t），则进入 "fall through"（击穿），跳转到下面的逻辑处理其内部的操作数。
       // AS has a namespace if it has a column list 'AS t (c1, c2, ...)'
+      // 当遇到 SELECT * FROM table AS t(c1, c2) 这种显式定义了列列表的别名时，验证器会在注册阶段为这个 AS 节点本身创建一个专有的 Namespace。
       final SqlValidatorNamespace ns = namespaces.get(node);
       if (ns != null) {
         return ns;
       }
       // fall through
-    case TABLE_REF:
-    case SNAPSHOT:
+    // 这些 SqlKind 代表的节点在语义上只是对“数据源”的一个包装或修饰，它们本身并不改变数据源的列结构。
+    case TABLE_REF: // 对表的引用。
+    case SNAPSHOT: // 时态表快照。
     case OVER:
-    case COLLECTION_TABLE:
-    case ORDER_BY:
+    case COLLECTION_TABLE: // 表函数调用。
+    case ORDER_BY: // 排序操作（排序不改变行的字段）。
     case TABLESAMPLE:
+      // 这些节点被视为 SqlCall，程序会递归调用 getNamespace 处理它们的第一个操作数（operand 0）。例如，对于 ORDER_BY (SELECT ...)，它会返回内部 SELECT 的 Namespace。
       return getNamespace(((SqlCall) node).operand(0));
     default:
       return namespaces.get(node);
@@ -1423,6 +1559,13 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @return namespace for the given node, never null
    * @see #getNamespace(SqlNode)
    */
+  // 尝试获取一个 SQL 节点关联的“命名空间（Namespace）”，如果找不到则立即抛出异常
+  // 在 Calcite 验证阶段，Namespace 代表一个能够产生行（Rows）的实体。
+  // 一个物理表（TableNamespace）
+  // 一个 SELECT 子句（SelectNamespace）
+  // 一个 JOIN 表达式（JoinNamespace）
+  // 一个 VALUES 子句（IdentifierNamespace 或其子类）
+  // 每一个 SqlNode（如果它代表一个数据源），在验证时都会被注册并分配到一个 Namespace 中，这个 Namespace 负责维护该节点的元数据，最重要的是它的行类型（RelDataType）
   @API(since = "1.27", status = API.Status.INTERNAL)
   SqlValidatorNamespace getNamespaceOrThrow(SqlNode node) {
     return requireNonNull(
@@ -1936,18 +2079,26 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   }
 
   @Override public @Nullable RelDataType getValidatedNodeTypeIfKnown(SqlNode node) {
+    // 首先尝试从 nodeToTypeMap 这个成员变量中查询。
     final RelDataType type = nodeToTypeMap.get(node);
     if (type != null) {
       return type;
     }
+    // 如果直接映射中没有，尝试通过 getNamespace(node) 获取该节点关联的“命名空间”。
+    // 在 Calcite 中，关系表达式（如子查询、FROM 子句中的表）会被包装成 SqlValidatorNamespace。
+    // Namespace 负责管理该集合的行类型（Row Type）。如果节点代表的是一个集合（如 SELECT 子句本身），这里能拿到它的结构信息。
     final SqlValidatorNamespace ns = getNamespace(node);
     if (ns != null) {
       return ns.getType();
     }
+    // 检查 originalExprs 映射。这个 Map 记录了节点在经过改写（Rewrite）或展开（Expand）之前的“前身”。
     final SqlNode original = originalExprs.get(node);
     if (original != null && original != node) {
+      // 递归查找
       return getValidatedNodeTypeIfKnown(original);
     }
+    // 如果前面的缓存都失效，且当前节点是一个标识符（SqlIdentifier）
+    // 调用 CatalogReader（目录读取器）去元数据中查找是否存在同名的自定义数据类型。例如，在 CAST(col AS MyType) 中，MyType 是一个标识符，验证器会去数据库元数据（Schema）中查找是否有名为 MyType 的类型定义。
     if (node instanceof SqlIdentifier) {
       return getCatalogReader().getNamedType((SqlIdentifier) node);
     }
@@ -2118,25 +2269,29 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     throw newValidationError(call,
         RESOURCE.validatorUnknownFunction(signature));
   }
-
+  // 核心作用是自顶向下（Top-Down）地推导表达式的类型。
+  // 在 SQL 中，有些节点本身没有明确类型（例如动态参数 ? 或 NULL 字面量）。该方法利用上下文信息（即父节点期望的类型）来填充这些“未知”类型。
   protected void inferUnknownTypes(
-      RelDataType inferredType,
-      SqlValidatorScope scope,
-      SqlNode node) {
+      RelDataType inferredType, // 根据上下文推导出的期望类型，（父节点传下来的类型）示例：在 INSERT INTO t(int_col) VALUES(?) 中，父节点会传给 ? 一个 INTEGER 类型。
+      SqlValidatorScope scope, // 作用：当前的名称解析作用域。用于查找标识符、解析函数等。
+      SqlNode node) { // 作用：当前正在处理的 SQL 语法树节点。
     requireNonNull(inferredType, "inferredType");
     requireNonNull(scope, "scope");
     requireNonNull(node, "node");
+    // 确保参数非空。同时检查当前节点是否关联了特定的 Scope（例如 SqlSelect 节点会有自己的作用域），如果有则更新 scope。
     final SqlValidatorScope newScope = scopes.get(node);
     if (newScope != null) {
       scope = newScope;
     }
+    // 如果遇到 ? 或 NULL，它们本身没有类型。
+    // 代码会使用 inferredType（父节点期望的类型）作为其类型，并强制设置为 NULLABLE（允许为空）。如果推导出的类型是字符型，还会补全字符集和校对规则。
     boolean isNullLiteral = SqlUtil.isNullLiteral(node, false);
     if ((node instanceof SqlDynamicParam) || isNullLiteral) {
       if (inferredType.equals(unknownType)) {
         if (isNullLiteral) {
           if (config.typeCoercionEnabled()) {
             // derive type of null literal
-            deriveType(scope, node);
+            deriveType(scope, node); // 尝试自动强转
             return;
           } else {
             throw newValidationError(node, RESOURCE.nullIllegal());
@@ -2147,6 +2302,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
 
       // REVIEW:  should dynamic parameter types always be nullable?
+      // 核心逻辑：应用推导出的类型
       RelDataType newInferredType =
           typeFactory.createTypeWithNullability(inferredType, true);
       if (SqlTypeUtil.inCharFamily(inferredType)) {
@@ -2156,6 +2312,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 getCharset(inferredType),
                 getCollation(inferredType));
       }
+      // 将推导出的类型存入验证器
       setValidatedNodeType(node, newInferredType);
     } else if (node instanceof SqlNodeList) {
       SqlNodeList nodeList = (SqlNodeList) node;
@@ -2234,20 +2391,26 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * Adds an expression to a select list, ensuring that its alias does not
    * clash with any existing expressions on the list.
    */
+  // 核心任务是将一个表达式安全地加入到 SELECT 列表中，并处理别名冲突，确保最终生成的每一列都有一个唯一的名称。
   protected void addToSelectList(
-      List<SqlNode> list,
-      Set<String> aliases,
-      List<Map.Entry<String, RelDataType>> fieldList,
-      SqlNode exp,
-      SelectScope scope,
+      List<SqlNode> list, // [输出参数] 最终的 SELECT 项列表。经过别名处理后的 SqlNode 会被添加到这个集合中。
+      Set<String> aliases, // [状态记录] 已存在的别名集合。用于检查当前生成的别名是否与同一 SELECT 列表中的其他列重名。
+      List<Map.Entry<String, RelDataType>> fieldList, // [输出参数] 字段元数据列表。记录每一列的最终名称及其推导出的数据类型。
+      SqlNode exp, // 待添加的原始表达式节点（例如一个列引用或加法运算）
+      SelectScope scope, // 当前 SELECT 语句的作用域，用于在添加时推导表达式的类型。
       final boolean includeSystemVars) {
+    // 如果表达式是 col AS my_name，则获取 my_name；如果是普通的 col，则获取 col；如果是复杂表达式且没写 AS，则可能返回 null 或生成的默认名。
     final @Nullable String alias = SqlValidatorUtil.alias(exp);
+    // 将 alias 与已有的 aliases 集合进行比对
+    // 如果发现冲突（例如 SELECT a, a），它会根据 EXPR_SUGGESTER 策略生成一个唯一的名称（例如将第二个 a 变为 a0 或 EXPR$1），确保 SQL 结果集的每一列名都是唯一的。
     String uniqueAlias =
         SqlValidatorUtil.uniquify(
             alias, aliases, SqlValidatorUtil.EXPR_SUGGESTER);
+    // 检查生成的唯一别名是否与原始别名不同
     if (!Objects.equals(alias, uniqueAlias)) {
       exp = SqlValidatorUtil.addAlias(exp, uniqueAlias);
     }
+    // 将“唯一列名”和“推导出的类型”存入元数据列表，这构成了查询结果集的 Schema
     ((PairList<String, RelDataType>) fieldList)
         .add(uniqueAlias, deriveType(scope, exp));
     list.add(exp);
@@ -3583,60 +3746,90 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    *                      {@link #unknownType} if not fussy. Must not be null.
    * @param scope         Scope
    */
+  // validateFrom 的主要作用是递归验证 FROM 子句及其子节点。
+  // 在 SQL 解析树（AST）中，FROM 后面可能跟随各种复杂的结构。该方法的作用就像一个“交通调度员”，它根据节点的类型（SqlKind），将验证任务分发给专门的处理函数（如处理联接的、处理子查询的等）。
+  // 最终目标是：
+  // 确保 FROM 子句中引用的表、视图、函数等是存在的。
+  // 为这些节点确立命名空间（Namespace），即弄清楚这些数据源到底能提供哪些列（RowType）。
+  // 确保嵌套结构（如子查询）的内部语义也是正确的。
   protected void validateFrom(
-      SqlNode node,
-      RelDataType targetRowType,
-      SqlValidatorScope scope) {
+      SqlNode node, // 当前正在验证的语法树节点。它代表 FROM 子句中的一部分，比如一个简单的表名、一个 JOIN 表达式、或者一个 VALUES 表达式。
+      RelDataType targetRowType, // 期望的行类型。在某些上下文中（如 INSERT INTO table SELECT...），我们已经知道目标表的类型，这个参数会将这种“期望”向下传递，帮助推导动态参数，如果没有特定要求，通常传入 unknownType。
+      SqlValidatorScope scope) { // 验证作用域。提供了一个查找标识符的上下文，包含当前环境下可见的表名、列名等信息
     requireNonNull(scope, "scope");
     requireNonNull(targetRowType, "targetRowType");
     switch (node.getKind()) {
     case AS:
     case TABLE_REF:
+      // 处理别名（如 FROM emp AS e）或表引用
+      // 它剥离外层的 AS 包装，取其第一个操作数（即真正的表名或子查询），然后递归调用自身进行验证。
       validateFrom(
           ((SqlCall) node).operand(0),
           targetRowType,
           scope);
       break;
     case VALUES:
+      // **作用**：验证内联行集（如 `FROM (VALUES (1, 'a'), (2, 'b'))`）。
+      // **逻辑**：跳转到专门的 `validateValues` 方法，检查行与行之间列数是否对齐，类型是否匹配。
       validateValues((SqlCall) node, targetRowType, scope);
       break;
     case JOIN:
+      // **作用**：验证表联接（如 `LEFT JOIN`、`INNER JOIN`）。
+      // **逻辑**：调用 `validateJoin`。这会进一步触发左侧数据源和右侧数据源的验证，并校验 `ON` 或 `USING` 条件。
       validateJoin((SqlJoin) node, scope);
       break;
     case OVER:
+      // **作用**：处理窗口函数相关的语法节点。
       validateOver((SqlCall) node, scope);
       break;
     case UNNEST:
+      // **作用**：验证将集合（Array/Multiset）展开为表的操作。
       validateUnnest((SqlCall) node, scope, targetRowType);
       break;
     case COLLECTION_TABLE:
+      // **作用**：验证表函数（Table Functions）。
       validateTableFunction((SqlCall) node, scope, targetRowType);
       break;
     default:
+      // **作用**：这是最常见的路径，处理普通的表名标识符（`SqlIdentifier`）或者括号里的子查询。
+      // **逻辑**：进入通用的查询验证流程。
       validateQuery(node, scope, targetRowType);
       break;
     }
 
     // Validate the namespace representation of the node, just in case the
     // validation did not occur implicitly.
+    // 这是最后一道防线。无论前面的 switch 命中了哪个分支，最后都会显式调用该 Namespace 的 validate 方法。
+    // 如果是一个表，它会去数据库元数据里查找表结构。
+    // 如果是一个子查询，它会触发子查询内部的完整验证。
     getNamespaceOrThrow(node, scope).validate(targetRowType);
   }
-
-  protected void validateTableFunction(SqlCall node, SqlValidatorScope scope,
+  // 专门用于处理 表函数（Table Functions） 的方法
+  // 在 SQL 中，表函数通常出现在 FROM 子句中，并由 TABLE() 关键字包裹，例如 SELECT * FROM TABLE(MY_FUNC(arg1, arg2))。
+  // 主要职责是验证表函数的调用是否符合语义规范，特别是针对 多态表函数（PTF, Polymorphic Table Functions） 的参数特性进行检查。
+  // 参数语义校验：区分并验证“行语义（Row Semantics）”和“集合语义（Set Semantics）”的参数。
+  // 约束检查：确保一个表函数最多只能有一个行语义的输入表，并防止不合法的分区（PARTITION BY）或排序（ORDER BY）出现在错误的参数位置。
+  // 语法展开：剥离 TABLE() 包装器，对内部真实的函数调用进行验证。
+  protected void validateTableFunction(SqlCall node, // 代表：外层的 TABLE(...) 调用。
+      SqlValidatorScope scope,
       RelDataType targetRowType) {
     // Dig out real call; TABLE() wrapper is just syntactic.
+    // TABLE() 只是语法上的包装，我们需要挖出内部真实的 Call
     SqlCall call = node.operand(0);
     if (call.getOperator() instanceof SqlTableFunction) {
+      // 检查该操作符是否实现了 SqlTableFunction 接口。如果是，则开启针对表函数参数特性的循环检查
       SqlTableFunction tableFunction = (SqlTableFunction) call.getOperator();
       boolean visitedRowSemanticsTable = false;
       for (int idx = 0; idx < call.operandCount(); idx++) {
         TableCharacteristic tableCharacteristic = tableFunction.tableCharacteristic(idx);
+        // // 如果输入表具有集合语义（SET），跳过进一步校验（因为它允许 PARTITION BY 等）
         if (tableCharacteristic != null) {
           // Skip validate if current input table has set semantics
           if (tableCharacteristic.semantics == TableCharacteristic.Semantics.SET) {
             continue;
           }
           // A table function at most has one input table with row semantics
+          // SQL 标准规定：一个表函数最多只能有一个具有行语义（ROW）的输入表
           if (visitedRowSemanticsTable) {
             throw newValidationError(
                 call,
@@ -3649,6 +3842,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         SqlNode currentNode = call.operand(idx);
         if (currentNode instanceof SqlCall) {
           SqlOperator op = ((SqlCall) currentNode).getOperator();
+          // 处理命名参数赋值，如 FUNC(param => table_name)
           if (op == SqlStdOperatorTable.ARGUMENT_ASSIGNMENT) {
             // Dig out the underlying operand
             SqlNode realNode = ((SqlBasicCall) currentNode).operand(0);
@@ -3657,12 +3851,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
               op = ((SqlCall) realNode).getOperator();
             }
           }
+          // 如果该位置不应该是集合语义表，但用户写了 SET_SEMANTICS_TABLE（即带了 PARTITION BY）
           if (op == SqlStdOperatorTable.SET_SEMANTICS_TABLE) {
             throwInvalidRowSemanticsTable(call, idx, (SqlCall) currentNode);
           }
         }
       }
     }
+    // 在完成表函数特有的参数语义检查后，调用通用的 validateQuery 完成类型推导和整体结构验证。
     validateQuery(node, scope, targetRowType);
   }
 
@@ -3684,13 +3880,22 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
   protected void validateOver(SqlCall call, SqlValidatorScope scope) {
     throw new AssertionError("OVER unexpected in this context");
   }
-
-  protected void validateUnnest(SqlCall call, SqlValidatorScope scope,
+  // 处理 集合展开（Unnesting） 语义的方法。
+  // 在 SQL 中，UNNEST 通常用于将一个集合类型（如 ARRAY 或 MULTISET）转换成多行数据，以便在 FROM 子句中像表一样进行查询。
+  // 主要作用是预处理并验证 UNNEST 函数调用的内容。
+  // 执行两个关键步骤：
+  // 标识符展开：将 UNNEST(attr) 中的列名 attr 进行全限定化处理（例如转为 alias.attr），确保后续逻辑能正确找到数据源。
+  // 委托验证：将处理后的节点转交给通用的查询验证逻辑（validateQuery），以推导其生成的行类型（Row Type）。
+  protected void validateUnnest(SqlCall call, // 代表 UNNEST 的函数调用节点。通常形如 UNNEST(collection_expression)，其中操作数（Operand）是需要展开的集合表达式。
+      SqlValidatorScope scope,
       RelDataType targetRowType) {
     for (int i = 0; i < call.operandCount(); i++) {
+      // 1. 获取第 i 个操作数并执行展开
       SqlNode expandedItem = expand(call.operand(i), scope);
+      // 2. 将展开后的新节点（带全限定名）存回 call 对象中
       call.setOperand(i, expandedItem);
     }
+    // UNNEST 本质上产生了一个虚拟表。调用 validateQuery 会触发对 UNNEST 内部表达式类型的最终推导。
     validateQuery(call, scope, targetRowType);
   }
 
@@ -3710,14 +3915,24 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
     }
   }
-
+  // validateJoin 的主要职责是确保 SQL 中的 JOIN 语句在语义上是正确的。它处理以下核心逻辑：
+  // 递归验证数据源：验证 JOIN 左侧和右侧的表或子查询。
+  // 验证联接条件：处理 ON 表达式、USING 子句以及 NATURAL 连接的合法性。
+  // 约束检查：确保不同类型的 JOIN（如 CROSS vs INNER）是否正确地携带或省略了联接条件。
+  // 公共列验证：针对 USING 和 NATURAL 连接，确保两边确实存在同名的列，且类型兼容。
+  // SqlJoin join: 代表当前正在验证的 JOIN 节点，包含了左节点、右节点、联接类型（Inner, Left 等）以及联接条件。
+  // SqlValidatorScope scope: 当前查询的外部作用域。
   protected void validateJoin(SqlJoin join, SqlValidatorScope scope) {
+    // 初始化与数据源验证
     final SqlNode left = join.getLeft();
     final SqlNode right = join.getRight();
     final boolean natural = join.isNatural();
     final JoinType joinType = join.getJoinType();
     final JoinConditionType conditionType = join.getConditionType();
+    // 获取专门为该 JOIN 节点创建的作用域，该作用域合并了左右两表的命名空间
+    // 关键在于 joinScope，它允许在验证联接条件（如 ON t1.id = t2.id）时同时看到左右两张表的字段。
     final SqlValidatorScope joinScope = getScopeOrThrow(join); // getJoinScope?
+    // 递归验证左表和右表
     validateFrom(left, unknownType, joinScope);
     validateFrom(right, unknownType, joinScope);
 
@@ -3727,9 +3942,13 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       checkArgument(join.getCondition() == null);
       break;
     case ON:
+      // // 展开表达式（处理标识符全限定化）
       final SqlNode condition = expand(getCondition(join), joinScope);
+      // 更新 AST 节点
       join.setOperand(5, condition);
+      // 验证布尔表达式合法性
       validateWhereOrOn(joinScope, condition, "ON");
+      // 检查 OLAP 上卷限制
       checkRollUp(null, join, condition, joinScope, "ON");
       break;
     case USING:
@@ -3738,6 +3957,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
       // Parser ensures that using clause is not empty.
       checkArgument(!list.isEmpty(), "Empty USING clause");
+      // 验证 USING(id) 中的 id 在左右两边都存在且唯一
       for (SqlIdentifier id : list) {
         validateCommonJoinColumn(id, left, right, scope, natural);
       }
@@ -3747,7 +3967,9 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
 
     // Validate NATURAL.
+    // NATURAL JOIN 专项验证
     if (natural) {
+      // NATURAL JOIN 不允许显式写 ON 或 USING
       if (join.getCondition() != null) {
         throw newValidationError(getCondition(join),
             RESOURCE.naturalDisallowsOnOrUsing());
@@ -3755,6 +3977,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
       // Join on fields that occur on each side.
       // Check compatibility of the chosen columns.
+      // 自动推导两表中同名的列作为联接键
+      // NATURAL 实际上是隐式的 USING。代码会找到左右两表的交集列名，并对每一列执行 validateCommonJoinColumn 验证。
       for (String name : deriveNaturalJoinColumnList(join)) {
         final SqlIdentifier id =
             new SqlIdentifier(name, join.isNaturalNode().getParserPosition());
@@ -3764,9 +3988,12 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
     // Which join types require/allow a ON/USING condition, or allow
     // a NATURAL keyword?
+    // 最后根据 JOIN 的物理类型检查语法约束：
     switch (joinType) {
     case LEFT_ANTI_JOIN:
     case LEFT_SEMI_JOIN:
+    // Case SEMI, ANTI (半联接/反联接):
+    // 检查当前的 SQL 兼容性配置（conformance）是否允许使用这类扩展的 Join 类型。
       if (!this.config.conformance().isLiberal()) {
         throw newValidationError(join.getJoinTypeNode(),
             RESOURCE.dialectDoesNotSupportFeature(joinType.name()));
@@ -3776,12 +4003,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     case LEFT:
     case RIGHT:
     case FULL:
+      // 标准联接必须有 ON/USING 或 NATURAL 关键字
       if ((join.getCondition() == null) && !natural) {
         throw newValidationError(join, RESOURCE.joinRequiresCondition());
       }
       break;
     case COMMA:
     case CROSS:
+      // 笛卡尔积（CROSS JOIN）不允许有联接条件或 NATURAL 关键字
       if (join.getCondition() != null) {
         throw newValidationError(join.getConditionTypeNode(),
             RESOURCE.crossJoinDisallowsCondition());
@@ -3888,33 +4117,45 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param targetRowType Desired row type, must not be null, may be the data
    *                      type 'unknown'.
    */
+  // 负责协调一个 SELECT 语句中各个子句（FROM, WHERE, GROUP BY, SELECT 等）的验证顺序，并确保它们之间的逻辑一致性。
   protected void validateSelect(
-      SqlSelect select,
-      RelDataType targetRowType) {
+      SqlSelect select, // 代表当前正在验证的 SELECT 语法树节点。它包含了 SELECT 列表、FROM、WHERE、GROUP BY、HAVING 等所有子句的信息。
+      RelDataType targetRowType) { // 目标行类型（期望的返回类型）
     requireNonNull(targetRowType, "targetRowType");
 
     // Namespace is either a select namespace or a wrapper around one.
+    // 获取该 SELECT 语句对应的命名空间
     final SelectNamespace ns =
         getNamespaceOrThrow(select).unwrap(SelectNamespace.class);
 
     // Its rowtype is null, meaning it hasn't been validated yet.
     // This is important, because we need to take the targetRowType into
     // account.
+    // 确保此时 rowType 为空，即尚未验证过
+    // 获取当前 SELECT 语句的 Namespace。验证器的目标之一就是计算出这个 Namespace 的最终 rowType。
     assert ns.rowType == null;
-
+    // 如果使用了 DISTINCT，检查当前配置是否支持该 SQL 特性。
     SqlNode distinctNode = select.getModifierNode(SqlSelectKeyword.DISTINCT);
     if (distinctNode != null) {
       validateFeature(RESOURCE.sQLFeature_E051_01(),
           distinctNode
               .getParserPosition());
     }
-
+    // 核心目的是处理一种特殊的类型推导场景：当 INSERT ... VALUES 被改写为 SELECT * 时，如何将目标表的类型信息向下传递。
+    // 从 SqlSelect 节点中提取 SELECT 子句后面的项列表（即投影列
+    // 例子：对于 SELECT a, b，它获取 [a, b]；对于 SELECT *，它获取 [*]
     final SqlNodeList selectItems = SqlNonNullableAccessors.getSelectList(select);
     RelDataType fromType = unknownType;
     if (selectItems.size() == 1) {
+      // 只有当 SELECT 列表里只有一个项时，才进入后续逻辑。
       final SqlNode selectItem = selectItems.get(0);
       if (selectItem instanceof SqlIdentifier) {
         SqlIdentifier id = (SqlIdentifier) selectItem;
+        // 判断是否为 *。
+        // id.names.size() 判断是否为非限定的。如果是 emp.*，其 names 大小为 2；如果是纯 *，其大小为 1。
+        // 在 Calcite 内部，当你执行 INSERT INTO t(c1, c2) VALUES(?, ?) 时，系统在底层会将其展开/重写为类似 SELECT * FROM (VALUES(?, ?)) 的形式。
+        // 为什么要这样做？
+        // 在这种场景下，VALUES 里的动态参数 ? 本身是没有类型的。为了知道第一个 ? 应该是 INT 还是 VARCHAR，验证器必须参考 INSERT 目标表 t 的结构（即 targetRowType）。
         if (id.isStar() && (id.names.size() == 1)) {
           // Special case: for INSERT ... VALUES(?,?), the SQL
           // standard says we're supposed to propagate the target
@@ -3927,15 +4168,19 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
 
     // Make sure that items in FROM clause have distinct aliases.
-    //这段代码主要是校验表的别名不能重复。
+    // 核心片段，主要负责 FROM 子句的合法性检查，分为两个阶段：别名唯一性校验 和 数据源结构验证。
+    // 获取与该 SELECT 的 FROM 子句关联的作用域（Scope）
     final SelectScope fromScope = (SelectScope) getFromScope(select);
+    // 提取该作用域下所有子节点（表、联接表、子查询）的别名或原始表名。
     List<@Nullable String> names = fromScope.getChildNames();
+    // 如果当前的元数据读取器（CatalogReader）配置为不区分大小写，则将所有名字统一转换为大写。
     if (!catalogReader.nameMatcher().isCaseSensitive()) {
       //noinspection RedundantTypeArguments
       names = names.stream()
           .<@Nullable String>map(s -> s == null ? null : s.toUpperCase(Locale.ROOT))
           .collect(Collectors.toList());
     }
+    // 返回列表中第一个重复元素的索引。如果没有重复，则返回 -1。
     final int duplicateAliasOrdinal = Util.firstDuplicate(names);
     if (duplicateAliasOrdinal >= 0) {
       final ScopeChild child =
@@ -3946,13 +4191,17 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
               () -> "enclosingNode of namespace of " + child.name),
           RESOURCE.fromAliasDuplicate(child.name));
     }
-
+    // 检查 FROM 是否缺失
     final SqlNode from = select.getFrom();
     if (from == null) {
+      // 根据 SQL 标准配置判断 FROM 是否必填
+      // 例如：在 Oracle 中 SELECT 1 是非法的（必须加 FROM DUAL），但在 MySQL 或 PostgreSQL 中是允许的。如果配置要求必填而用户没写，则报错。
       if (this.config.conformance().isFromRequired()) {
         throw newValidationError(select, RESOURCE.selectMissingFrom());
       }
     } else {
+      // 会深入到 FROM 子句内部。如果 FROM 是一个 SqlJoin，它会验证左右两表及连接条件；如果是一个子查询，它会开启新一轮的 SELECT 验证。
+      // 参数传递：它将 fromType（可能是从 INSERT 目标表传下来的类型）传递下去，以便子查询或 VALUES 子句进行类型推导。
       validateFrom(from, fromType, fromScope);
     }
 
@@ -5580,13 +5829,19 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param targetRowType Row type which expression must conform to
    * @param scope         Scope within which clause occurs
    */
+  // 专门用于验证 VALUES 子句 的核心方法。它确保内联数据（Inline Data）在结构上是对齐的，且数据类型在列维度上是兼容的。
+  // 主要作用是执行以下三类检查：
+  // 结构一致性：确保 VALUES 中的每一行（ROW）具有相同的列数。
+  // 类型推导与匹配：如果存在目标类型（如 INSERT 目标表），则将类型下推到具体的字面量或参数上。
+  // 类型兼容性：在没有明确目标类型时，确保同一列下的不同行数据能够转换到一个公共的父类型（Least Restrictive Type）。
   protected void validateValues(
-      SqlCall node,
-      RelDataType targetRowType,
-      final SqlValidatorScope scope) {
+      SqlCall node, // 代表整个 VALUES 表达式。它的操作数通常是一组 SqlKind.ROW 的调用。
+      RelDataType targetRowType, // 期望类型。在 INSERT INTO t(a, b) VALUES (1, 'x') 中，它代表列 (a, b) 的结构。
+      final SqlValidatorScope scope) { // 验证作用域。用于解析 VALUES 中可能出现的表达式（如函数调用或标量子查询）
     assert node.getKind() == SqlKind.VALUES;
-
+    // 获取所有行
     final List<SqlNode> operands = node.getOperandList();
+    // 遍历所有操作数，目前 Calcite 要求 VALUES 内部必须是 ROW 构造器（即 VALUES (row1), (row2) 形式）。
     for (SqlNode operand : operands) {
       if (!(operand.getKind() == SqlKind.ROW)) {
         throw Util.needToImplement(
@@ -5594,9 +5849,11 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
 
       SqlCall rowConstructor = (SqlCall) operand;
+      // 处理 INSERT 子集列的情况
       if (this.config.conformance().isInsertSubsetColumnsAllowed()
           && targetRowType.isStruct()
           && rowConstructor.operandCount() < targetRowType.getFieldCount()) {
+        // 逻辑：如果配置允许插入部分列，且 VALUES 提供的列数少于目标类型，则截断 targetRowType 以匹配当前的列数。如果不匹配且不允许子集，则跳过或交由上层处理。
         targetRowType =
             typeFactory.createStructType(
                 targetRowType.getFieldList()
@@ -5605,12 +5862,12 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
           && rowConstructor.operandCount() != targetRowType.getFieldCount()) {
         return;
       }
-
+      // 如果 VALUES 包含动态参数 ? 或 NULL 字面量，这一行代码将根据 targetRowType 的定义，赋予这些未知节点具体的类型。
       inferUnknownTypes(
           targetRowType,
           scope,
           rowConstructor);
-
+      // 如果目标列定义为 NOT NULL，但用户在 VALUES 中显式写了 NULL 字面量，直接抛出验证错误。
       if (targetRowType.isStruct()) {
         for (Pair<SqlNode, RelDataTypeField> pair
             : Pair.zip(rowConstructor.getOperandList(),
@@ -5623,7 +5880,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         }
       }
     }
-
+    // 触发每一行内部表达式的递归验证。
     for (SqlNode operand : operands) {
       operand.validate(this, scope);
     }
@@ -5632,12 +5889,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     //  and that expressions in each column are compatible.
     // A values expression is turned into something that looks like
     // ROW(type00, type01,...), ROW(type11,...),...
+    // 多行间的兼容性检查（核心逻辑）
     final int rowCount = operands.size();
     if (rowCount >= 2) {
       SqlCall firstRow = (SqlCall) operands.get(0);
       final int columnCount = firstRow.operandCount();
 
       // 1. check that all rows have the same cols length
+      // 1. 检查所有行的列数是否一致
       for (SqlNode operand : operands) {
         SqlCall thisRow = (SqlCall) operand;
         if (columnCount != thisRow.operandCount()) {
@@ -5648,8 +5907,10 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
 
       // 2. check if types at i:th position in each row are compatible
+      // 2. 检查每一列在所有行中的类型是否兼容
       for (int col = 0; col < columnCount; col++) {
         final int c = col;
+        // 例子：如果第一行第一列是 1 (INTEGER)，第二行第一列是 2.5 (DECIMAL)，则该列最终会被推导为 DECIMAL。如果类型无法统一（如 INT 和 DATE），则报错
         final RelDataType type =
             typeFactory.leastRestrictive(
                 new AbstractList<RelDataType>() {
@@ -6484,10 +6745,17 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       return literal;
     }
   }
-
-  public SqlNode expandSelectExpr(SqlNode expr,
-      SelectScope scope, SqlSelect select) {
+  // Apache Calcite 的验证阶段扮演着“表达式转换器”的角色。
+  // 它的核心任务是对 SELECT 列表中的表达式进行改写，例如将简写的列名展开为全限定名（col -> table.col），或者处理一些特殊的内置函数
+  public SqlNode expandSelectExpr(SqlNode expr, // 待处理的原始表达式节点。例子：用户输入的 deptno 或 deptno + 1。
+      SelectScope scope,// 作用：当前 SELECT 语句的作用域。包含了 FROM 子句中定义的所有表信息。Expander（展开器）需要利用这个作用域来查找某个列名属于哪张表，从而实现列的全限定化。
+      SqlSelect select) { // 作用：当前的 SELECT 语法树节点。
+    // 继承自 SqlScopedShuttle。它本质上是一个访问者（Visitor），
+    // 专门负责遍历 SqlNode 树并对特定节点进行替换。它持有 this（验证器本身）、scope 和 select 的引用，以便在遍历时进行查找和验证。
     final Expander expander = new SelectExpander(this, scope, select);
+    // 列全限定化：如果 expr 是一个标识符（SqlIdentifier），展开器会去 scope 里找它的来源，将其改写为带表名前缀的形式。
+    // 函数转换：处理一些特殊的 SQL 函数。
+    // 子查询处理：如果表达式中包含标量子查询，也会在此处进行必要的预处理。
     final SqlNode newExpr = expander.go(expr);
     if (expr != newExpr) {
       setOriginal(newExpr, expr);
@@ -6907,38 +7175,45 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * Converts an expression into canonical form by fully-qualifying any
    * identifiers.
    */
+  // 核心目标是将 SQL 表达式转换为规范形式（Canonical Form），
+  // 最主要的操作就是将模糊的标识符（如 empno）重写为全限定标识符（如 EMP.EMPNO）。
   private static class Expander extends SqlScopedShuttle {
+    // 持有所属验证器的引用
     protected final SqlValidatorImpl validator;
-
+    // 初始化展开器，通过 super(scope) 将初始作用域压入 SqlScopedShuttle 的作用域栈中。
     Expander(SqlValidatorImpl validator, SqlValidatorScope scope) {
       super(scope);
       this.validator = validator;
     }
-
+    // 启动展开流程。
     public SqlNode go(SqlNode root) {
       return requireNonNull(root.accept(this),
           () -> this + " returned null for " + root);
     }
-
+    // 该类最重要的重写方法，实现了“全限定化”逻辑
     @Override public @Nullable SqlNode visit(SqlIdentifier id) {
       // First check for builtin functions which don't have
       // parentheses, like "LOCALTIME".
+      // 处理像 LOCALTIME 或 CURRENT_DATE 这种不需要括号的内置函数。如果匹配，将其转换为 SqlCall 并继续遍历。
       final SqlCall call = validator.makeNullaryCall(id);
       if (call != null) {
         return call.accept(this);
       }
+      // 利用当前的 Scope 查找 id 的来源，并返回带前缀的标识符（例如将 id 改写为 schema.table.column）。
       final SqlIdentifier fqId = getScope().fullyQualify(id).identifier;
+      // 处理动态表与关联原始节点
       SqlNode expandedExpr = expandDynamicStar(id, fqId);
       validator.setOriginal(expandedExpr, id);
       return expandedExpr;
     }
-
+    // 解析 SQL 字面量。
     @Override public @Nullable SqlNode visit(SqlLiteral literal) {
       return validator.resolveLiteral(literal);
     }
-
+    // 定制化处理各种 SQL 调用。
     @Override protected SqlNode visitScoped(SqlCall call) {
       switch (call.getKind()) {
+      // 针对 SCALAR_QUERY (标量子查询)、WITH 等类型，直接返回 call 不做处理。
       case SCALAR_QUERY:
       case CURRENT_VALUE:
       case NEXT_VALUE:
@@ -6957,7 +7232,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       validator.setOriginal(result, call);
       return result;
     }
-
+    // 处理 Schema-less（动态模式）表的列引用。
     protected SqlNode expandDynamicStar(SqlIdentifier id, SqlIdentifier fqId) {
       if (DynamicRecordType.isDynamicStarColName(Util.last(fqId.names))
           && !DynamicRecordType.isDynamicStarColName(Util.last(id.names))) {
@@ -7083,7 +7358,12 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * identifiers. For common columns in USING, it will be converted to
    * COALESCE(A.col, B.col) AS col.
    */
+  // 专门用于处理 SELECT 子句中的表达式展开，特别增加了一个关键的逻辑：处理 USING 子句或 NATURAL JOIN 产生的公共列（Common Columns）。
+  // 在标准 SQL 中，当你使用 JOIN ... USING (col) 时，col 是属于两张表的。在 SELECT 列表中直接写 col 时，验证器需要将其展开为一种能够兼顾两张表数据的规范形式。
+  // 根据该类的注释和代码，它会将公共列转换为如下形式：
+  // col $\rightarrow$ COALESCE(tableA.col, tableB.col) AS col
   static class SelectExpander extends Expander {
+    // 持有当前 SELECT 语句的引用。
     final SqlSelect select;
 
     SelectExpander(SqlValidatorImpl validator, SelectScope scope,
@@ -7091,13 +7371,18 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       super(validator, scope);
       this.select = select;
     }
-
+    // 重写了父类的标识符访问逻辑，通过“拦截”机制优先处理公共列
     @Override public @Nullable SqlNode visit(SqlIdentifier id) {
+      // 1. 尝试将标识符作为公共列进行展开
       final SqlNode node =
           expandCommonColumn(select, id, (SelectScope) getScope(), validator);
+      // 2. 判断是否发生了展开
       if (node != id) {
+        // 如果 expandCommonColumn 返回了新节点（说明它是 USING/NATURAL JOIN 的公共列）
+        // 此时 node 已经是类似 COALESCE(...) 的结构，直接返回
         return node;
       } else {
+        // 3. 如果不是公共列，则退回到父类逻辑（执行全限定化，如 col -> table.col）
         return super.visit(id);
       }
     }
