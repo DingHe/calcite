@@ -27,9 +27,12 @@ import org.apache.calcite.sql.SqlOperatorBinding;
  *
  * <p>This class is an example of the
  * {@link org.apache.calcite.util.Glossary#STRATEGY_PATTERN strategy pattern}.
- * sql类型转换
  * @see SqlTypeTransforms
  */
+// 主要作用是定义一种 “类型转换策略”。
+// 在 SQL 解析和校验过程中，一个运算符（Operator）的返回类型往往不仅仅取决于它自己，还取决于它的输入参数（操作数）。
+// SqlTypeTransform 允许开发者定义一种规则：给定一个基础类型，如何根据当前的 SQL 上下文将其转换为另一种类型。
+// 设计模式：它是 策略模式（Strategy Pattern） 的典型应用。
 public interface SqlTypeTransform {
   //~ Methods ----------------------------------------------------------------
 
@@ -42,6 +45,6 @@ public interface SqlTypeTransform {
    * @return transformed type, never null
    */
   RelDataType transformType(
-      SqlOperatorBinding opBinding,
-      RelDataType typeToTransform);
+      SqlOperatorBinding opBinding, // 提供转换发生时的“上下文信息”。
+      RelDataType typeToTransform); // “待转换”的原始类型。
 }

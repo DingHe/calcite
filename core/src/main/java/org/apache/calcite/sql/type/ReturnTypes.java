@@ -1247,6 +1247,9 @@ public abstract class ReturnTypes {
    * as a {@link org.apache.calcite.sql.validate.SqlValidatorNamespace}, and
    * therefore the result type of the call is the type of that namespace.
    */
+  // SCOPE 策略的作用是：直接从验证器的“命名空间”中获取类型。
+  // 在处理像 SELECT 这样的复杂查询时，返回类型不是通过简单的逻辑计算出来的，而是由该查询所包含的列、表和表达式构成的整个“作用域”决定的。
+  // SCOPE 告诉 Calcite：“不要尝试通过算法推导我的类型，去问验证器（Validator），它已经为我注册了一个命名空间，那个空间里的行类型（Row Type）就是我的返回类型。”
   public static final SqlReturnTypeInference SCOPE = opBinding -> {
     SqlCallBinding callBinding = (SqlCallBinding) opBinding;
     SqlValidatorNamespace ns = getNamespace(callBinding);

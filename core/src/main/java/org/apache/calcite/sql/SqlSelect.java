@@ -35,26 +35,43 @@ import static java.util.Objects.requireNonNull;
  * statement. It warrants its own node type just because we have a lot of
  * methods to put somewhere.
  */
+// SqlSelect 是最核心的 AST（抽象语法树）节点类之一。它封装了标准 SQL SELECT 语句的所有组成部分。
+// SqlSelect 的作用是 代表一个完整的 SELECT 查询语句。
+// 虽然它继承自 SqlCall（即它在内部被视为对 SELECT 操作符的调用），但由于 SELECT 语句极其复杂（包含过滤、聚合、排序、分页等多个子句），Calcite 为其专门定义了一个类，以便更方便地访问和操作这些子句。
+// 连接 SQL 解析（Parsing） 和 语义校验（Validation） 的纽带。解析器将 SQL 文本解析为 SqlSelect 对象，校验器则通过访问该对象的各个属性来检查表是否存在、字段是否合法等。
 public class SqlSelect extends SqlCall {
   //~ Static fields/initializers ---------------------------------------------
 
   // constants representing operand positions
+  // 操作数索引常量 (FROM_OPERAND, WHERE_OPERAND 等)
+  // 定义了各子句在 getOperandList() 返回列表中的固定位置，方便基于索引进行访问。
   public static final int FROM_OPERAND = 2;
   public static final int WHERE_OPERAND = 3;
   public static final int HAVING_OPERAND = 5;
   public static final int QUALIFY_OPERAND = 7;
-
+  // 存储 SELECT 后的关键字，如 DISTINCT 或 ALL。
   SqlNodeList keywordList;
+  // 查询的目标列（即 SELECT 后的表达式列表）。
   SqlNodeList selectList;
+  // 数据源子句（FROM），可以是一张表、子查询或连接（Join）
   @Nullable SqlNode from;
+  // 过滤条件子句（WHERE）。
   @Nullable SqlNode where;
+  // 分组字段列表（GROUP BY）。
   @Nullable SqlNodeList groupBy;
+  // 聚合后的过滤条件（HAVING）。
   @Nullable SqlNode having;
+  // 命名窗口定义（WINDOW 子句）。
   SqlNodeList windowDecls;
+  // 针对窗口函数结果的过滤子句（QUALIFY，常见于 BigQuery/Snowflake）
   @Nullable SqlNode qualify;
+  // 排序字段列表（ORDER BY）。
   @Nullable SqlNodeList orderBy;
+  // 跳过的行数（OFFSET）。
   @Nullable SqlNode offset;
+  // 限制返回的行数（FETCH NEXT/FIRST 或 LIMIT）。
   @Nullable SqlNode fetch;
+  // SQL 提示（Hints），如 /*+ AGG_STRATEGY(HASH) */。
   @Nullable SqlNodeList hints;
 
   //~ Constructors -----------------------------------------------------------
@@ -166,11 +183,14 @@ public class SqlSelect extends SqlCall {
   public final boolean isDistinct() {
     return getModifierNode(SqlSelectKeyword.DISTINCT) != null;
   }
-
+  // 在 SELECT 语句的关键字列表中查找并返回特定的修饰符节点。
+  // 在 SQL 中，SELECT 关键字后面可以跟随多个修饰词，例如 DISTINCT、ALL、STREAM（用于流查询）等。这些词被存储在 SqlSelect 类的 keywordList 属性中。
   public final @Nullable SqlNode getModifierNode(SqlSelectKeyword modifier) {
     for (SqlNode keyword : keywordList) {
+      // symbolValue(...): 这是关键步骤。它将 SqlNode 转换成 Java 的枚举类型
       SqlSelectKeyword keyword2 =
           ((SqlLiteral) keyword).symbolValue(SqlSelectKeyword.class);
+      // 将提取出的枚举值与传入的参数 modifier 进行对比。如果匹配，说明找到了该修饰符，并返回该节点。
       if (keyword2 == modifier) {
         return keyword;
       }

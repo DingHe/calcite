@@ -32,10 +32,16 @@ import static com.google.common.base.Preconditions.checkArgument;
  * by using one {@link SqlReturnTypeInference} rule and a combination of
  * {@link SqlTypeTransform}s.
  */
+// SqlTypeTransformCascade 的本质是一个“流水线（Pipeline）”控制器。
+// 先通过一个基础规则推导出初始类型，然后像接力赛一样，将这个结果通过一系列“类型转换器”进行加工，最终得到最终的返回类型。
+// 级联机制：名字中的 "Cascade" 意为级联。它解决了单一推导规则过于死板的问题。例如，你可以定义一个规则推导基础类型是 INTEGER，然后级联一个转换器将其变为 NULLABLE（可空）。
 public class SqlTypeTransformCascade implements SqlReturnTypeInference {
   //~ Instance fields --------------------------------------------------------
-
+  // 这是类型推导的起点（种子规则）
+  // 它的任务是根据当前的 SQL 绑定上下文（SqlOperatorBinding）计算出一个初始的 RelDataType。如果这个规则返回 null，整个级联过程就会提前终止。
   private final SqlReturnTypeInference rule;
+  // 类型转换的工序列表
+  // 不可变的插件列表，每个插件都实现了 SqlTypeTransform 接口。它们按顺序排列，上一个转换器的输出将作为下一个转换器的输入
   private final ImmutableList<SqlTypeTransform> transforms;
 
   //~ Constructors -----------------------------------------------------------

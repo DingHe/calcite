@@ -25,12 +25,13 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-/** sql返回值类型推断链，根据rules的顺序，返回第一个推断返回值不为null的类型
+/**
  * Strategy to infer the type of an operator call from the type of the operands
  * by using a series of {@link SqlReturnTypeInference} rules in a given order.
  * If a rule fails to find a return type (by returning NULL), next rule is tried
  * until there are no more rules in which case NULL will be returned.
  */
+// sql返回值类型推断链，根据rules的顺序，返回第一个推断返回值不为null的类型
 public class SqlReturnTypeInferenceChain implements SqlReturnTypeInference {
   //~ Instance fields --------------------------------------------------------
 

@@ -24,9 +24,15 @@ import org.apache.calcite.sql.SqlOperatorBinding;
 /**
  * A {@link SqlReturnTypeInference} which always returns the same SQL type.
  */
+// 这个类的作用是定义一种 “固定返回类型” 的策略。
+// 在 SQL 中，大多数运算符的返回类型是根据操作数推导出来的（例如 + 号的结果取决于加数）。但有些函数的返回类型是预先确定且固定不变的。ExplicitReturnTypeInference 允许你直接指定一个类型，无论 SQL 调用的上下文是什么，它始终返回那个预设的类型。
+// 返回布尔值的谓词函数（如 IS NULL，永远返回 BOOLEAN）。
+// 返回特定数值类型的函数（如 COUNT，通常永远返回 BIGINT）。
 public class ExplicitReturnTypeInference implements SqlReturnTypeInference {
   //~ Instance fields --------------------------------------------------------
-
+  // 存储“原型类型”定义。
+  // 原因：Calcite 中的类型对象（RelDataType）通常是绑定在特定的类型工厂（TypeFactory）上的。在不同的查询准备过程中，可能会使用不同的工厂。
+  // RelProtoDataType 像是一个类型的“模板”或“配方”，它不属于任何工厂，但在需要时可以根据指定的工厂生产出真正的类型对象。
   protected final RelProtoDataType protoType;
 
   //~ Constructors -----------------------------------------------------------
