@@ -29,9 +29,21 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
 /**
  * Implementation of {@link SqlCall} that keeps its operands in an array.
  */
+// 在 Apache Calcite 中，SqlBasicCall 是 SqlCall 的最通用、最基础的实现类。它代表了 SQL 语法树中几乎所有的“调用”行为。
+// SqlBasicCall 的核心作用是 存储并表达一个操作符或函数的调用。
+// 在 SQL 中，绝大多数表达式都可以看作是某种形式的“调用”。例如：
+// 算术运算：1 + 2（对 + 操作符的调用）
+// 函数使用：ABS(-5)（对 ABS 函数的调用）
+// 比较运算：age > 18（对 > 操作符的调用）
+// 为什么需要这个类？
+// 不同于 SqlSelect 这种具有固定且复杂命名字段（如 where, from）的专用类，SqlBasicCall 采用了一种通用的结构：一个操作符 + 一个有序的操作数列表。
+// 这种设计极大地提高了灵活性，使得它能表示各种各样的 SQL 表达式。
 public class SqlBasicCall extends SqlCall {
+  // 该调用的“灵魂”，定义了调用的行为。它可以是标准的 SQL 操作符（如 +, AND），也可以是自定义函数（UDF）
   private SqlOperator operator;
+  // 操作数列表。存储该调用所涉及的参数。例如在 a + b 中，operandList 包含 a 和 b 两个节点。注意，为了保证 AST 的稳定性，这里通常使用 ImmutableNullableList
   private List<@Nullable SqlNode> operandList;
+  // 函数限定符。主要用于处理 DISTINCT 或 ALL 关键字。例如在 COUNT(DISTINCT x) 中，DISTINCT 就是这个限定符。
   private final @Nullable SqlLiteral functionQuantifier;
 
   @Deprecated // to be removed before 2.0

@@ -31,9 +31,15 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * SQL statement is the only property which distinguishes them, so this 0-based
  * index is recorded as soon as the parameter is encountered.
  */
+// SqlDynamicParam 是一个非常精简但关键的类。它代表了 SQL 语句中的 动态参数占位符（通常在 SQL 文本中显示为问号 ?）
+// SqlDynamicParam 的主要作用是 在抽象语法树（AST）中表示 JDBC 风格的参数占位符。
+// 当你在执行预编译 SQL（PreparedStatement）时，例如：
+// SELECT * FROM emp WHERE empno = ?
+// 其中的 ? 在 Calcite 的解析阶段就会被转化为一个 SqlDynamicParam 对象。
+// 唯一标识性：动态参数之间唯一的区别就是它们在 SQL 语句中出现的顺序索引（从 0 开始）。
 public class SqlDynamicParam extends SqlNode {
   //~ Instance fields --------------------------------------------------------
-
+  // 存储该参数在 SQL 文本中出现的基于 0 的索引位置。
   private final int index;
 
   //~ Constructors -----------------------------------------------------------

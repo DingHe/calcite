@@ -44,24 +44,34 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
  *
  * @see SqlNode#toList()
  */
+// 既是一个 SQL 语法树节点（SqlNode），同时也是一个 SqlNode 对象的列表（List）
+// SqlNodeList 的主要作用是在 AST（抽象语法树）中表示一组并列的 SQL 节点。
+// 由于它实现了 List<SqlNode> 接口，你可以像操作普通 Java 列表一样操作它；又因为它继承了 SqlNode，它可以作为其他复杂节点（如 SqlSelect 中的 selectList 或 groupBy）的一个属性存在。
+// 常见应用场景：
+// SELECT 语句中的投影列列表（Select List）。
+// GROUP BY 或 ORDER BY 中的字段列表。
+// IN 表达式中的值列表（如 IN (1, 2, 3)）。
 public class SqlNodeList extends SqlNode implements List<SqlNode>, RandomAccess {
   //~ Static fields/initializers ---------------------------------------------
 
   /**
    * An immutable, empty SqlNodeList.
    */
+  // 一个不可变的空列表。用于表示没有任何项的子句
   public static final SqlNodeList EMPTY =
       new SqlNodeList(ImmutableList.of(), SqlParserPos.ZERO);
 
   /**
    * A SqlNodeList that has a single element that is an empty list.
    */
+  // 包含一个“空列表节点”的列表。在某些嵌套层次结构中使用
   public static final SqlNodeList SINGLETON_EMPTY =
       new SqlNodeList(ImmutableList.of(EMPTY), SqlParserPos.ZERO);
 
   /**
    * A SqlNodeList that has a single element that is a star identifier.
    */
+  // 包含一个星号标识符（*）的列表。常见于 SELECT *。
   public static final SqlNodeList SINGLETON_STAR =
       new SqlNodeList(ImmutableList.of(SqlIdentifier.STAR), SqlParserPos.ZERO);
 
@@ -69,6 +79,7 @@ public class SqlNodeList extends SqlNode implements List<SqlNode>, RandomAccess 
 
   // Sometimes null values are present in the list, however, it is assumed that callers would
   // perform all the required null-checks.
+  // 内部实际存储 SqlNode 对象的 List 容器。它是 SqlNodeList 所有行为的物理支撑。
   private final List<@Nullable SqlNode> list;
 
   //~ Constructors -----------------------------------------------------------
@@ -77,6 +88,7 @@ public class SqlNodeList extends SqlNode implements List<SqlNode>, RandomAccess 
    *
    * <p>Because SqlNodeList implements {@link RandomAccess}, the backing list
    * should allow O(1) access to elements. */
+  //将传入集合中的节点拷贝到新列表中
   private SqlNodeList(SqlParserPos pos, List<@Nullable SqlNode> list) {
     super(pos);
     this.list = Objects.requireNonNull(list, "list");
@@ -85,6 +97,7 @@ public class SqlNodeList extends SqlNode implements List<SqlNode>, RandomAccess 
   /**
    * Creates a SqlNodeList that is initially empty.
    */
+  // 创建一个指定位置的空列表。
   public SqlNodeList(SqlParserPos pos) {
     this(pos, new ArrayList<>());
   }
@@ -93,6 +106,7 @@ public class SqlNodeList extends SqlNode implements List<SqlNode>, RandomAccess 
    * Creates a <code>SqlNodeList</code> containing the nodes in <code>
    * list</code>. The list is copied, but the nodes in it are not.
    */
+  // 将传入集合中的节点拷贝到新列表中
   public SqlNodeList(
       Collection<? extends @Nullable SqlNode> collection,
       SqlParserPos pos) {

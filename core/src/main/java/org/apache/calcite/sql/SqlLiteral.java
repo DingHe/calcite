@@ -148,6 +148,11 @@ import static java.util.Objects.requireNonNull;
  * </tr>
  * </table>
  */
+// SqlLiteral 类代表 SQL 语句中的常量值（字面量）。它是 AST（抽象语法树）中表示固定值（如数字、字符串、布尔值、NULL 等）的核心节点
+// SqlLiteral 的主要作用是在 SQL 解析阶段封装所有的常量数据。
+// 不可变性：一旦创建，字面量的值和类型不可更改。
+// 统一抽象：无论是字符串 'Hello'、数字 123 还是复杂的间隔符 INTERVAL '1' DAY，在 AST 中都被统一处理为 SqlLiteral（或其子类）。
+// 黑盒设计：它内部使用特定的 Java 对象存储值（如 BigDecimal 存储数字，NlsString 存储带字符集的字符串），并通过一系列 getValueAs 方法提供类型安全的转换。
 public class SqlLiteral extends SqlNode {
   //~ Instance fields --------------------------------------------------------
 
@@ -158,13 +163,19 @@ public class SqlLiteral extends SqlNode {
    * {@link SqlTypeName#DECIMAL}, but on validation may become
    * {@link SqlTypeName#INTEGER}.
    */
-  private final SqlTypeName typeName; //数据类型
+  // 标记该字面量的 SQL 类型名称（如 DECIMAL, CHAR, BOOLEAN, SYMBOL 等）。
+  private final SqlTypeName typeName;
 
   /**
    * The value of this literal. The type of the value must be appropriate for
    * the typeName, as defined by the {@link #valueMatchesType} method.
    */
-  protected final @Nullable Object value; //值
+  // 存储字面量的实际值。
+  // NULL 存为 null。
+  // 数字（DECIMAL, DOUBLE）存为 BigDecimal。
+  // 字符串存为 NlsString。
+  // 符号（SYMBOL）存为 Enum。
+  protected final @Nullable Object value;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -191,6 +202,7 @@ public class SqlLiteral extends SqlNode {
 
   /** Returns whether value is appropriate for its type. (We have rules about
    * these things!) */
+  // 静态辅助方法，用于校验 Java 对象值是否符合指定的 SqlTypeName。这是构造时的断言检查
   public static boolean valueMatchesType(
       @Nullable Object value,
       SqlTypeName typeName) {
@@ -292,6 +304,8 @@ public class SqlLiteral extends SqlNode {
    *
    * @throws AssertionError if the value type is not supported
    */
+  // 核心方法。
+  // 将内部存储的值转换为指定的 Java 类型（如将 BigDecimal 转换为 Integer 或 Long）。支持数字、字符串、时间、间隔等多种转换逻辑。
   public <T extends Object> T getValueAs(Class<T> clazz) {
     Object value = this.value;
     if (clazz.isInstance(value)) {
@@ -406,6 +420,7 @@ public class SqlLiteral extends SqlNode {
   }
 
   /** Returns the value as a symbol. */
+  // 获取符号值并转换为特定的枚举类型（例如 TRIM 函数的 LEADING 标志）。
   @Deprecated // to be removed before 2.0
   public <E extends Enum<E>> @Nullable E symbolValue_() {
     //noinspection unchecked
@@ -613,6 +628,7 @@ public class SqlLiteral extends SqlNode {
    * be instantiated via createNull(), because different instances have
    * different context-dependent types.
    */
+  // 创建 NULL 字面量
   public static SqlLiteral createNull(SqlParserPos pos) {
     return new SqlLiteral(null, SqlTypeName.NULL, pos);
   }
@@ -620,6 +636,7 @@ public class SqlLiteral extends SqlNode {
   /**
    * Creates a boolean literal.
    */
+  // 创建布尔字面量。
   public static SqlLiteral createBoolean(
       boolean b,
       SqlParserPos pos) {
@@ -638,6 +655,7 @@ public class SqlLiteral extends SqlNode {
    *
    * @see #symbolValue(Class)
    */
+  // 创建解析符号（如 SqlTrimFunction.Flag）
   public static SqlLiteral createSymbol(@Nullable Enum<?> o, SqlParserPos pos) {
     return new SqlLiteral(o, SqlTypeName.SYMBOL, pos);
   }
@@ -860,7 +878,7 @@ public class SqlLiteral extends SqlNode {
       SqlParserPos pos) {
     return new SqlUnknownLiteral(tag, value, pos);
   }
-
+  // 创建各种日期时间字面量（支持 DateString 等 Calcite 内部时间类型）。
   @Deprecated // to be removed before 2.0
   public static SqlDateLiteral createDate(
       Calendar calendar,
@@ -955,7 +973,7 @@ public class SqlLiteral extends SqlNode {
         num.isExact(),
         pos);
   }
-
+  // 将数字字符串解析为精确数值（DECIMAL）。
   public static SqlNumericLiteral createExactNumeric(
       String s,
       SqlParserPos pos) {
@@ -990,7 +1008,7 @@ public class SqlLiteral extends SqlNode {
         true,
         pos);
   }
-
+  // 创建近似数值（DOUBLE/FLOAT）
   public static SqlNumericLiteral createApproxNumeric(
       String s,
       SqlParserPos pos) {

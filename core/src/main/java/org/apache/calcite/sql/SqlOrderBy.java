@@ -31,7 +31,15 @@ import java.util.List;
  * {@link org.apache.calcite.sql.validate.SqlValidatorImpl#performUnconditionalRewrites}
  * and replaced with the ORDER_OPERAND of SqlSelect.
  */
+// SqlOrderBy 是 Apache Calcite SQL AST（抽象语法树）中非常关键的一个类。
+// 代表ORDER BY OFFSET FETCH
+// 它并不是“真正语义上的 ORDER BY 节点”，而是一个“语法包装节点（syntactic wrapper）”
+// SqlOrderBy 代表的是一种顶层或包装式的排序操作。
+// 主要解决： 非 SELECT 查询上的 ORDER BY
+// 例如 VALUES (1), (2) ORDER BY 1
+// SELECT * FROM A UNION SELECT * FROM B ORDER BY ID  ，这里的并不是 SELECT 自身的一部分。
 public class SqlOrderBy extends SqlCall {
+  // 静态常量，定义了 ORDER BY 的操作符元数据。它指定了该节点的语法类型、优先级以及如何创建调用（createCall）
   public static final SqlSpecialOperator OPERATOR = new Operator() {
     @SuppressWarnings("argument.type.incompatible")
     @Override public SqlCall createCall(@Nullable SqlLiteral functionQualifier,
@@ -40,14 +48,20 @@ public class SqlOrderBy extends SqlCall {
           operands[2], operands[3]);
     }
   };
-
+  // 排序的对象（原始查询）
+  // 例子：在 (SELECT...) UNION (SELECT...) ORDER BY x 中，query 就是整个 UNION 调用部分。
   public final SqlNode query;
+  // 排序字段列表。
+  // 包含一个或多个排序表达式（如 SqlIdentifier 或 SqlBasicCall 如 DESC 修饰的字段）
   public final SqlNodeList orderList;
+  // 表示 OFFSET 子句，定义跳过多少行。如果是 null，表示不跳过。
   public final @Nullable SqlNode offset;
+  // 表示 FETCH 或 LIMIT 子句，定义获取多少行。如果是 null，表示获取全部。
   public final @Nullable SqlNode fetch;
 
   //~ Constructors -----------------------------------------------------------
-
+  // 初始化节点。
+  // 接收解析位置 pos，以及上述的四个核心组件（查询体、排序列表、偏移量、获取量）。
   public SqlOrderBy(SqlParserPos pos, SqlNode query, SqlNodeList orderList,
       @Nullable SqlNode offset, @Nullable SqlNode fetch) {
     super(pos);

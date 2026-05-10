@@ -34,10 +34,24 @@ import java.util.List;
  * statement. It warrants its own node type just because we have a lot of
  * methods to put somewhere.
  */
+// SqlCase 类用于表示 SQL 解析树中的 CASE 表达式节点。它继承自 SqlCall，是处理条件分支逻辑的核心抽象。
+// SqlCase 的核心作用是封装 SQL 的条件选择逻辑。它支持 SQL 标准中的两种 CASE 形式：
+// 简单 CASE (Simple CASE)：
+// CASE value WHEN e1 THEN r1 WHEN e2 THEN r2 ELSE r3 END
+// 搜索 CASE (Searched CASE)：
+// CASE WHEN condition1 THEN r1 WHEN condition2 THEN r2 ELSE r3 END
+// 在 Calcite 内部实现中，它倾向于将“简单 CASE”转换为“搜索 CASE”。例如，CASE x WHEN 1 THEN 'a' END 会被标准化为 CASE WHEN x = 1 THEN 'a' END。这种统一处理简化了后续的优化和转换逻辑。
 public class SqlCase extends SqlCall {
+  // 对应简单 CASE 中的被比较表达式。
+  // 注意：如果是搜索 CASE，此属性为 null。
   @Nullable SqlNode value;
+  // 存储所有的 WHEN 条件子句。一个表达式列表，对应 WHEN 后面的条件。
   SqlNodeList whenList;
+  // 存储与 whenList 一一对应的结果表达式。
+  // 当对应的 WHEN 条件满足时，返回该列表中的对应值。
   SqlNodeList thenList;
+  // 存储 ELSE 子句的表达式。
+  // 如果 SQL 中未显式写 ELSE，Calcite 通常会将其默认设置为 SqlLiteral 的 NULL。
   @Nullable SqlNode elseExpr;
 
   //~ Constructors -----------------------------------------------------------
@@ -70,6 +84,9 @@ public class SqlCase extends SqlCall {
    * ELSE elseClause<br>
    * END</code></blockquote>
    */
+  // 用于创建“转换后”的 CASE 表达式。
+  // 核心逻辑：如果 value 不为空（简单 CASE），它会自动遍历 whenList，将每个条件 e 改写为 value = e（使用 EQUALS 操作符）或 value IN (e)（如果 e 是列表）。
+  // 最后将 value 设为 null，从而将简单 CASE 转换为搜索 CASE。
   public static SqlCase createSwitched(SqlParserPos pos, @Nullable SqlNode value,
       SqlNodeList whenList, SqlNodeList thenList, @Nullable SqlNode elseClause) {
     if (null != value) {

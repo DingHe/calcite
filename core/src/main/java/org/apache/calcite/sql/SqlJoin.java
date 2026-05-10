@@ -34,32 +34,48 @@ import static java.util.Objects.requireNonNull;
 /**
  * Parse tree node representing a {@code JOIN} clause.
  */
+// SqlJoin 是 AST（抽象语法树）中的一个核心节点，用于表示 SQL 语句中的联接操作。
+// SqlJoin 的主要作用是描述两个数据源（如表、子查询或其他联接结果）之间的关联关系。
+// 语法容器：它封装了 SQL 标准中 JOIN 语法的所有要素，包括联接类型（如 LEFT, INNER）、自然联接标记（NATURAL）、联接条件类型（ON, USING）以及具体的条件表达式。
+// 层次化结构：在一个复杂的查询中，多个 JOIN 会嵌套形成树状结构。例如 A JOIN B ON ... JOIN C ON ... 会被解析为两个嵌套的 SqlJoin 对象。
+// 多方言支持：它不仅支持标准 ANSI JOIN 语法，还通过 COMMA_OPERATOR 支持旧式的逗号联接（等价于 CROSS JOIN 或带 WHERE 的联接）。
 public class SqlJoin extends SqlCall {
+  // 特殊的逗号联接操作符，优先级较低（16）。用于处理类似 FROM table1, table2 的语法。
   static final SqlJoinOperator COMMA_OPERATOR =
       new SqlJoinOperator("COMMA-JOIN", 16);
+  // 标准的 JOIN 操作符，优先级为 18。用于处理显式的 JOIN 关键字。
   public static final SqlJoinOperator OPERATOR =
       new SqlJoinOperator("JOIN", 18);
-
+  // 联接操作的左侧输入（左表或左侧嵌套联接）
   SqlNode left;
 
   /**
    * Operand says whether this is a natural join. Must be constant TRUE or
    * FALSE.
    */
+  // 布尔值字面量。标识是否为 NATURAL JOIN。如果是 TRUE，SQL 会自动根据同名字段进行等值关联。
   SqlLiteral natural;
 
   /**
    * Value must be a {@link SqlLiteral}, one of the integer codes for
    * {@link JoinType}.
    */
+  // 存储联接类型的编码。
+  // 内部值对应 JoinType 枚举（如 INNER, LEFT, RIGHT, FULL, CROSS 等）。
   SqlLiteral joinType;
+  // 联接操作的右侧输入（右表或右侧嵌套子查询）
   SqlNode right;
 
   /**
    * Value must be a {@link SqlLiteral}, one of the integer codes for
    * {@link JoinConditionType}.
    */
+  // 联接条件的类型。内部值对应 JoinConditionType 枚举：
+  // ON: 使用谓词表达式（如 a.id = b.id）。
+  // USING: 使用字段列表（如 USING (id)）。
+  // NONE: 没有条件（如 CROSS JOIN）。
   SqlLiteral conditionType;
+  // 具体的联接条件。对于 ON 类型，它是一个布尔表达式；对于 USING 类型，它是一个 SqlNodeList。
   @Nullable SqlNode condition;
 
   //~ Constructors -----------------------------------------------------------

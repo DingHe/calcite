@@ -39,10 +39,16 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 /**
  * A <code>SqlIdentifier</code> is an identifier, possibly compound.
  */
+// SqlIdentifier 代表 SQL 语句中的 标识符。标识符通常指数据库对象的名称，例如表名、列名、模式名（Schema）等。
+// 其核心特征包括：
+// 复合性（Compound）：支持多级标识符。例如 emp.ename 或 catalog.schema.table.column。
+// 通配符支持：支持星号 *（在内部使用空字符串 "" 表示），如 SELECT * 或 SELECT emp.*。
+// 元数据关联：除了名称，它还携带了位置信息（用于报错定位）和字符集排序规则（Collation）。
 public class SqlIdentifier extends SqlNode {
   /** An identifier for star, "*".
    *
    * @see SqlNodeList#SINGLETON_STAR */
+  // 静态常量，代表单星号 *。
   public static final SqlIdentifier STAR = star(SqlParserPos.ZERO);
 
   //~ Instance fields --------------------------------------------------------
@@ -59,16 +65,19 @@ public class SqlIdentifier extends SqlNode {
    * {@link #setNames(java.util.List, java.util.List)}.
    * And yes, we'd like to make identifiers immutable one day.
    */
+  // 存储标识符的各个部分。如果是 schema.table，列表为 ["schema", "table"]。如果是 *，内部存储为 ""。
   public ImmutableList<String> names;
 
   /**
    * This identifier's collation (if any).
    */
+  // 排序规则。定义了该标识符在比较或排序时的字符行为（通常为 null，除非显式指定）。
   final @Nullable SqlCollation collation;
 
   /**
    * A list of the positions of the components of compound identifiers.
    */
+  // 可选属性。存储 names 中每个独立部分在 SQL 文本中的具体位置。
   protected @Nullable ImmutableList<SqlParserPos> componentPositions;
 
   //~ Constructors -----------------------------------------------------------
@@ -119,11 +128,13 @@ public class SqlIdentifier extends SqlNode {
   }
 
   /** Creates an identifier that is a singleton wildcard star. */
+  // 创建一个简单的 *。
   public static SqlIdentifier star(SqlParserPos pos) {
     return star(ImmutableList.of(""), pos, ImmutableList.of(pos));
   }
 
   /** Creates an identifier that ends in a wildcard star. */
+  // 创建一个以星号结尾的复合标识符（如 schema.table.*），会将末尾的 * 转换为内部的 ""
   public static SqlIdentifier star(List<String> names, SqlParserPos pos,
       List<SqlParserPos> componentPositions) {
     return new SqlIdentifier(
