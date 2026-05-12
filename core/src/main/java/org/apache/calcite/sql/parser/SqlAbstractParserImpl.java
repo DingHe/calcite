@@ -58,9 +58,16 @@ import static org.apache.calcite.util.Static.RESOURCE;
 /**
  * Abstract base for parsers generated from CommonParser.jj.
  */
+// SqlAbstractParserImpl 是 Apache Calcite 中 SQL 解析器的抽象基类。
+// 该类是所有由 JavaCC（或其扩展模板 CommonParser.jj）生成的解析器实现的父类。它的主要作用包括：
+// 统一接口：为不同的 SQL 方言解析器提供统一的调用接口。
+// 上下文管理：管理解析过程中的状态（如动态参数数量、词法状态等）。
+// 元数据维护：定义和提取 SQL 关键字、保留字、函数名等元数据信息。
+// 工厂方法封装：提供创建 SqlNode（如 SqlCall）的辅助工具方法。
 public abstract class SqlAbstractParserImpl {
   //~ Static fields/initializers ---------------------------------------------
-  //包含了 SQL-92 标准定义的所有保留字。SQL 92 保留字是不能作为标识符使用的关键词，例如 WHERE、WITH 等
+  // 存储 SQL-92 标准定义的所有保留字集合。
+  // 解析器以此为基准判断某个词是否可以作为普通标识符。
   private static final ImmutableSet<String> SQL_92_RESERVED_WORD_SET =
       ImmutableSet.of(
           "ABSOLUTE",
@@ -313,19 +320,25 @@ public abstract class SqlAbstractParserImpl {
   /**
    * Type-safe enum for context of acceptable expressions.
    */
+  // 用于在 SQL 解析过程中进行语法上下文校验。
+  // SQL 解析是一个从顶向下的过程。当解析器递归到某一个语法节点时，它需要知道当前位置“合法”的表达式类型是什么。例如，在 WHERE 子句后面可以接普通的逻辑表达式，但通常不能直接接一个不带括号的 UNION 查询
+  // 每个常量代表一种“准入规则”：
   protected enum ExprContext {
-    /**接受任何类型的表达式
+    /**
      * Accept any kind of expression in this context.
      */
+    // 全通配。
+    // 在这个上下文中，任何类型的 SqlNode 都是合法的。
     ACCEPT_ALL,
 
-    /** 接受所有表达式，但不包括 CURSOR 构造
+    /**
      * Accept any kind of expression in this context, with the exception of
      * CURSOR constructors.
      */
+    // 接受除游标（CURSOR）构造以外的所有表达式。
     ACCEPT_NONCURSOR,
 
-    /** 只接受查询表达式
+    /**
      * Accept  only query expressions in this context.
      *
      * <p>Valid: "SELECT x FROM a",
@@ -337,9 +350,12 @@ public abstract class SqlAbstractParserImpl {
      * Invalid: "e CROSS JOIN d".
      * Debatable: "(SELECT x FROM a)".
      */
+    // 仅接受查询表达式。
+    // 范围：包括 SELECT、UNION、VALUES、TABLE 语句以及带 ORDER BY / LIMIT 的查询。
+    // 注意：它不接受像 e CROSS JOIN d 这样的裸连接表达式（因为连接通常属于 FROM 子句的一部分，而不是独立的查询）。
     ACCEPT_QUERY,
 
-    /** 接受查询表达式或连接表达式
+    /**
      * Accept only query expressions or joins in this context.
      *
      * <p>Valid: "(SELECT x FROM a)",
@@ -350,23 +366,29 @@ public abstract class SqlAbstractParserImpl {
      * "SELECT x FROM a",
      * "(e)".
      */
+    // 接受查询表达式或连接（Join）表达式。
+    // 应用场景：通常用于 FROM 子句或括号嵌套的表引用中，这里既可以是子查询，也可以是连接表。
     ACCEPT_QUERY_OR_JOIN,
 
-    /** 只接受非查询表达式
+    /**
      * Accept only non-query expressions in this context.
      */
+    // 仅接受非查询表达式。
+    // 范围：例如常量、标识符、函数调用等，但不允许直接出现 SELECT ...。
     ACCEPT_NON_QUERY,
 
-    /** 只接受子查询或非查询表达式
+    /**
      * Accept only parenthesized queries or non-query expressions in this
      * context.
      */
+    // 含义：接受带括号的子查询或非查询表达式。
     ACCEPT_SUB_QUERY,
 
-    /** 只接受游标构造、子查询或非查询表达式
+    /**
      * Accept only CURSOR constructors, parenthesized queries, or non-query
      * expressions in this context.
      */
+    // 接受游标构造（CURSOR(SELECT ...)）、带括号的查询或非查询表达式。
     ACCEPT_CURSOR;
 
     @Deprecated // to be removed before 2.0
@@ -374,50 +396,57 @@ public abstract class SqlAbstractParserImpl {
 
     @Deprecated // to be removed before 2.0
     public static final ExprContext ACCEPT_NONQUERY = ACCEPT_NON_QUERY;
-
+    // 检查解析出来的 SqlNode 是否符合当前的上下文规则，如果不符合则立即抛出解析异常。
     public void throwIfNotCompatible(SqlNode e) {
       switch (this) {
+      // 场景 A：不允许直接出现查询语句的上下文
       case ACCEPT_NON_QUERY:
       case ACCEPT_SUB_QUERY:
       case ACCEPT_CURSOR:
+        // 如果 e 是一个查询（如 SELECT, UNION, VALUES 等）
         if (e.isA(SqlKind.QUERY)) {
           throw SqlUtil.newContextException(e.getParserPosition(),
               RESOURCE.illegalQueryExpression());
         }
         break;
+      // 场景 B：强制要求必须是查询语句的上下文
       case ACCEPT_QUERY:
+        // 如果 e 不是查询类型
         if (!e.isA(SqlKind.QUERY)) {
           throw SqlUtil.newContextException(e.getParserPosition(),
               RESOURCE.illegalNonQueryExpression());
         }
         break;
+      // 场景 C：FROM 子句风格的上下文
       case ACCEPT_QUERY_OR_JOIN:
+        // 既不是查询，也不是 JOIN 节点
         if (!e.isA(SqlKind.QUERY) && e.getKind() != SqlKind.JOIN) {
           throw SqlUtil.newContextException(e.getParserPosition(),
               RESOURCE.expectedQueryOrJoinExpression());
         }
         break;
       default:
+        // 对于 ACCEPT_ALL 等，不做任何限制
         break;
       }
     }
   }
 
   //~ Instance fields --------------------------------------------------------
-
-  protected int nDynamicParams; //表示 SQL 查询中动态参数的数量
-
-  protected @Nullable String originalSql; //存储原始的 SQL 字符串，用于后续的解析和错误处理
-
+  // 记录解析过程中遇到的动态参数（即问号 ?）的总数
+  protected int nDynamicParams;
+  // 存储正在解析的原始 SQL 文本，主要用于在异常中显示报错上下文。
+  protected @Nullable String originalSql;
+  // 存储解析过程中产生的非致命性警告信息列表。
   protected final List<CalciteContextException> warnings = new ArrayList<>();
 
   //~ Methods ----------------------------------------------------------------
 
   /**
    * Returns immutable set of all reserved words defined by SQL-92.
-   * 返回SQL-92的保留字
    * @see Glossary#SQL92 SQL-92 Section 5.2
    */
+  // 返回 SQL-92 保留字的不可变集合。
   public static Set<String> getSql92ReservedWords() {
     return SQL_92_RESERVED_WORD_SET;
   }
@@ -432,12 +461,21 @@ public abstract class SqlAbstractParserImpl {
    * @param operands          Operands to call
    * @return Call
    */
+  // 核心作用是将解析过程中识别到的函数名和参数列表封装成一个临时的“函数调用”对象（SqlCall）
   @SuppressWarnings("argument.type.incompatible")
   protected SqlCall createCall(
+      // 函数或操作符的标识符。
+      // 作用：代表 SQL 中的函数名（如 ABS, COUNT, MY_CUSTOM_FUNC）。它是一个 SqlIdentifier，说明它可以是单部分名称，也可以是带限定符的多部分名称（如 schema.func）。
       SqlIdentifier funName,
       SqlParserPos pos,
+      // 函数分类。
+      // 用于标记该函数的类型，例如是用户自定义函数 (UDF)、系统内置函数、还是特定的表函数等。这有助于后续的函数查找（Lookup）逻辑。
       SqlFunctionCategory funcType,
+      // 函数限定符。
+      // 作用：主要用于处理类似 DISTINCT 或 ALL 这样的修饰词。例如在 COUNT(DISTINCT x) 中，DISTINCT 就会通过这个参数传递。
       SqlLiteral functionQualifier,
+      // 操作数（参数）列表。
+      // 作用：这是一个可迭代对象，包含了传递给函数的所有参数（如 f(a, b) 中的 a 和 b）。这些参数在 AST 中也是 SqlNode 节点。
       Iterable<? extends SqlNode> operands) {
     return createCall(funName, pos, funcType, functionQualifier,
         Iterables.toArray(operands, SqlNode.class));
@@ -453,23 +491,35 @@ public abstract class SqlAbstractParserImpl {
    * @param operands          Operands to call
    * @return Call
    */
+  // 实际执行对象创建逻辑的核心实现。
+  // 在 SQL 解析阶段，解析器（Parser）只负责识别语法结构，而不知道某个函数是否真的存在。因此，这个方法的作用是创建一个“占位符”节点。
   protected SqlCall createCall(
+      // 函数的名称标识符（如 ABS 或 MY_SCHEMA.MY_FUNC）
+      // 后续在验证阶段（Validation）查找具体函数定义（SqlOperator）的唯一凭据。
       SqlIdentifier funName,
       SqlParserPos pos,
+      // 函数分类枚举。
       SqlFunctionCategory funcType,
+      // 函数限定符。
+      // 例子：在 COUNT(DISTINCT x) 中，这个参数代表 DISTINCT 关键字。
       SqlLiteral functionQualifier,
+      // 操作数（参数）数组。
       SqlNode[] operands) {
     // Create a placeholder function.  Later, during
     // validation, it will be resolved into a real function reference.
+    // 创建未解析函数的占位符
+    // 这是一个关键类。因为此时解析器不知道函数的返回类型、参数类型或推导逻辑，所以它创建了一个“未解析”的函数对象。
     SqlOperator fun = new SqlUnresolvedFunction(funName, null, null, null, null,
         funcType);
-
+    // 会返回一个 SqlCall 对象（通常是 SqlBasicCall）。
+    // 结果：最终生成的 SqlCall 节点被插入到 AST（抽象语法树）中。
     return fun.createCall(functionQualifier, pos, operands);
   }
 
   /**
    * Returns metadata about this parser: keywords, etc.
    */
+  // 获取解析器的元数据实现。
   public abstract Metadata getMetadata();
 
   /**
@@ -479,41 +529,44 @@ public abstract class SqlAbstractParserImpl {
    * @param ex dirty excn
    * @return clean excn
    */
+  // 将底层解析引擎抛出的原始异常（如 JavaCC 产生的异常）转换为 Calcite 统一的 SqlParseException。
   public abstract SqlParseException normalizeException(@Nullable Throwable ex);
 
   protected abstract SqlParserPos getPos() throws Exception;
 
   /**
    * Reinitializes parser with new input.
-   * ReInit 方法重新初始化解析器，将输入流设置为字符串 "1"。这个字符串是为了触发 SQL 解析器解析，并收集所有的标识符和关键字
    * @param reader provides new input
    */
+  // 重新初始化解析器，使其可以从新的字符流中读取数据。
   // CHECKSTYLE: IGNORE 1
   public abstract void ReInit(Reader reader);
 
   /**
    * Parses a SQL expression ending with EOF and constructs a
    * parse tree.
-   * 表达式是一个可以计算出值的 SQL 代码片段。它通常由常量、列、操作符、函数等组成，并且返回一个单一的值
    * @return constructed parse tree.
    */
+  // 解析单个 SQL 表达式（如 1 + 2）直至流末尾。
   public abstract SqlNode parseSqlExpressionEof() throws Exception;
 
   /**
    * Parses a SQL statement ending with EOF and constructs a
    * parse tree.
-   * 语句是一个完整的 SQL 指令，它由一个或多个表达式、关键字和子句组成，用于执行数据库操作，语句通常代表一个数据库操作（例如查询、插入、更新或删除数据等），并可能包含多个表达式、子查询等
    * @return constructed parse tree.
    */
+  // 解析单个完整的 SQL 语句（如 SELECT...）直至流末尾。
+  // 语句是一个完整的 SQL 指令，它由一个或多个表达式、关键字和子句组成，用于执行数据库操作，语句通常代表一个数据库操作（例如查询、插入、更新或删除数据等），并可能包含多个表达式、子查询等
   public abstract SqlNode parseSqlStmtEof() throws Exception;
 
   /**
    * Parses a list of SQL statements separated by semicolon and constructs a
    * parse tree. The semicolon is required between statements, but is
    * optional at the end.
-   * 解析用分号分割的sql语句列表，分号在语句之间必须有，在末尾可以忽略
    * @return constructed list of SQL statements.
    */
+  // 解析一组以分号分隔的 SQL 语句。
+  // 解析用分号分割的sql语句列表，分号在语句之间必须有，在末尾可以忽略
   public abstract SqlNodeList parseSqlStmtList() throws Exception;
 
   /**
@@ -521,30 +574,33 @@ public abstract class SqlAbstractParserImpl {
    *
    * @param tabSize Tab stop size
    */
+  // 设置解析器处理制表符（Tab）的宽度，用于计算准确的报错列位置。
   public abstract void setTabSize(int tabSize);
 
   /**
    * Sets the casing policy for quoted identifiers.
-   * 标识符存储的策略，保留原样、转为大写、转为小写等策略
    * @param quotedCasing Casing to set.
    */
+  // 设置带引号标识符的大小写策略。
   public abstract void setQuotedCasing(Casing quotedCasing);
 
   /**
    * Sets the casing policy for unquoted identifiers.
-   * 标识符存储的策略，保留原样、转为大写、转为小写等策略
    * @param unquotedCasing Casing to set.
    */
+  // 设置不带引号标识符的大小写策略。
   public abstract void setUnquotedCasing(Casing unquotedCasing);
 
   /**
    * Sets the maximum length for sql identifier.
    */
+  // 设置标识符允许的最大长度。
   public abstract void setIdentifierMaxLength(int identifierMaxLength);
 
   /**
    * Sets the map from identifier to time unit.
    */
+  // 设置时间单位代码。
   @Deprecated // to be removed before 2.0
   public void setTimeUnitCodes(Map<String, TimeUnit> timeUnitCodes) {
   }
@@ -552,11 +608,13 @@ public abstract class SqlAbstractParserImpl {
   /**
    * Sets the SQL language conformance level.
    */
+  // 设置解析器遵循的 SQL 兼容性标准。
   public abstract void setConformance(SqlConformance conformance);
 
-  /**数组字面量的解析
+  /**
    * Parses string to array literal.
    */
+  // 专门用于解析数组字面量的逻辑。
   public abstract SqlNode parseArray() throws SqlParseException;
 
   /**
@@ -578,6 +636,7 @@ public abstract class SqlAbstractParserImpl {
    *
    * @param state New state
    */
+  // 切换解析器的词法状态（如从普通模式切换到处理反引号模式）。
   public abstract void switchTo(LexicalState state);
 
   //~ Inner Interfaces -------------------------------------------------------
