@@ -60,10 +60,23 @@ import static org.apache.calcite.util.Static.RESOURCE;
  * <p>declares windows w and w1, and uses a window in an OVER clause. It thus
  * contains 3 {@link SqlWindow} objects.
  */
+// 专门用来抽象和表示 SQL 标准中的窗口函数定义（即 OVER (...) 子句以及 WINDOW 命名窗口）
+// SqlWindow 的主要作用是解析、存储、验证并渲染 SQL 中的窗口规范（Window Specification）。
+// 在一条复杂的 SQL 中（例如：SELECT sum(a) OVER (w ROWS 3 PRECEDING) FROM t WINDOW w AS (PARTITION BY x)），Calcite 的解析器会将 OVER 内部的逻辑以及 WINDOW w AS ... 转化为 SqlWindow 对象。
+// 完整地表达了窗口的四大核心要素：
+// 分区（Partitioning）：PARTITION BY 列。
+// 排序（Ordering）：ORDER BY 列。
+// 框架（Framing）：度量类型（ROWS 物理行 或 RANGE 逻辑值）以及边界范围（如 3 PRECEDING）。
+// 排除与允许部分（Exclusion & Allow Partial）：对高级窗口特性的支持（如 EXCLUDE CURRENT ROW）。
+
 public class SqlWindow extends SqlCall {
   /**
    * The FOLLOWING operator used exclusively in a window specification.
    */
+  // 在标准 SQL 的窗口规范中，我们经常使用 BETWEEN 3 PRECEDING AND 1 FOLLOWING 这样的子句来定义聚合计算的数据范围（Frame）
+  // FOLLOWING_OPERATOR 对应关键字 FOLLOWING（向后/在后）。
+  // 由于在 SQL 语法中，它们总是紧跟在具体的数值或表达式后面（例如 3 PRECEDING、1 FOLLOWING），因此在编译器设计中，它们被抽象为后置单目运算符。
+  // 它们的作用是将一个普通的数值节点（如字面量 3）包装成一个具有窗口边界语义的调用节点（SqlCall）
   public static final SqlPostfixOperator FOLLOWING_OPERATOR =
       new SqlPostfixOperator("FOLLOWING", SqlKind.FOLLOWING, 20,
           ReturnTypes.ARG0, null,
@@ -71,6 +84,7 @@ public class SqlWindow extends SqlCall {
   /**
    * The PRECEDING operator used exclusively in a window specification.
    */
+  // PRECEDING_OPERATOR 对应关键字 PRECEDING（向前/在前）。
   public static final SqlPostfixOperator PRECEDING_OPERATOR =
       new SqlPostfixOperator("PRECEDING", SqlKind.PRECEDING, 20,
           ReturnTypes.ARG0, null,
@@ -79,32 +93,63 @@ public class SqlWindow extends SqlCall {
   //~ Instance fields --------------------------------------------------------
 
   /** The name of the window being declared. */
+  // 以下面的列子为例
+  // SELECT AVG(salary) OVER (
+  //    w
+  //    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW
+  //    EXCLUDE CURRENT ROW
+  //)
+  //FROM employees
+  //WINDOW w AS (PARTITION BY department_id ORDER BY hire_date)
+
+  // 声明的窗口名称。当使用 WINDOW w AS (...) 显式定义一个命名窗口时，这个 w 就是被声明的名称。如果是在 OVER (...) 内部直接定义匿名窗口，则该值为 null。
+  // 在 WINDOW w AS ... 中，该属性的值为 w。
   @Nullable SqlIdentifier declName;
 
   /** The name of the window being referenced, or null. */
+  // 引用的窗口名称。在 OVER (w ...) 中，可以通过名字去继承或基准化一个已经存在的窗口配置。如果没有引用别的窗口，则为 null。
   @Nullable SqlIdentifier refName;
 
   /** The list of partitioning columns. */
+  // 数据分区列列表。
+  // 对应 PARTITION BY 后面的表达式集合，决定了窗口函数计算时的分组边界（数据流会被拆分成一个个独立的 Partition）。
+  // 映射为 [department_id] 节点的列表。
   SqlNodeList partitionList;
 
   /** The list of ordering columns. */
+  // 分区内排序列列表。对应 ORDER BY 后面的表达式集合，决定了在一个分区内部，数据行以怎样的顺序流过窗口（对排名函数和范围框架至关重要）。
+  // 映射为 [hire_date] 节点的列表。
   SqlNodeList orderList;
 
   /** Whether it is a physical (rows) or logical (values) range. */
+  // 框架度量类型（物理/逻辑）。这是一个布尔类型的字面量：
+  // 语法中显式写了 ROWS，所以该属性的值为 true。
+  // true：表示 ROWS（物理行，基于行数计算边界）。
+  // false：表示 RANGE（逻辑范围，基于排序列的值计算边界）。
   SqlLiteral isRows;
 
   /** The lower bound of the window. */
+  // 窗口框架的下界（起点）。定义了当前计算窗口从哪里开始。它可以是一个符号（如 UNBOUNDED PRECEDING）或者一个具体的表达式计算节点（如 3 PRECEDING）。
+  // 映射为 3 PRECEDING 的 SqlCall 节点。
   @Nullable SqlNode lowerBound;
 
   /** The upper bound of the window. */
+  // 窗口框架的上界（终点）。定义了当前计算窗口到哪里结束。它可以是 CURRENT ROW、1 FOLLOWING 等。如果 SQL 中省略了 BETWEEN...，Calcite 会在后续将其默认解析为 CURRENT ROW。
   @Nullable SqlNode upperBound;
 
   /** Exclude rows from the frame.   */
+  // 行排除规则。对应 SQL:2003 标准中的 EXCLUDE 子句。
+  // 用于指定在当前窗口框架内，哪些行应该被排除在聚合计算之外。其内部值对应 Exclusion 枚举（如 EXCLUDE CURRENT ROW, EXCLUDE TIES 等）。
+  // 映射为 EXCLUDE CURRENT ROW 对应的字面量。
   SqlLiteral exclude;
 
   /** Whether to allow partial results. It may be null.   */
+  // 是否允许部分/不完整的结果。这是一个布尔类型的字面量。主要用于流处理（Streaming SQL）或复杂滚动窗口中。
+  // 如果设为 false，当窗口内的数据样本不足（例如定义了1小时窗口，但目前只有45分钟数据）时，聚合函数会将其视为空窗口。
+  // 在传统的批处理 SQL 中通常不显式指定，此时为 null（系统默认按 true 处理）。
   @Nullable SqlLiteral allowPartial;
-
+  // 绑定的聚合函数调用。这是一个内部私有的辅助属性。它指向使用该窗口的函数本身（例如 AVG(salary)）。
+  // 在运行时会被反向绑定指向 AVG(salary) 这个 SqlCall 节点。
   private @Nullable SqlCall windowCall = null;
 
   //~ Constructors -----------------------------------------------------------

@@ -878,14 +878,22 @@ public final class SqlParserUtil {
    * Converts a list of {expression, operator, expression, ...} into a tree,
    * taking operator precedence and associativity into account.
    */
+// 主要任务是：将一个扁平的、混杂了操作数（SqlNode）和操作符（SqlOperator）的线性列表，根据操作符的优先级和结合性，塌陷（Reduce）转换为一棵层级正确的抽象语法树（AST）
+// List<@Nullable Object> list 实际存储的内容：这个列表是由 JavaCC 解析器在线性扫描 SQL 表达式时收集而来的。它的内部结构呈现“操作数、操作符、操作数、操作符……”交替出现的扁平状态。
+// 操作数：通常是已经解析好的 SqlNode 节点（例如：SqlLiteral 字面量、SqlIdentifier 标识符或另一个子表达式调用）。
+// 操作符：通常是 SqlOperator 的子类对象（例如：代表加法的 SqlBinaryOperator("+")，代表逻辑与的 SqlAndOperator）。
+// 示例：当解析表达式 a + b * c 时，传入的 list 结构在视觉上类似于：[SqlIdentifier(a), SqlBinaryOperator(+), SqlIdentifier(b), SqlBinaryOperator(*), SqlIdentifier(c)]。
   public static @Nullable SqlNode toTree(List<@Nullable Object> list) {
+    // 如果 list 里面只有 1 个元素，并且这个元素已经是一个标准的 SqlNode（例如单单一个数字 42，或者一个独立的列名 id，此时不需要任何操作符计算
     if (list.size() == 1
         && list.get(0) instanceof SqlNode) {
       // Short-cut for the simple common case
       return (SqlNode) list.get(0);
     }
     LOGGER.trace("Attempting to reduce {}", list);
+    // 作用：将原生的 List 包装成专门用于优先级爬升算法的令牌序列对象。
     final OldTokenSequenceImpl tokenSequence = new OldTokenSequenceImpl(list);
+    // 驱动底层的算符优先分析算法（Precedence Climbing Algorithm），将扁平列表真正组装成一棵树。
     final SqlNode node = toTreeEx(tokenSequence, 0, 0, SqlKind.OTHER);
     LOGGER.debug("Reduced {}", node);
     return node;

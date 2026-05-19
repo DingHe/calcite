@@ -87,23 +87,32 @@ import static java.util.Objects.requireNonNull;
  * <li><code>INTERVAL '1 2:3:4' DAY TO SECOND</code></li>
  * <li><code>INTERVAL '1 2:3:4' DAY(4) TO SECOND(4)</code></li>
  * </ul>
- *  间隔限定符就是用来指定这些计算或比较所使用的单位和精度，例如INTERVAL '1 YEAR'：表示一个年的时间间隔
  * <p>An instance of this class is immutable.
  */
+// 用于表示和处理 SQL 中 时间间隔限定符（INTERVAL Qualifier） 的核心语法树节点（继承自 SqlNode）。
+// 它在处理诸如 INTERVAL '1-2' YEAR TO MONTH 或 INTERVAL '5' DAY 这样的时间段语法时发挥关键作用。
+// SqlIntervalQualifier 的核心作用是定义时间间隔的度量单位、结构、以及数字的精度。
+// 当解析器解析到一个 INTERVAL 文本时，该类负责：
+// 定义跨度范围：指明时间段是从哪个单位到哪个单位（例如：YEAR TO MONTH 表示从年到月，DAY TO SECOND 表示从天到秒）。
+// 规范化精度系统：管理“前导单位精度”（如 DAY(4) 最多允许 4 位数，即 9999 天）和“秒的小数位精度”（如 SECOND(3) 表示毫秒）
+// 字面量合法性校验：根据限定符的规则，强行校验时间字符串是否合法。例如，如果限定符是 YEAR TO MONTH，传入 '1-13' 就会报错，因为月份不能超过 12。
+
 public class SqlIntervalQualifier extends SqlNode {
   //~ Static fields/initializers ---------------------------------------------
-
+  // 用于内部高精度数值 BigDecimal 边界检查的计算常量。
   private static final BigDecimal ZERO = BigDecimal.ZERO;
   private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
   private static final BigDecimal INT_MAX_VALUE_PLUS_ONE =
       BigDecimal.valueOf(Integer.MAX_VALUE).add(BigDecimal.ONE);
 
-  private static final Set<TimeUnitRange> TIME_UNITS = //时间单位，时、分、秒
+  // 包含 HOUR, MINUTE, SECOND，定义基础时间（Time）单位集合。
+  private static final Set<TimeUnitRange> TIME_UNITS =
       ImmutableSet.of(TimeUnitRange.HOUR,
           TimeUnitRange.MINUTE,
           TimeUnitRange.SECOND);
 
-  private static final Set<TimeUnitRange> MONTH_UNITS = //月份单位，千年、世纪、十年、年、季度、月
+  // 月份单位，千年、世纪、十年、年、季度、月
+  private static final Set<TimeUnitRange> MONTH_UNITS =
       ImmutableSet.of(TimeUnitRange.MILLENNIUM,
           TimeUnitRange.CENTURY,
           TimeUnitRange.DECADE,
@@ -111,44 +120,59 @@ public class SqlIntervalQualifier extends SqlNode {
           TimeUnitRange.ISOYEAR,
           TimeUnitRange.QUARTER,
           TimeUnitRange.MONTH);
-
-  private static final Set<TimeUnitRange> DAY_UNITS =  //天单位，星期、天
+  // 天单位，星期、天
+  private static final Set<TimeUnitRange> DAY_UNITS =
       ImmutableSet.of(TimeUnitRange.WEEK,
           TimeUnitRange.DAY);
 
+  // 日期单位，月份单位和天单位的合并
   private static final Set<TimeUnitRange> DATE_UNITS =
       ImmutableSet.<TimeUnitRange>builder()
-          .addAll(MONTH_UNITS).addAll(DAY_UNITS).build(); //日期单位，月份单位和天单位的合并
+          .addAll(MONTH_UNITS).addAll(DAY_UNITS).build();
 
+  // 主要用于扩展和兼容非标准 SQL（或特定数据库方言、ODBC/JDBC 标准）中的时间框架名称（Time Frame Names）。
+  // 定义所有被认定为“周（Week）”概念的字符串标识符集合。
   private static final Set<String> WEEK_FRAMES =
       ImmutableSet.<String>builder()
           .addAll(TimeFrames.WEEK_FRAME_NAMES)
-          .add("ISOWEEK")
-          .add("WEEK")
-          .add("SQL_TSI_WEEK")
+          .add("ISOWEEK") // ISO-8601 标准的周（周一作为一周的第一天）
+          .add("WEEK") // 常规的周（通常周日或周一作为第一天，取决于配置）。
+          .add("SQL_TSI_WEEK") // 来自 ODBC/JDBC 规范的周常量（TSI 代表 Time Stamp Interval）。
           .build();
 
+  // 定义所有属于“纯时间（Time）”范畴的 ODBC/JDBC 扩展时间戳间隔常量（TSI）。这些单位都小于或等于“小时”。
   private static final Set<String> TSI_TIME_FRAMES =
       ImmutableSet.of(
-          "SQL_TSI_FRAC_SECOND",
-          "SQL_TSI_MICROSECOND",
-          "SQL_TSI_SECOND",
-          "SQL_TSI_MINUTE",
-          "SQL_TSI_HOUR");
+          "SQL_TSI_FRAC_SECOND", // 小数值秒（如毫秒、纳秒）。
+          "SQL_TSI_MICROSECOND", // 微秒。
+          "SQL_TSI_SECOND", // 秒。
+          "SQL_TSI_MINUTE", // 分钟。
+          "SQL_TSI_HOUR"); // 小时。
 
+  // 定义所有属于“日期（Date）”范畴的 ODBC/JDBC 扩展时间戳间隔常量（TSI）。这些单位都大于或等于“天”。
   private static final Set<String> TSI_DATE_FRAMES =
       ImmutableSet.of(
-          "SQL_TSI_DAY",
-          "SQL_TSI_WEEK",
-          "SQL_TSI_MONTH",
-          "SQL_TSI_QUARTER",
-          "SQL_TSI_YEAR");
+          "SQL_TSI_DAY", // 天。
+          "SQL_TSI_WEEK", // 周。
+          "SQL_TSI_MONTH", // 月。
+          "SQL_TSI_QUARTER", // 季度。
+          "SQL_TSI_YEAR"); // 年。
 
   //~ Instance fields --------------------------------------------------------
-
+  // 表示时间间隔前导单位（起始单位）的数字精度（Precision）
+  // 在 SQL 标准中，你可以指定时间间隔开头的数字最多可以有几位。例如：
+  // INTERVAL '99' DAY：默认精度通常是 2（最大允许 99 天）。
+  // INTERVAL '999' DAY(3)：此时 startPrecision 的值就是 3，意味着前导数字可以达到 3 位（最大允许 999 天）。
   private final int startPrecision;
+  // 表示自定义或非标准的时间框架名称（Time Frame Name）
+  // 当系统处理一些特殊的、非标准 ISO 定义的时间维度（或者特定方言、连接器扩展的单位，如 SQL_TSI_DAY、ISOWEEK 等）时，标准枚举 TimeUnitRange 可能无法完美表达。此时该属性用来记录这些文本名称。
   public final @Nullable String timeFrameName;
+  // 作用：表示时间间隔的单位范围，是该类最核心的业务属性。
+  // 使用的是 Calcite 底层的 TimeUnitRange 枚举，能够表达单一单位或组合单位。
+  // 单单位：如 YEAR、MONTH、DAY、SECOND。
+  // 组合单位：如 YEAR_TO_MONTH（年到月）、DAY_TO_SECOND（天到秒）。
   public final TimeUnitRange timeUnitRange;
+  // 表示秒下方的小数位精度（Fractional Seconds Precision），即秒后面的微秒、毫秒或纳秒的保留位数。
   private final int fractionalSecondPrecision;
 
   //~ Constructors -----------------------------------------------------------

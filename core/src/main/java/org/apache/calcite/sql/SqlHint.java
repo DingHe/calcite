@@ -63,13 +63,23 @@ import static java.util.Objects.requireNonNull;
  *   </li>
  * </ul>
  */
+// SqlHint 类是用于表示 SQL 提示（Hints）的语法树节点。SQL 提示通常用于干预优化器的行为，例如指定索引、强制连接顺序或传递特定配置。
+// 语法支持：它支持 hint_name[(option1, option2 ...)] 格式。
+// 应用场景：
+// 查询提示（Query Hint）：紧跟在 SELECT 关键字之后，如 SELECT /*+ INDEX(t1 idx_name) */ ...。
+// 表提示（Table Hint）：紧跟在表名之后，如 SELECT * FROM t1 /*+ BROADCAST */ ...。
+// 格式规范：Calcite 要求一个 Hint 的所有选项必须格式统一，要么全是标识符，要么全是常量，要么全是键值对。
 public class SqlHint extends SqlCall {
   //~ Instance fields --------------------------------------------------------
-
+  // 存储 Hint 的名称。
+  // 例如在 /*+ INDEX(t1 idx) */ 中，name 就是 INDEX。
   private final SqlIdentifier name;
+  // 存储 Hint 携带的参数选项列表。
+  // 如果是键值对格式，键和值会交替存储在这个列表中。
   private final SqlNodeList options;
+  // 标识当前 Hint 选项的格式类型
   private final HintOptionFormat optionFormat;
-
+  // 为 SqlHint 节点提供统一的运算符定义。
   private static final SqlOperator OPERATOR =
       new SqlSpecialOperator("HINT", SqlKind.HINT) {
         @Override public SqlCall createCall(
@@ -179,18 +189,27 @@ public class SqlHint extends SqlCall {
   }
 
   /** Enumeration that represents hint option format. */
+  // 主要作用是规范化 SQL 提示（Hint）参数的存储和解析格式。
   public enum HintOptionFormat implements Symbolizable {
     /**
      * The hint has no options.
      */
+    // 该 Hint 没有携带任何参数选项。
+    // SQL 示例：/*+ NO_HASH_JOIN */
+    // 内部表现：options 列表为空。
     EMPTY,
     /**
      * The hint options are as literal list.
      */
+    // 参数由一个或多个字面量（常量）组成。
+    // SQL 示例：/*+ MAX_EXECUTION_TIME(1000, 5000) */
+    // 内部表现：options 列表中的每个元素都是 SqlLiteral（如整数、字符串、浮点数）。
     LITERAL_LIST,
     /**
      * The hint options are as simple identifier list.
      */
+    // 参数由一个或多个简单标识符组成。
+    // SQL 示例：/*+ INDEX(t1, idx_order_id) */
     ID_LIST,
     /**
      * The hint options are list of key-value pairs.
@@ -198,6 +217,9 @@ public class SqlHint extends SqlCall {
      * the key is a simple identifier or string literal,
      * the value is a string literal.
      */
+    // 参数以键值对（Key-Value Pair）的形式存在。
+    // SQL 示例：/*+ SET_VAR(optimizer_switch='mrr=on', max_heap_table_size=1024) */
+    // options 列表采用交替存储方式：索引 0 是 Key，索引 1 是 Value，索引 2 是 Key... 依此类推。
     KV_LIST
   }
 
