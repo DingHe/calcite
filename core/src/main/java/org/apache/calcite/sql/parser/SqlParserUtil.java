@@ -1139,30 +1139,45 @@ public final class SqlParserUtil {
 
   /** Implementation of
    * {@link org.apache.calcite.sql.SqlSpecialOperator.TokenSequence}. */
+  // 用于 SQL 表达式解析（由扁平的符号列表向树状 AST 节点转换） 的核心内部类。
+  // 在 Calcite 的词法与语法分析阶段，当遇到带有算术运算符、逻辑运算符（如 +, *, AND）或者复杂的非标多目运算符（如 BETWEEN...AND...）的表达式时，
+  // JavaCC 编译器（或其它解析器）最初只能把它们解析为一个 “扁平的、一维的、顺序的未绑定符号列表”。
+  // 充当纽带与翻译官：它作为连接 Calcite 语义层（SqlNode、SqlOperator）和底层核心通用算法层（PrecedenceClimbingParser）的桥梁。
+  // 构建运行期的数字优先级矩阵：它负责将一维列表里的 Calcite 运算符对象按需解包，将其转换为底层算法认识的 Type.PREFIX、Type.INFIX、Type.SPECIAL 等 Token 角色，并提取 Calcite 预设的优先级（LeftPrec/RightPrec）塞给算法。
+  // 支持特殊操作符的二次回调归约：当底层算法撞到 BETWEEN 等多目运算符时，该类内部通过 Lambda 匿名回调，将控制权转回给特定操作符的 reduceExpr 逻辑，从而将局部区间连根拔起并替换，最终推导出一棵完美的、具备正确结合性的抽象语法树（AST）。
   private static class OldTokenSequenceImpl
       implements SqlSpecialOperator.TokenSequence {
+    // 存储表达式原始符号的底层容器列表。
+    // 该列表是一个混杂列表（Heterogeneous List），在运行期它只可能包含两种类型的对象：
+    //ToTreeListItem：代表一个未结合的运算符封装（比如 + 符号，内部持有其关联的 SqlOperator 和位置信息 SqlParserPos）。
+    //SqlNode：代表一个已经完成局部解析的操作数、叶子节点或局部语法树（比如一个数字常量、字段名或者已经合并好的子表达式）。
     final List<@Nullable Object> list;
 
     private OldTokenSequenceImpl(List<@Nullable Object> list) {
       this.list = list;
     }
-
+    // 负责将当前的 Calcite 对象列表，按顺序“翻译”并构建出一个可运行的 PrecedenceClimbingParser（优先级爬升解析器）实例
     @Override public PrecedenceClimbingParser parser(int start,
         Predicate<PrecedenceClimbingParser.Token> predicate) {
       final PrecedenceClimbingParser.Builder builder =
           new PrecedenceClimbingParser.Builder();
+      // 跳过前置逻辑：使用 Util.skip(list, start) 从指定的索引 start 开始向后遍历列表。
       for (Object o : Util.skip(list, start)) {
         if (o instanceof ToTreeListItem) {
           final ToTreeListItem item = (ToTreeListItem) o;
           final SqlOperator op = item.getOperator();
+          // 前置单目（SqlPrefixOperator）：调用 builder.prefix(item, op.getLeftPrec())，生成左结合力固定为 -1 的前置 Token。
           if (op instanceof SqlPrefixOperator) {
             builder.prefix(item, op.getLeftPrec());
+          // 后置单目（SqlPostfixOperator）：调用 builder.postfix(item, op.getRightPrec())，生成后置 Token。
           } else if (op instanceof SqlPostfixOperator) {
             builder.postfix(item, op.getRightPrec());
+          // 通过 op.getLeftPrec() < op.getRightPrec() 来动态决定是左结合还是右结合，随后传入 infix 工厂方法去执行奇偶位数字编码。
           } else if (op instanceof SqlBinaryOperator) {
             builder.infix(item, op.getLeftPrec(),
                 op.getLeftPrec() < op.getRightPrec());
           } else if (op instanceof SqlSpecialOperator) {
+            // 高级特殊多目（SqlSpecialOperator）：调用 builder.special(...) 注册特殊节点。
             builder.special(item, op.getLeftPrec(), op.getRightPrec(),
                 (parser, op2) -> {
                   final List<PrecedenceClimbingParser.Token> tokens =
@@ -1181,6 +1196,7 @@ public final class SqlParserUtil {
             throw new AssertionError();
           }
         } else {
+          // 如果当前对象 o 不是运算符（即不属于 ToTreeListItem），说明它是一个基础操作数（SqlNode）。调用 builder.atom(o) 将其注册为优先级为 -1 的 ATOM 节点。
           builder.atom(requireNonNull(o, "o"));
         }
       }

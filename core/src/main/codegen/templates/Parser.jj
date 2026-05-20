@@ -312,6 +312,12 @@ SqlNode ExtendedTableRef() :
  * Allows an OVER clause following a table expression as an extension to
  * standard SQL syntax. The default implementation of this production is empty.
  */
+
+// 标准的 ANSI SQL 规范中，根本不存在“在 FROM 子句的表名后面直接挂 OVER 窗口”的语法。
+// Calcite 本身是一个通用的 SQL 解析与优化框架，它的默认编译内核（核心主干）必须严格死守标准 SQL 规范。
+// 预留给下游魔改的“影子插槽”
+// 核心源码里看似是一行无用的废话，但在工程学上，它是一座极其关键的“方言引流桥梁”。它用最低的代价完成了“核心守正，边缘出奇”的架构梦想——既确保了主线内核死守标准 SQL 的纯洁与干净，
+// 又给全天下各种需要染指流计算时序窗口的高级大数据方言引擎，留出了最优雅、最平滑、完全不需要魔改 Calcite 核心主干代码的“降维热插拔接口”。
 SqlNode TableOverOpt() :
 {
 }
@@ -1381,8 +1387,12 @@ void AddHint(List<SqlNode> hints) :
 
 /** Parses hints following a table reference,
  * and returns the wrapped table reference. */
+// 专门用来解析表级优化器提示（Table Hints）的底层核心产生式：TableHints()（表提示解析器）
+// 核心职责是：拦截紧跟在表名后面的、包裹在特殊注释块里的 Hint 提示（如 /*+ BROADCAST, INDEX(idx_foo) */），并将其与原表名“合体”包装成一个高阶的 SqlTableRef 节点。
+// 输入参数 SqlIdentifier tableName：这是上层车间已经提权解析好的原始物理表名（如 orders）。本方法将其作为核心骨架接收进来，准备往它身上贴提示标签。
 SqlNode TableHints(SqlIdentifier tableName) :
 {
+    // Hint 弹药收集箱。一个新创建的 ArrayList<SqlNode>，用来按顺序堆放这条注释里拆解出来的每一个独立 Hint 对象。
     final List<SqlNode> hints = new ArrayList<SqlNode>();
 }
 {
@@ -2169,12 +2179,20 @@ SqlLiteral JoinType() :
  * PostgreSQL. The parser allows SELECT without FROM, but the validator fails
  * if conformance is, say, STRICT_2003.
  */
+// FROM 子句解析器
+// FROM 子句是整个数据流的“源头活水”（负责决定数据从哪些表、哪些视图或哪些子查询里流出来）
+// 通过极其精妙的左递归消除（Loop 循环结构），在前线把各大数仓中历史留存的、极其丑陋的“隐式逗号连接（Comma Join，如 FROM a, b）”，在诞生的瞬间就原地强制降维、100% 归一化重构成了标准的显式 SqlJoin 拓扑树节点。
 SqlNode FromClause() :
 {
+    // e 始终作为当前已经焊接好的“左子树”大本营
+    // e2 则是右侧新吃进来的表节点。
     SqlNode e, e2;
+    // 连接类型打标器（专门用来给 COMMA 逗号打标签）。
     SqlLiteral joinType;
 }
 {
+    // 步骤一：收割基础连接单元（e = Join()）
+    // 解析所有通过显式关键字连接的表结构（如 a LEFT JOIN b ON ...、a CROSS JOIN b，或者光秃秃的单张表 a）。洗出来的结果作为整棵大源头树的根节点，暂存入 e。
     e = Join()
     (
         // Comma joins should only occur at top-level in the FROM clause.
@@ -2183,8 +2201,10 @@ SqlNode FromClause() :
         //  * FROM (a CROSS JOIN b), c
         // Not valid:
         //  * FROM a CROSS JOIN (b, c)
+        // 骤二：拦截隐式逗号连接并动态重构（(...)* 变长循环）
         LOOKAHEAD(1)
         <COMMA> { joinType = JoinType.COMMA.symbol(getPos()); }
+        // 收割右侧连接单元
         e2 = Join() {
             e = new SqlJoin(joinType.getParserPosition(),
                 e,
@@ -2197,13 +2217,18 @@ SqlNode FromClause() :
     )*
     { return e; }
 }
-
+// 核心职责是负责攻坚标准 SQL 中那些通过明确的关键字串联起来的、具有左结合特性的显式连表链条
+// -- Join() 方法会顺着数据流，将其解析为以 a 为起点，层层向右贪婪追加的连表树
+// FROM a LEFT JOIN b ON a.id = b.id INNER JOIN c ON b.sid = c.sid
 SqlNode Join() :
 {
+    // 核心基准节点寄存器。它在整个方法中扮演着“滚雪球大本营”的角色。随着代码向后扫描，它会不断吃进右边的新表，并将自己原位升级为层层嵌套的 SqlJoin 胶囊。
     SqlNode e;
 }
 {
+    // 去把连表最左端的那个基础源头（可以是一张普通物理表 a、一个带别名的子查询 (SELECT * FROM x) AS t，或是带括号的嵌套连接块）给完完整整地剥离下来，作为初始大本营赋给寄存器 e。
     e = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN)
+    // 步骤二：开启贪婪循环，向右不断嫁接（(...)* 变长循环）
     (
         LOOKAHEAD(2)
         e = JoinTable(e)
@@ -2214,10 +2239,19 @@ SqlNode Join() :
 }
 
 /** Matches "LEFT JOIN t ON ...", "RIGHT JOIN t USING ...", "JOIN t". */
+// 在关系型数据库中，JOIN 的变体极多（如 NATURAL LEFT JOIN、INNER JOIN ... ON ...、CROSS JOIN 以及 SQL Server 风格的 CROSS APPLY 等）。
+// 该方法的作用就是把当前已经解析好的“左表”，与接下来即将遇到的“JOIN 关键字、右表、联结条件”进行无缝拼接，最终组装成一个树状的 SqlJoin 节点。
+// 输入参数 SqlNode e：代表 左表（Left-hand side relation）。它是在进入该方法之前，前面已经解析完毕的表表达式或上一个 JOIN 树。
 SqlNode JoinTable(SqlNode e) :
 {
+    // e2代表 右表（Right-hand side relation）。
+    // condition：代表 ON 子句后面的条件表达式。
     SqlNode e2, condition;
+    // natural：代表是否带有 NATURAL 关键字（布尔字面量）。
+    // joinType：联结类型符号（如 INNER、LEFT、RIGHT、FULL、CROSS）。
+    // on / using：联结条件的类型标签（ON 或 USING）。
     final SqlLiteral natural, joinType, on, using;
+    // list：当使用 USING (a, b) 时，存放字段名列表。
     SqlNodeList list;
 }
 {
@@ -2234,12 +2268,17 @@ SqlNode JoinTable(SqlNode e) :
     // We allow CROSS JOIN (joinType = CROSS_JOIN) to have a join condition,
     // even though that is not valid SQL; the validator will catch it.
     LOOKAHEAD(3)
+    // 检查是否有 NATURAL 关键字。没有则返回 false 标志。
     natural = Natural()
+    // 调用子方法，解析具体是什么 JOIN（如 LEFT、RIGHT OUTER、INNER 等）。
     joinType = JoinType()
     e2 = TableRef1(ExprContext.ACCEPT_QUERY_OR_JOIN)
     (
+       // 岔口 A：使用 ON 关键字
         <ON> { on = JoinConditionType.ON.symbol(getPos()); }
+        // 调用 Expression 解析后面的布尔条件（例如 a.id = b.id）存入 condition。
         condition = Expression(ExprContext.ACCEPT_SUB_QUERY) {
+        // 组装返回：创建一个 SqlJoin 节点，把左表 e、右表 e2、联结条件 condition 全部焊接到一起并返回。
             return new SqlJoin(joinType.getParserPosition(),
                 e,
                 natural,
@@ -2249,6 +2288,8 @@ SqlNode JoinTable(SqlNode e) :
                 condition);
         }
     |
+    // 岔口 B：使用 USING 关键字
+    // 如果遇到 <USING>，例如 USING (user_id)。
         <USING> { using = JoinConditionType.USING.symbol(getPos()); }
         list = ParenthesizedSimpleIdentifierList() {
             return new SqlJoin(joinType.getParserPosition(),
@@ -2260,6 +2301,7 @@ SqlNode JoinTable(SqlNode e) :
                 new SqlNodeList(list, Span.of(using).end(this)));
         }
     |
+    // 岔口 C：无条件（例如 CROSS JOIN 或隐式内联结）
         {
             return new SqlJoin(joinType.getParserPosition(),
                 e,
@@ -2271,6 +2313,8 @@ SqlNode JoinTable(SqlNode e) :
         }
     )
 |
+// 分支二：Microsoft SQL Server 风格的 CROSS APPLY
+// APPLY 是一个非常特殊的非标准 SQL 特性（常用于将表与表函数、UDTF 进行横向联结计算）。
     <CROSS> { joinType = JoinType.CROSS.symbol(getPos()); } <APPLY>
     e2 = TableRef2(true) {
         if (!this.conformance.isApplyAllowed()) {
@@ -2285,6 +2329,7 @@ SqlNode JoinTable(SqlNode e) :
             null);
     }
 |
+// 分支三：Microsoft SQL Server 风格的 OUTER APPLY
     <OUTER> { joinType = JoinType.LEFT.symbol(getPos()); } <APPLY>
     e2 = TableRef2(true) {
         if (!this.conformance.isApplyAllowed()) {
@@ -2311,12 +2356,15 @@ SqlNode TableRef() :
 {
     e = TableRef3(ExprContext.ACCEPT_QUERY, false) { return e; }
 }
-
+// 单表引用一级代理器
 SqlNode TableRef1(ExprContext exprContext) :
 {
     final SqlNode e;
 }
 {
+    // 硬编码填充 false：重点在第二个参数！它直接给 TableRef3 喂了一个硬编码的 false。
+    // 在 Calcite 源码中，TableRef3 的第二个参数通常命名为 boolean extendsBy（代表当前表引用是否由特定的流式语法或物化视图扩展机制拉伸）。
+    // 这里强行塞入 false，意味着从 Join() 这条主流水线走过来的表引用，在第一阶段必须作为标准的、常规的表引用来进行严格规整。
     e = TableRef3(exprContext, false) { return e; }
 }
 
@@ -2330,42 +2378,67 @@ SqlNode TableRef2(boolean lateral) :
 {
     e = TableRef3(ExprContext.ACCEPT_QUERY, lateral) { return e; }
 }
-
+// 主要职责是：解析 FROM 子句中单个独立的数据源，并为其处理别名（Alias）、提示（Hints）、透视（Pivot/Unpivot）以及采样（Tablesample）修饰符。
+// 这里的“单源”已经不局限于普通的物理表名，它包含了标准 SQL 和大数据流计算中极其丰富的衍生源：嵌套子查询、表函数、UNNEST 数组炸裂、LATERAL 相关引用、时态快照（Snapshot）以及流式模式匹配（MatchRecognize）。
+// boolean lateral：一个状态标志，记录当前数据源是否带有 LATERAL 修饰符（代表是否是相关子查询/相关表函数）
 SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
 {
+    // 存储识别出的、多段式的物理表名（如 catalog.db.orders）。
     final SqlIdentifier tableName;
+    // 核心雪球寄存器。用来原位升级、套娃封装整棵单源语法树
     SqlNode tableRef;
+    // 分别用于接纳表别名（如 AS t 中的 t）和列别名集合（如 AS t(c1, c2) 中的 c1, c2）。
     final SqlIdentifier alias;
     final Span s;
+    // 通用参数收集列表
     SqlNodeList args;
+    // 分别用于接纳表别名（如 AS t 中的 t）和列别名集合（如 AS t(c1, c2) 中的 c1, c2）。
     final SqlNodeList columnAliasList;
+    // UNNEST 算子寄存器，默认是不带序的 UNNEST，如果后面发现带有 ORDINALITY 关键字则原位升级。
     SqlUnnestOperator unnestOp = SqlStdOperatorTable.UNNEST;
 }
 {
     (
         LOOKAHEAD(2)
+        // 路线 1：拦截常规物理表及其链式修饰符（最常用）
         tableName = CompoundTableIdentifier() { s = span(); }
         (
             // Table call syntax like FROM a.b() instead of FROM TABLE(a.b())
             // Three tokens needed to disambiguate EXTEND syntax from CALCITE-493.
             // Example: "FROM EventLog(lastGCTime TIME)".
             LOOKAHEAD(3)
+            // 子分支 A（隐式表函数调用）
+            // 往后瞄三步。如果发现表名屁股后面带着括号且里面有参数声明（例如 FROM EventLog(lastGCTime TIME)），
+            // 说明这是 Calcite 特有的方言物理扩展机制（CALCITE-493），调用 ImplicitTableFunctionCallArgs 将其转译为带参表函数调用。
             tableRef = ImplicitTableFunctionCallArgs(tableName)
         |
+           // 子分支 B（标准物理表流水线）
+           // TableHints(tableName)：尝试吃掉表后面的 Hint 提示（如 SELECT * FROM t /*+ HINT */）。如果没有，兜底直接把 tableName 赋给 tableRef
             ( tableRef = TableHints(tableName) | { tableRef = tableName; } )
+            // 可选拦截。解析动态表扩展（Dynamic Extension）增加的新列定义。
             [ tableRef = ExtendTable(tableRef) ]
+            // 必须经由 Over() 产生式过滤，将其同化并处理可能存在的窗口重载。
             tableRef = Over(tableRef)
+            // 可选拦截。拦截时态表的时间旅行语法（如 FROM t FOR SYSTEM_TIME AS OF ...），封装成时态快照节点。
             [ tableRef = Snapshot(tableRef) ]
+            // 选拦截。拦截流计算中的复杂事件处理（CEP）语法 MATCH_RECOGNIZE (...)。
             [ tableRef = MatchRecognize(tableRef) ]
         )
     |
+    // 路线 2：拦截带括号的嵌套子查询或嵌套 JOIN
         LOOKAHEAD(2)
+        // 如果吃到了可选的 <LATERAL> 关键字，将 lateral 置为 true。
+        // 随后调用 ParenthesizedExpression 吃掉整个带括号的嵌套结构（如 FROM (SELECT * FROM x) 或 FROM (a JOIN b)）。
         [ <LATERAL> { lateral = true; } ]
         tableRef = ParenthesizedExpression(exprContext)
         tableRef = Over(tableRef)
+        // addLateral(tableRef, lateral)：如果是 LATERAL 查询，利用此内置方法在其外层死死焊接上一个 SqlLiteral 状态或 SqlSqlCall(LATERAL) 节点，标记其高级相关语义。
         tableRef = addLateral(tableRef, lateral)
         [ tableRef = MatchRecognize(tableRef) ]
     |
+    // 路线 3：拦截数组/集合炸裂函数（UNNEST）
+    // 精准吃掉关键字 <UNNEST>，随后调用通用车间 ParenthesizedQueryOrCommaList 吃掉括号里的数组表达式或子查询（如 UNNEST(t.arr)）
+    // 带有序号（WITH ORDINALITY）：如果后面紧跟 WITH ORDINALITY，说明用户不仅要炸裂数组，还要顺便输出一行从 1 开始递增的索引号。此时把 unnestOp 升级切换为 UNNEST_WITH_ORDINALITY。
         <UNNEST> { s = span(); }
         args = ParenthesizedQueryOrCommaList(ExprContext.ACCEPT_SUB_QUERY)
         [
@@ -2377,12 +2450,17 @@ SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
             tableRef = unnestOp.createCall(s.end(this), (List<SqlNode>) args);
         }
     |
+    // 路线 4：拦截显式表函数调用（TableFunctionCall）
+    // 匹配诸如 FROM LATERAL TABLE(my_func(x)) 语法。调用专用的 TableFunctionCall() 产生式收割多态表函数（PTF），并通过 addLateral 补全其相关性骨架。
         [ <LATERAL> { lateral = true; } ]
         tableRef = TableFunctionCall()
         tableRef = addLateral(tableRef, lateral)
     |
+    // 路线 5：各路古怪方言单表引用的终极逃生舱
         tableRef = ExtendedTableRef()
     )
+    // 关卡一：透视与反透视（Pivot / Unpivot）
+    // 向前看两步判定。如果单源后面紧跟着 PIVOT（行列转换，将行变列）或者 UNPIVOT（列变行）关键字，立刻调用各自的产生式，把当前的 tableRef 吞进肚子里作为入参，返回加工包装后的透视节点重新覆盖 tableRef。
     [
         LOOKAHEAD(2)
         tableRef = Pivot(tableRef)
@@ -2391,8 +2469,11 @@ SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
         LOOKAHEAD(2)
         tableRef = Unpivot(tableRef)
     ]
+    // 关卡二：别名焊接手术室（AS alias）
     [
+        // 匹配可选的 <AS> 关键字，并用 SimpleIdentifier() 强制抓取别名文本存入 alias（如 FROM users u 或 FROM users AS u）
         [ <AS> ] alias = SimpleIdentifier()
+        // 列别名捕获：如果别名后面还带着括号包起来的标志符列表（如 FROM t AS my_table(c1, c2)），调用 ParenthesizedSimpleIdentifierList 剥离下列名集合赋给 columnAliasList。
         (
             columnAliasList = ParenthesizedSimpleIdentifierList()
         |   { columnAliasList = null; }
@@ -2404,10 +2485,14 @@ SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
             // not unique. TODO: Support this behavior; see
             // [CALCITE-5168] Allow AS after parenthesized JOIN
             checkNotJoin(tableRef);
+            // 支一（仅表别名）：如果 columnAliasList == null，直接调用 SqlStdOperatorTable.AS 算子的静态工厂方法，
+            // 创建一个标准的别名 SqlCall，把当前的数据源 tableRef 当作操作数 0（Operand 0），把 alias 当作操作数 1。
             if (columnAliasList == null) {
                 tableRef = SqlStdOperatorTable.AS.createCall(
                     Span.of(tableRef).end(this), tableRef, alias);
             } else {
+            // 分支二（表别名 + 列别名）：如果带有列别名，原生的 AS 算子无法平铺接收，解析器在此原地 new 了一个临时的 ArrayList<SqlNode> idList。它按照极其严格的契约顺序将元素扔进数组：[0] 位放原表 tableRef，[1] 位放表别名 alias，从 [2] 位往后平铺追加所有的列别名。
+            // 最后将整个大数组打包投喂给 AS.createCall。
                 List<SqlNode> idList = new ArrayList<SqlNode>();
                 idList.add(tableRef);
                 idList.add(alias);
@@ -2417,6 +2502,8 @@ SqlNode TableRef3(ExprContext exprContext, boolean lateral) :
             }
         }
     ]
+    // 关卡三：数据采样截获（Tablesample）
+    // 最后看屁股后面有没有挂着大数据的采样关键字（如 FROM users TABLESAMPLE SYSTEM(10)）。如果有，进入 Tablesample() 产生式进行最后一轮封装。
     [ tableRef = Tablesample(tableRef) ]
     { return tableRef; }
 }
@@ -2474,17 +2561,29 @@ SqlNode Tablesample(SqlNode tableRef) :
 
 /** Wraps a table reference in a call to EXTEND if an optional "EXTEND" clause
  * is present. */
+// 专门负责解析动态表扩展（Dynamic Table Extension）的底层核心产生式。它由两个相互配合的方法组成：ExtendTable()（表扩展主包装器）和 ExtendList()（扩展列定义收割器）。
+// 允许用户在查询时临时、动态地为某张表追加原本在元数据（Schema）中不存在的新列定义，并将其包装为标准的代数节点。
+// 什么是“表扩展（EXTEND）”？
+// 在大数据分布式场景（尤其是流计算、宽表存储如 Apache HBase / Apache Phoenix，或者时序/日志数据库）中，Schema（表结构）往往是动态变化或非强Schema化的。
+// 系统在元数据里可能只注册了少量的核心列（如 id, event_time）
+// 当上层业务突然需要查询某个新落盘的特殊指标列（如 extended_attr）时，如果在传统数据库中，必须先执行繁重的 ALTER TABLE ADD COLUMN 变更。
+// Calcite 提供了极为高级的 EXTEND 临时扩容语法：允许开发人员在执行 SELECT 的那一刻，在 FROM 子句里直接为原表“无缝插拔式”地临时追加列名和类型定义，而不需要污染底层的物理元数据：
+// -- 典型应用：临时告诉引擎 event_log 表里还有一个名为 geo_location 的 VARCHAR 列需要提取
+//SELECT id, geo_location
+//FROM event_log EXTEND (geo_location VARCHAR, os_version VARCHAR)
+// 输入参数 SqlNode tableRef：上层车间已经组装好的前置表引用节点（它可能是一个简单的 SqlIdentifier 表名，也可能是已经贴好 Hint 的 SqlTableRef）。
 SqlNode ExtendTable(SqlNode tableRef) :
 {
     final SqlNodeList extendList;
 }
 {
+    // [ <EXTEND> ]（可选关键字拦截）
     [ <EXTEND> ]
     extendList = ExtendList() {
         return extend(tableRef, extendList);
     }
 }
-
+// 本方法是标准的“左括号 + 第一个元素 + 变长逗号循环 + 右括号”的经典词法清洗矩阵：
 SqlNodeList ExtendList() :
 {
     final Span s;
@@ -2546,18 +2645,32 @@ void AddCompoundIdentifierType(List<SqlNode> list, List<SqlNode> extendList) :
         list.add(name);
     }
 }
-
+// 设计极其巧妙、专门针对隐式表函数调用（Implicit Table Function Call）进行归一化转译的底层产生式
+// SqlIdentifier name：这是由上层（TableRef3）已经提前解析并剥离好的表函数名称（如 my_func 或带有命名空间的多段式名称 catalog.db.func_name）。本方法直接接收它作为核心加工原料。
+// 什么是“隐式表函数”？
+// 在标准的 SQL 语法中，如果想在 FROM 子句中调用一个表函数（把函数当成表来查询），必须死死套上一个 TABLE 关键字壳子：
+// SELECT * FROM TABLE(my_table_function(10, 'abc'));
+// 然而，由于老旧数仓或各种大数据流计算方言（如早期的 Hive、MySQL 或特定的时序流引擎）历史包袱很重，它们支持不写 TABLE 关键字的隐式简写：
+// -- 隐式简写写法
+   //SELECT * FROM my_table_function(10, 'abc');
+// Calcite 的核心哲学是把异类同化为标准。本方法的存在，就是为了在语法最前线，悄悄地把这种隐式简写直接“隆起重构”成标准 SQL 的 TABLE(...) 代数拓扑结构，从而对后方的优化器完全隐瞒这一简写事实。
 SqlNode ImplicitTableFunctionCallArgs(SqlIdentifier name) :
 {
+    // 参数收集大货箱。
+    // 一个新创建的 ArrayList<SqlNode>，用来顺序堆放括号里吃进来的各种入参表达式。
     final List<SqlNode> tableFuncArgs = new ArrayList<SqlNode>();
+    // 函数调用节点寄存器，用来存放初次熔炼出的用户自定义表函数（UDTF）节点。
     final SqlNode call;
     final Span s;
 }
 {
     // Table call syntax like FROM a.b() instead of FROM TABLE(a.b())
     // We've already parsed the name, so we don't use NamedRoutineCall.
+
     { s = span(); }
+    // 步骤一：拦截并开启参数网（() 括号防御圈）
     <LPAREN>
+    // [ 可选括号包裹区 ]：函数允许不带参数（如 my_func()），所以整个参数抓取区用中括号包裹，允许直接滑向右括号。
     [
         AddArg0(tableFuncArgs, ExprContext.ACCEPT_CURSOR)
         (
@@ -2724,20 +2837,46 @@ SqlNode RowConstructor() :
 }
 
 /** Parses a WHERE clause for SELECT, DELETE, and UPDATE. */
+// 负责解析 WHERE 子句 的核心产生式
 SqlNode Where() :
 {
     SqlNode condition;
 }
 {
+   // 用来接纳和寄存从 WHERE 关键字后面剥离出来的复杂布尔表达式拓扑树。
+   // 步骤一：前线叩关拦截（<WHERE>）
+   // 大白话翻译：WHERE 后面能写的东西简直是千奇百怪。可能是一个简单的等值判断（id = 10），
+   // 可能是一个复杂的布尔逻辑链（a AND b OR (c NOT IN ...)），甚至可能直接挂一个极其重度的相关子查询（Correlated Subquery）（如 WHERE EXISTS (SELECT 1 FROM ...) ）。
+   // 原始输入片段：... WHERE age > 18 AND status IN (SELECT s_id FROM tbl)
+         //当执行到本产生式时，它会通过通用 Expression() 矩阵收割出下面这棵极具分量的布尔关系代数树，并直接抛给上游：
+   // SqlBasicCall (Operator: "AND")          <--- 作为 condition 原装返回给上层 SqlSelect
+         //   ├── Operand 0: SqlBasicCall (Operator: ">")
+         //   │                ├── SqlIdentifier(age)
+         //   │                └── SqlLiteral(18)
+         //   └── Operand 1: SqlBasicCall (Operator: "IN")
+         //                    ├── SqlIdentifier(status)
+         //                    └── SqlSelect (...)  <--- 拜 ACCEPT_SUB_QUERY 所赐，深层子查询被完美放行收录
     <WHERE> condition = Expression(ExprContext.ACCEPT_SUB_QUERY) {
         return condition;
     }
 }
 
 /** Parses a GROUP BY clause for SELECT. */
+// 负责解析 GROUP BY（分组）子句 的核心产生式
+// GROUP BY 紧跟在 WHERE 子句之后，负责将底层过滤出来的扁平明细数据，按照指定的维度切分成一个个密实的数据桶（Buckets），为后续的聚合计算（如 SUM, COUNT）搭建舞台。
+// 用来标记是否在分组中使用了罕见的、具有排他性的 DISTINCT 修饰符。
+// 在全天下绝大多数开发者的认知里，DISTINCT 只能写在 SELECT 后面（如 SELECT DISTINCT age）。那么，为什么 GROUP BY 的屁股后面也能挂 DISTINCT / ALL 呢？
+// -- 一种极为少见的特种数仓方言/扩展语法
+   //SELECT department_id, AVG(salary)
+   //FROM employees
+   //GROUP BY DISTINCT department_id;
+// 这属于一种特定的 SQL 方言扩展。在语义上，GROUP BY DISTINCT 与普通的 GROUP BY 并没有本质的区别（因为 GROUP BY 本身就会对维度进行去重合并）。
+// Calcite 作为通用 SQL 框架，为了能够完美兼容和无损还原这类小众数仓的奇葩语法（不丢失用户的输入痕迹），在最前线特意保留了这道拦截网。
 SqlNodeList GroupBy() :
 {
+    // 用来按顺序临时堆放收割到的每一个分组物理列或高阶聚合组合（如 CUBE, ROLLUP）。
     final List<SqlNode> list;
+    // 用来标记是否在分组中使用了罕见的、具有排他性的 DISTINCT 修饰符。
     final boolean distinct;
     final Span s;
 }
@@ -3111,6 +3250,13 @@ void AddOrderItem(List<SqlNode> list) :
 
 /** Wraps a table reference in a call to OVER if an optional "OVER" clause
  * is present (if the dialect supports OVER for table expressions). */
+// 高级大数据流式计算时序窗口/时态表（Temporal Tables）设计哲学的核心产生式：Over()（表级窗口函数包装器
+// 输入参数 SqlNode tableRef：上层车间已经加工到一半的前置表引用节点原胚（它可能只是一个简单的物理表名 SqlIdentifier，也可能是刚贴好 Hint 或做完 EXTEND 动态扩容的复合节点）
+// -- Calcite 流计算的高阶表级窗口（Table-valued Window）方言扩展
+//SELECT * FROM orders OVER (ORDER BY rowtime RANGE BETWEEN INTERVAL '1' HOUR PRECEDING AND CURRENT ROW);
+// Calcite 为了应对流计算（Streaming SQL，如 Apache Flink 内核）和时态数据库（Temporal Databases）而设置的极其强悍的特种语法扩展。
+// 在实时流处理中，数据是无穷无尽流过来的。如果想对一张源头物理表进行流式过往状态追踪（时态关联），
+// 或者强制声明该表在流入系统时的时间戳驱动窗口边界，就可以直接在 FROM 的表屁股后面挂一个 OVER 窗口。这代表把整张流式表的数据流，送进一个流式时间窗口滑行器里去。本方法就是这道流式大闸的指挥部。
 SqlNode Over(SqlNode tableRef) :
 {
     final SqlNode over;
@@ -3121,6 +3267,8 @@ SqlNode Over(SqlNode tableRef) :
             return SqlStdOperatorTable.OVER.createCall(
                 getPos(), checkNotJoin(tableRef), over);
         } else {
+        // 分支 A：常规传统 SQL 状态（if (over == null)）
+        //逻辑：绝大多数日常离线数仓查询，表后面是绝对不会挂 OVER 窗口的。此时 over 必为 null。
             return tableRef;
         }
     }
@@ -3137,9 +3285,13 @@ JAVACODE SqlNode addLateral(SqlNode tableRef, boolean lateral) {
 /**
  * Parses a FOR SYSTEM_TIME clause following a table expression.
  */
+// 专门用来解析 SQL:2011 标准时态表时间旅行（Time Travel / Temporal Table） 的底层核心产生式：Snapshot()（时态快照解析器）
+// 核心职责是：拦截紧跟在表名屁股后面的 FOR SYSTEM_TIME AS OF 语法，将其捕获的时间戳表达式与原表名原位熔炼，封装成一个强类型的时态快照（SqlSnapshot）节点
+// 输入参数 SqlNode tableRef：上层车间已经加工到一半的前置表引用节点（如普通的物理表 orders，或者是贴好 Hint、做完动态扩容的表引用）
 SqlSnapshot Snapshot(SqlNode tableRef) :
 {
     final Span s;
+    // 时间戳表达式寄存器，用来接纳用户指定的目标历史时间
     final SqlNode e;
 }
 {
@@ -3279,6 +3431,20 @@ void AddUnpivotValue(List<SqlNode> list) :
 /**
  * Parses a MATCH_RECOGNIZE clause following a table expression.
  */
+// MATCH_RECOGNIZE 是 SQL:2016 标准 引入的、极其强悍的复杂事件处理（CEP, Complex Event Processing）语法。它在流计算引擎（如 Apache Flink / 实时风控系统）中属于绝对的霸主级武器。
+// 允许开发人员用类似于正则表达式的语法，在一段连续的时序数据流中，精确匹配出特定的某种行为轨迹（例如：股价先暴跌、再横盘、最后暴涨；或者信用卡在 5 分钟内连续异地刷卡）。
+// SELECT * FROM ticker MATCH_RECOGNIZE (
+   //  PARTITION BY symbol ORDER BY tstamp
+   //  MEASURES FIRST(A.tstamp) AS start_t, LAST(B.tstamp) AS end_t
+   //  ONE ROW PER MATCH
+   //  AFTER MATCH SKIP TO NEXT ROW
+   //  PATTERN (A B+ C)
+   //  DEFINE
+   //    A AS price < 10,
+   //    B AS price = PREV(price),
+   //    C AS price > 20
+   //)
+// tableRef 代表这整个模式匹配紧跟的前置底层数据流源头（肉身表）
 SqlMatchRecognize MatchRecognize(SqlNode tableRef) :
 {
     final Span s, s0, s1, s2;
@@ -3296,7 +3462,9 @@ SqlMatchRecognize MatchRecognize(SqlNode tableRef) :
     final SqlLiteral isStrictEnds;
 }
 {
+    // 词法前线精准吃掉关键字
     <MATCH_RECOGNIZE> { s = span(); checkNotJoin(tableRef); } <LPAREN>
+    // 阶段二：收割开窗环境定义（PARTITION BY & ORDER BY）
     (
         <PARTITION> { s2 = span(); } <BY>
         partitionList = ExpressionCommaList(s2, ExprContext.ACCEPT_NON_QUERY)
@@ -3308,33 +3476,42 @@ SqlMatchRecognize MatchRecognize(SqlNode tableRef) :
     |
         { orderList = SqlNodeList.EMPTY; }
     )
+    // 阶段三：收割计算度量指标（MEASURES）
+    // 拦截 <MEASURES> 关键字，调用专用子车间 MeasureColumnCommaList 抓取用户在匹配成功后想要向外输出的聚合/计算表达式（如 LAST(B.price)），将其洗练包装存入 measureList。
     (
         <MEASURES>
         measureList = MeasureColumnCommaList(span())
     |
         { measureList = SqlNodeList.EMPTY; }
     )
+    // 阶段四：决定输出颗粒度（ROWS PER MATCH）
     (
+    // 分支 A（ONE ROW PER MATCH）：如果撞上此关键字序列，代表每一次状态机成功匹配，只输出一行合并后的摘要数据。将其强类型符号实例赋给 rowsPerMatch。
         <ONE> { s0 = span(); } <ROW> <PER> <MATCH> {
             rowsPerMatch = SqlMatchRecognize.RowsPerMatchOption.ONE_ROW.symbol(s0.end(this));
         }
     |
+    // 分支 B（ALL ROWS PER MATCH）：撞上此序列，代表把匹配成功的整条时间线上的每一行明细全部吐出来。
         <ALL> { s0 = span(); } <ROWS> <PER> <MATCH> {
             rowsPerMatch = SqlMatchRecognize.RowsPerMatchOption.ALL_ROWS.symbol(s0.end(this));
         }
     |   { rowsPerMatch = null; }
     )
+    // 阶段五：解析状态机匹配后的指针滑动策略（AFTER MATCH SKIP）
+    // 大白话翻译：当有一段流数据触发了匹配后，下一次匹配应该从哪里重新开始数？
     (
         <AFTER> { s1 = span(); } <MATCH> <SKIP_>
         (
             <TO>
             (
                 LOOKAHEAD(2)
+                // SKIP TO NEXT ROW：极其贪婪的回溯策略。指针仅向后挪移一格，即使之前匹配过的行也可以重新参与下一轮匹配。
                 <NEXT> <ROW> {
                     after = SqlMatchRecognize.AfterOption.SKIP_TO_NEXT_ROW
                         .symbol(s1.end(this));
                 }
             |
+            // SKIP TO FIRST/LAST var：回溯指针直接一步跨到特定状态变量（如 A 或 B）第一次或最后一次出现的那个物理行。
                 LOOKAHEAD(2)
                 <FIRST> var = SimpleIdentifier() {
                     after = SqlMatchRecognize.SKIP_TO_FIRST.createCall(
@@ -3357,6 +3534,7 @@ SqlMatchRecognize MatchRecognize(SqlNode tableRef) :
                 }
             )
         |
+        // SKIP PAST LAST_ROW：直接跳过这一轮已经匹配成功的所有明细行，从它们屁股后面的新行开始新一轮匹配（防御数据被重复消费）。
             <PAST> <LAST> <ROW> {
                  after = SqlMatchRecognize.AfterOption.SKIP_PAST_LAST_ROW
                      .symbol(s1.end(this));
@@ -3364,26 +3542,33 @@ SqlMatchRecognize MatchRecognize(SqlNode tableRef) :
         )
     |   { after = null; }
     )
+    // 阶段六：解析核心正则匹配表达式（PATTERN）
     <PATTERN>
     <LPAREN>
     (
+    // <CARET>（脱字符 ^）：如果是 ^ 开头，代表严格从这一流分区的起始第一行开始算起，不允许从中间插队。将布尔型 isStrictStarts 置为 true。
         <CARET> { isStrictStarts = SqlLiteral.createBoolean(true, getPos()); }
     |   { isStrictStarts = SqlLiteral.createBoolean(false, getPos()); }
     )
     pattern = PatternExpression()
     (
+    // <DOLLAR>（美元符 $）：如果是 $ 结尾，代表状态机结束必须死死对齐流分区的最后一行。将布尔型 isStrictEnds 置为 true。
         <DOLLAR> { isStrictEnds = SqlLiteral.createBoolean(true, getPos()); }
     |   { isStrictEnds = SqlLiteral.createBoolean(false, getPos()); }
     )
     <RPAREN>
+    // 阶段七：解析时间窗口与变量集合定义（WITHIN, SUBSET, DEFINE）
     (
+    // [ WITHIN ]：可选拦截。设定状态机完成整套动作的最大时间生命周期（如 WITHIN INTERVAL '5' MINUTE），超时自动熔断失败。
         <WITHIN> interval = IntervalLiteral()
     |   { interval = null; }
     )
     (
+    // [ SUBSET ]：可选拦截。定义状态变量的子集组合（如 SUBSET S = (A, B)）。
         <SUBSET> subsetList = SubsetDefinitionCommaList(span())
     |   { subsetList = SqlNodeList.EMPTY; }
     )
+    // 生死存亡的刚性关卡。匹配 <DEFINE> 关键字，随后调用 PatternDefinitionCommaList 依次吃掉针对每个状态变量的具体条件断言列表（如 A AS price < 10, B AS ...），存入 patternDefList。
     <DEFINE>
     patternDefList = PatternDefinitionCommaList(span())
     <RPAREN> {

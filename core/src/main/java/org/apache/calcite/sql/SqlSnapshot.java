@@ -29,13 +29,22 @@ import java.util.Objects;
 /**
  * Parse tree node for "{@code FOR SYSTEM_TIME AS OF}" temporal clause.
  */
+// 专门用来表示 SQL 抽象语法树（AST）中时态查询（Temporal Query）规范的节点类。它继承自 SqlCall。
+// 核心作用是解析、存储并渲染 SQL 标准中的快照/时态子句（即 FOR SYSTEM_TIME AS OF）
+// 在标准 SQL:2011 中，引入了对历史版本数据查询的支持。例如，当用户编写如下 SQL 时：
+// SELECT * FROM employees FOR SYSTEM_TIME AS OF TIMESTAMP '2026-05-19 10:00:00'
+// Calcite 的解析器会捕捉到这一特定时态规范，并将其转换为一个 SqlSnapshot 对象。它将查询目标（表引用）与时间锚点（历史时刻）绑定在一起。
+// 这使优化器能够知晓该查询需要穿透到数据库的历史快照层（或流处理中的某个水位线/时间戳），去获取该指定时间点的数据状态。
 public class SqlSnapshot extends SqlCall {
+  // 表示“表引用节点”在内部操作数列表中的固定索引位置（第 0 位）。
   private static final int OPERAND_TABLE_REF = 0;
+  // 表示“时间表达式节点”在内部操作数列表中的固定索引位置（第 1 位）。
   private static final int OPERAND_PERIOD = 1;
 
   //~ Instance fields -------------------------------------------
-
+  // 表引用对象。存储需要建立快照的目标节点，它通常是一个表名 SqlIdentifier，或者一个带别名的表引用 SqlCall（如 employees AS e）。
   private SqlNode tableRef;
+  // 时间段/时间戳点对象。存储 AS OF 后面紧跟的时间或版本表达式，可以是具体的历史时间戳字面量（如 TIMESTAMP '2026-05-19 10:00:00'）、系统变量或动态参数 ?。
   private SqlNode period;
 
   /** Creates a SqlSnapshot. */
