@@ -40,10 +40,15 @@ import java.util.Map;
  * Implementation of {@link org.apache.calcite.rel.core.Project}
  * relational expression for an InnoDB data source.
  */
+// 专门为 InnoDB 数据源适配器（InnoDB Adapter） 定制的物理投影算子。它继承自抽象基类 Project 并实现了 InnodbRel 接口
+// 在 Calcite 的多数据源适配体系中，InnodbProject 属于 InnodbRel.CONVENTION（InnoDB 物理执行流派）。
+// 下推（Push-down）列选择：它代表一个准备直接在底层 InnoDB 存储引擎中执行的列裁剪或字段投影操作。通过它，Calcite 可以通知 InnoDB 引擎只读取和返回 SQL 中指定的字段，从而避免整行大字段（如 BLOB、TEXT 或几十个无关列）的磁盘 I/O 开销。
+// 元数据映射与翻译：它负责将 Calcite 抽象的行级表达式（RexNode）与 InnoDB 底层实际的物理字段名（Field Names）和别名进行对齐和转换，并将其注册到 InnoDB 的执行上下文（Implementor）中。
 public class InnodbProject extends Project implements InnodbRel {
   InnodbProject(RelOptCluster cluster, RelTraitSet traitSet,
       RelNode input, List<? extends RexNode> projects, RelDataType rowType) {
     super(cluster, traitSet, ImmutableList.of(), input, projects, rowType, ImmutableSet.of());
+    // 强制确保当前投影算子的流派必须与它的子节点（input）完全一致
     assert getConvention() == InnodbRel.CONVENTION;
     assert getConvention() == input.getConvention();
   }
@@ -57,7 +62,7 @@ public class InnodbProject extends Project implements InnodbRel {
       RelMetadataQuery mq) {
     return super.computeSelfCost(planner, mq).multiplyBy(0.1);
   }
-
+  // 实现 InnodbRel 接口的核心行为，将 Calcite 算子树转换为 InnoDB 认识的投影查询信息。
   @Override public void implement(Implementor implementor) {
     implementor.visitChild(0, getInput());
     final InnodbRules.RexToInnodbTranslator translator =

@@ -47,6 +47,11 @@ import java.util.Set;
  * Sub-class of {@link org.apache.calcite.rel.core.Project} not
  * targeted at any particular engine or calling convention.
  */
+// 在 Calcite 的架构中，关系算子被划分为不同的物理流派（Convention）。
+// LogicalProject 属于 Convention.NONE（逻辑算子流派）。
+// 它的核心职责是：作为 SQL 刚被解析、校验后生成的“纯逻辑形态”的投影算子（SELECT）
+// 它不绑定任何具体的存储引擎或执行框架（如 Spark、Flink 或 JDBC 物理算子）。在 SQL 刚转为关系代数树时，所有的投影都会先被实例化为 LogicalProject。随后，优化器（Planner）会运用各种等价改写规则，最终将它转化为特定计算引擎的物理算子（例如 EnumerableProject 或 SparkProject）。
+
 public final class LogicalProject extends Project {
   //~ Constructors -----------------------------------------------------------
 
@@ -64,6 +69,7 @@ public final class LogicalProject extends Project {
    * @param variablesSet Correlation variables set by this relational expression
    *                     to be used by nested expressions
    */
+  // 底层真正用于实例化逻辑投影算子的全参数构造器。
   public LogicalProject(
       RelOptCluster cluster,
       RelTraitSet traitSet,
@@ -114,6 +120,7 @@ public final class LogicalProject extends Project {
   /**
    * Creates a LogicalProject by parsing serialized output.
    */
+  // 用于从存储介质、网络流（如 JSON/XML 形式的执行计划）中反序列化并还原出 LogicalProject 算子实体。
   public LogicalProject(RelInput input) {
     super(input);
   }
@@ -159,10 +166,17 @@ public final class LogicalProject extends Project {
   public static LogicalProject create(final RelNode input, List<RelHint> hints,
       final List<? extends RexNode> projects, RelDataType rowType,
       final Set<CorrelationId> variablesSet) {
+    // 获取输入算子所在的优化器集群上下文（包含类型工厂、全局配置等）
     final RelOptCluster cluster = input.getCluster();
+    // 能够动态计算和查阅整个算子树的各种统计信息（如：某棵子树吐出的行数、占用的 CPU、以及数据的排序特征）。
     final RelMetadataQuery mq = cluster.getMetadataQuery();
+    // 动态重构物理特质（RelTraitSet）
     final RelTraitSet traitSet =
+        // 强制将当前算子的流派（Convention）标记为 NONE（即纯逻辑算子形态）。
         cluster.traitSet().replace(Convention.NONE)
+            // 动态推导并保留排序特征（Collation）。
+            // 在关系代数中，投影（SELECT）虽然会裁剪或改变列的顺序，但它并不一定会破坏数据原有的有序性。
+            // 内部逻辑是：去问元数据引擎 mq：“底层的输入节点（input）本来是有序的吗？如果有，当经历了当前的 projects 表达式链投影后，原先的有序性还能残存下来吗？”
             .replaceIfs(RelCollationTraitDef.INSTANCE,
                 () -> RelMdCollation.project(mq, input, projects));
     return new LogicalProject(cluster, traitSet, hints, input, projects, rowType, variablesSet);

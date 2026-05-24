@@ -538,16 +538,21 @@ public class JdbcRules {
 
   /** Implementation of {@link org.apache.calcite.rel.core.Project} in
    * {@link JdbcConvention jdbc calling convention}. */
+  // JdbcAdapter（JDBC 适配器）模块中的一个核心物理算子。它以静态内部类的形式存在，继承自抽象基类 Project 并实现了 JdbcRel 接口
+  // 下推（Push-down）计算：代表一个准备在底层关系型数据库（如 MySQL, Oracle, PostgreSQL 等）中直接执行的 SELECT 投影与计算操作。
+  // 异构 SQL 转译：它不直接在 Calcite 内存中通过 Java 代码算数据，而是作为一个“账本标记”。当整个算子树下推完成后，它会通过特定的实现机制，
+  // 将自身以及底层的算子节点联合逆向翻译（Decompile）回一条标准的 SQL 字符串，发送给底层的目标数据库去执行。
   public static class JdbcProject
       extends Project
       implements JdbcRel {
     public JdbcProject(
         RelOptCluster cluster,
         RelTraitSet traitSet,
-        RelNode input,
-        List<? extends RexNode> projects,
+        RelNode input, // JDBC 数据流中的上游算子（例如一个 JdbcFilter 或 JdbcTableScan）。
+        List<? extends RexNode> projects, // 需要在目标数据库中执行的 SQL 表达式列表（如原装列引用或底层数据库支持的函数）。
         RelDataType rowType) {
       super(cluster, traitSet, ImmutableList.of(), input, projects, rowType, ImmutableSet.of());
+      // 包含一句硬核断言：assert getConvention() instanceof JdbcConvention;。这确保了传入的 traitSet 物理特质中必须包含 JDBC 协议流派，防止逻辑特征错配。
       assert getConvention() instanceof JdbcConvention;
     }
 
@@ -562,16 +567,22 @@ public class JdbcRules {
         List<RexNode> projects, RelDataType rowType) {
       return new JdbcProject(getCluster(), traitSet, input, projects, rowType);
     }
-
+    // 精确调整算子自身在 CBO 代价模型中的物理分数。
     @Override public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner,
         RelMetadataQuery mq) {
       RelOptCost cost = super.computeSelfCost(planner, mq);
       if (cost == null) {
         return null;
       }
+      // 如果基础代价不为空，它会做一件非常关键的事：将该代价乘以一个特定的系数 JdbcConvention.COST_MULTIPLIER（通常这个值被设定得很小，例如 0.03）
       return cost.multiplyBy(JdbcConvention.COST_MULTIPLIER);
     }
-
+    // 物理计划向标准 SQL 的逆向转译。
+    // 当 Calcite 决定采用物理 JDBC 计划准备执行时，它会启动 JdbcImplementor（一个专门负责将关系代数树倒退回 SQL 字符串的重写器）自底向上遍历这棵物理树。
+    // 当遍历到 JdbcProject 时，该方法被触发。implementor.implement(this) 内部会执行以下动作
+    // 先通知底层的子节点（例如 JdbcTableScan）先生成它们的那部分 SQL（例如生成了 FROM my_table）。
+    // 然后 JdbcProject 接过接力棒，将自身内部的 projects 表达式列表（RexNode）逐个翻译成对应数据库的方言字符串（例如将 RexCall(UPPER, $1) 翻译成目标数据库认识的 UPPER(user_name)）。
+    // 最终它把这些翻译好的片段拼接并注册进 Result 对象的 SELECT 子句区域中。
     @Override public JdbcImplementor.Result implement(JdbcImplementor implementor) {
       return implementor.implement(this);
     }
