@@ -53,10 +53,15 @@ import java.util.List;
  * <pre>select from fields as f
  * where f.getClass().getName().equals("java.lang.String")</pre>
  * </blockquote>
- * 代表执行计划要扫描这个表
  * <p>can. It is the optimizer's responsibility to find these ways, by applying
  * transformation rules.
  */
+// TableScan 是扫表算子的抽象基类。而 LogicalTableScan 则是它的纯逻辑形态实现，属于 Convention.NONE（无物理执行契约流派）
+// 核心职责是：
+// 关系代数树的起点：它是 SQL 语句（如 SELECT * FROM emp）刚被解析、校验（Validate）完成并转化为关系代数树（RelNode Tree）时，最先被实例化出来的叶子节点。
+// 解除底层绑定：它仅代表“我们要扫描这张表”的逻辑意图，而不关心这张表到底存在于 MySQL、HBase、还是一个 CSV 文件中。
+// 留给优化器转换：它就像一块未雕琢的璞玉。在随后的优化阶段，Calcite 的 VolcanoPlanner 或 HepPlanner 会利用规则（Rules），把它转换成具体的物理扫表算子（例如 JdbcTableScan 或 BindableTableScan）去真正读取数据。
+
 public final class LogicalTableScan extends TableScan {
   //~ Constructors -----------------------------------------------------------
 
@@ -100,11 +105,17 @@ public final class LogicalTableScan extends TableScan {
    * @param relOptTable Table
    * @param hints       The hints
    */
+  // 不仅是创建逻辑扫表算子的标准入口，更是 Calcite 在算子树构建之初，进行底层物理特征（Traits）向上捕捉与传递的经典范例
   public static LogicalTableScan create(RelOptCluster cluster,
       final RelOptTable relOptTable, List<RelHint> hints) {
+    // 利用了设计模式中的包装器模式（Wrapper Pattern）。这行代码就像撕开包装纸一样，把高层的封装剥离，
+    // 拿到最底层、由具体数据源适配器（如 JDBC、Cassandra、File 等）实现的原始元数据对象 Table
     final Table table = relOptTable.unwrap(Table.class);
     final RelTraitSet traitSet =
+        // 首先，由于这是逻辑算子（Logical），它的执行流派特质（Convention）毫无疑问被贴上 NONE 标签，代表它目前还不属于任何具体的物理引擎。
         cluster.traitSetOf(Convention.NONE)
+            // 捕捉并向下继承底层表的天然排序特征（Collation）。
+            // 果这张表在底层确实拥有天然的排序（比如按 id 升序），这个方法会在逻辑扫表算子刚诞生的一瞬间，把这个物理排序特质精准地捕捉到，并强行注入到 LogicalTableScan 的 traitSet 中！
             .replaceIfs(RelCollationTraitDef.INSTANCE, () -> {
               if (table != null) {
                 return table.getStatistic().getCollations();

@@ -36,7 +36,14 @@ import static java.util.Objects.requireNonNull;
 /**
  * Relational expression representing a scan of a table in a JDBC data source.
  */
+// 在 Calcite 的多数据源架构中，JdbcTableScan 属于 JdbcConvention（JDBC 物理执行流派） 的算子。它是整棵 JDBC 物理执行计划树的叶子节点（最底层的源头）
+// 定义底层关系型数据库的数据源入口：它代表对远程外部关系型数据库（如 MySQL、Oracle、PostgreSQL、SQL Server 等）中某张物理表的全表扫描意图。
+// 作为 SQL 逆向转译的基石：它自身不直接包含读取底层的 Java 代码，而是作为一个“账本标记”。当 Calcite 决定将计算下推给底层数据库执行时，它会配合上层的物理算子（如 JdbcFilter、JdbcProject），通过特定的实现机制，自底向上将整棵算子树逆向翻译（Decompile）回一条标准的底层 SQL 字符串。
+
 public class JdbcTableScan extends TableScan implements JdbcRel {
+  // 直击底层的、真正的 JDBC 物理表元数据实体。
+  // table 属性是 Calcite 高层通用的包装，而 jdbcTable 则是解开包装后的、
+  // 具体的 JDBC 实现类（org.apache.calcite.adapter.jdbc.JdbcTable）。通过它，可以拿到该表在远程数据库中的物理表名（tableName()）、所属的物理数据源（DataSource）以及对应的 SQL 方言（SqlDialect）等底层物理执行不可或缺的参数。
   public final JdbcTable jdbcTable;
 
   protected JdbcTableScan(
