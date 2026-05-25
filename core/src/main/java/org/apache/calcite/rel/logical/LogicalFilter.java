@@ -46,7 +46,14 @@ import java.util.Set;
  * Sub-class of {@link org.apache.calcite.rel.core.Filter}
  * not targeted at any particular engine or calling convention.
  */
+// Filter 是一个过滤抽象框架。而 LogicalFilter 则是它的纯逻辑形态实现，属于 Convention.NONE（无物理执行流派）
+// 核心职责是：
+// 解除物理绑定：它仅在逻辑层代表 SQL 中的 WHERE 或 HAVING 的过滤行为。在这个阶段，它完全不关心这些数据是在内存中过滤（Enumerable 模式），还是被转换成底层的物理 SQL（JDBC 模式）。
+// 支撑子查询与关联变量（Correlation）：作为逻辑层节点，它专门设计了对 CorrelationId 的支持，能够完美表达和承载关联子查询（Correlated Subquery，如 WHERE EXISTS (SELECT 1 FROM t2 WHERE t2.id = t1.id)）中的跨层变量传递。
+// 提供改写跳板：它是优化器（Planner）进行逻辑等价改写（如谓词下推、过滤器合并）的基础媒介。当所有逻辑层改写完毕后，它会被 Rule 转换成特定引擎的物理过滤节点。
 public final class LogicalFilter extends Filter {
+  // 当前过滤算子所定义或引入的关联变量（Correlation ID）集合。
+  // 在复杂的关联子查询中，外层查询的某一行数据需要作为变量传递给内层子查询。这个属性就是用来记录当前 Filter 节点向外暴露、或供内部表达式引用的关联变量 ID。如果该集合不为空，说明当前过滤逻辑涉及到了分布式或跨层的数据依赖。
   private final ImmutableSet<CorrelationId> variablesSet;
 
   //~ Constructors -----------------------------------------------------------

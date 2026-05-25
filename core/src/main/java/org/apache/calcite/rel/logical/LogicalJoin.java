@@ -58,15 +58,22 @@ import static java.util.Objects.requireNonNull;
  *
  * </ul>
  */
+// Join 是一个连接操作的抽象框架。而 LogicalJoin 则是它的纯逻辑形态实现，属于 Convention.NONE（无物理执行流派）。
+// 解除物理引擎绑定：它仅在逻辑层代表 SQL 中的各种连接行为（如 INNER JOIN、LEFT JOIN 等）。此时，它完全不关心后续会通过哪种具体的物理算法来实现（例如是走内存的 EnumerableHashJoin、EnumerableNestedLoopJoin，还是下推给远程数据库生成物理 JDBC JOIN）。
+// 连接优化規則的操纵舞台：它是各种等价改写规则（如连接重排序 JoinCommuteRule、过滤条件上提/下推规则、连接转化为半连接规则等）直接操作的核心对象。
+// 状态控制与防死循环机制：它通过内部特有的状态属性，专门解决了半连接（Semi-Join）等非局部性（Non-local）优化规则在反复匹配时可能导致的死循环火花问题。
 public final class LogicalJoin extends Join {
   //~ Instance fields --------------------------------------------------------
 
   // NOTE jvs 14-Mar-2006:  Normally we don't use state like this
   // to control rule firing, but due to the non-local nature of
   // semijoin optimizations, it's pretty much required.
+  // 指示当前逻辑连接节点是否已经尝试或完成过半连接（Semi-Join）的改写优化。
+  // 设计内幕：半连接优化（例如将一个普通的 Inner Join 根据子查询特征转换为 Semi-Join）往往不是局部的，它需要审查两张甚至多张表的关联。优化器规则（如 JoinAddRedundantSemiJoinRule）在匹配并改写出新节点后，为了防止后续其他规则重复匹配、陷入无限死循环，会将此属性设为 true。
+  // 它像一个“断路器”，在复杂的图空间搜索中保护优化器不至于崩溃。
   private final boolean semiJoinDone;
-
-  private final ImmutableList<RelDataTypeField> systemFieldList; //系统默认字段
+  // 当前连接算子持有的系统级隐藏列/默认字段列表。
+  private final ImmutableList<RelDataTypeField> systemFieldList;
 
   //~ Constructors -----------------------------------------------------------
 

@@ -68,7 +68,6 @@ import static java.util.Objects.requireNonNull;
  * <p>It corresponds to the {@code GROUP BY} operator in a SQL query
  * statement, together with the aggregate functions in the {@code SELECT}
  * clause.
- * 代表了Group by 语句
  * <p>Rules:
  *
  * <ul>
@@ -77,25 +76,35 @@ import static java.util.Objects.requireNonNull;
  * <li>{@link org.apache.calcite.rel.rules.AggregateReduceFunctionsRule}.
  * </ul>
  */
-public abstract class Aggregate extends SingleRel implements Hintable {
+// 在关系代数和 SQL 树中，Aggregate 对应的是 分组聚合算子，即标准 SQL 中的 GROUP BY 语句以及伴随的聚合函数（如 COUNT、SUM、AVG、MAX、MIN）。
+// 核心职责是：
+// 数据降维与去重：它接收单股输入流（input），通过指定的分组键（groupSet）将多行数据合并、去重为更少的行。如果没有任何分组键（即 GROUP BY ()），则整张表的数据将被压缩聚合为单行（Grand Total）。
+// 多维分析（高级分组）：它不仅支持标准的分组，还天然支持数据仓库中的多维度分析算子——ROLLUP（上卷）、CUBE（多维立方体）和 GROUPING SETS（分组集）。它通过 groupSets 属性精妙地映射了这一多维流派。
+// 聚合指标映射：它持有一组 AggregateCall 列表，每一个 AggregateCall 代表一个具体的聚合计算任务，定义了函数类型、参数位置、以及可选的过滤条件（FILTER (WHERE ...)）。
 
+
+public abstract class Aggregate extends SingleRel implements Hintable {
+  // 当前聚合算子持有的 SQL 提示（Hints）列表，如 /*+ AGG_STRATEGY(HASH) */。
   protected final ImmutableList<RelHint> hints;
-  //判断是否是简单聚合
+  // 判断当前聚合算子是否为简单聚合的 Guava 谓词封装
   public static boolean isSimple(Aggregate aggregate) {
     return aggregate.getGroupType() == Group.SIMPLE;
   }
 
   @SuppressWarnings("Guava")
   @Deprecated // to be converted to Java Predicate before 2.0
+  // 判断当前聚合算子是否为简单聚合的 Guava 谓词封装
   public static final com.google.common.base.Predicate<Aggregate> IS_SIMPLE =
       Aggregate::isSimple;
 
   @SuppressWarnings("Guava")
+  // 历史遗留谓词，始终返回 true。
   @Deprecated // to be converted to Java Predicate before 2.0
   public static final com.google.common.base.Predicate<Aggregate> NO_INDICATOR =
       Aggregate::noIndicator;
 
   @SuppressWarnings("Guava")
+  // 判断当前聚合算子是否不是全局全量汇总的谓词封装。
   @Deprecated // to be converted to Java Predicate before 2.0
   public static final com.google.common.base.Predicate<Aggregate>
       IS_NOT_GRAND_TOTAL = Aggregate::isNotGrandTotal;
@@ -111,10 +120,16 @@ public abstract class Aggregate extends SingleRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
 
   @Deprecated // unused field, to be removed before 2.0
+  // 历史版本中用于标识是否生成专门的指示列，现已被完全弃用，统一使用 GROUPING 函数代替。
   public final boolean indicator = false;
-
+  // 聚合函数调用列表。
+  // 记录了需要计算的所有指标（例如 SUM(sales), COUNT(DISTINCT user_id)）。每一个 AggregateCall 都定义了其对应的物理数据和输出类型。
   protected final List<AggregateCall> aggCalls;
+  // 所有参与过分组的输入列索引的并集。
+  // 物理含义：使用位图（BitSet）来高效率记录哪些列是分组键。例如位图为 {0, 2}，代表输入端的第 0 列和第 2 列是分组字段。
   protected final ImmutableBitSet groupSet;
+  // 分组集的物理列表（包含多维组合）。
+  // 物理含义：用于支持 GROUPING SETS。如果只是简单的 GROUP BY x, y，该列表中将只包含一个元素，即 groupSet 本身。如果是 ROLLUP(x, y)，该列表中会包含三个位图：{x, y}, {x}, {}。
   public final ImmutableList<ImmutableBitSet> groupSets;
 
   //~ Constructors -----------------------------------------------------------
@@ -163,16 +178,21 @@ public abstract class Aggregate extends SingleRel implements Hintable {
     this.hints = ImmutableList.copyOf(hints);
     this.aggCalls = ImmutableList.copyOf(aggCalls);
     this.groupSet = requireNonNull(groupSet, "groupSet");
+    // 如果 groupSets 为 null，则自动将其降级初始化为仅包含唯一 groupSet 的单例列表（代表简单 GROUP BY）。
     if (groupSets == null) {
       this.groupSets = ImmutableList.of(groupSet);
     } else {
       this.groupSets = ImmutableList.copyOf(groupSets);
+      // 断言校验 groupSets 内的每一个子分组集必须已被强力递减排序（isStrictlyOrdered）
       assert ImmutableBitSet.ORDERING.isStrictlyOrdered(groupSets) : groupSets;
+      // 断言校验 groupSet 必须包含所有子分组集（即子集合法性校验：groupSet.contains(set)）
       for (ImmutableBitSet set : groupSets) {
         assert groupSet.contains(set);
       }
     }
+    //
     assert groupSet.length() <= input.getRowType().getFieldCount();
+    // 逐一遍历 aggCalls，通过 typeMatchesInferred 核准每一个聚合函数声明的输出类型与类型工厂推导出来的真实类型是否完全一致。
     for (AggregateCall aggCall : aggCalls) {
       assert typeMatchesInferred(aggCall, Litmus.THROW);
       checkArgument(aggCall.filterArg < 0

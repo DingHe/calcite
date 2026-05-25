@@ -58,19 +58,33 @@ import java.util.Set;
  * The set of output rows is a subset of the cartesian product of the two
  * inputs; precisely which subset depends on the join condition.
  */
+// 在关系代数中，Join 对应的是 连接算子，也就是标准 SQL 中的 INNER JOIN、LEFT JOIN、RIGHT JOIN、FULL JOIN 以及特有的 SEMI JOIN / ANTI JOIN
+// 核心职责是：
+// 拓扑双流合并：它接收来自 BiRel 的左、右两个输入子树（left 和 right），根据给定的条件将两股数据流结合在一起，形成一个更宽的输出行（RowType）。
+// 连接条件剖析（Equi-Join Extraction）：作为高频连接的基础载体，它持有一个高度优化的 JoinInfo，能够自动提取出条件中的等值部分（如 a.id = b.id）和非等值部分（如 a.age > b.age），直接指导物理层选择 HashJoin 还是 NestedLoopJoin。
+// 架构承上启下：它定义了通用的校验、代价评估、Schema 派生规范。其具体逻辑实现为 LogicalJoin，物理层对应 EnumerableHashJoin、JdbcJoin 或者是 Spark 模块的 SparkJoin。
+//
 public abstract class Join extends BiRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
-
-  protected final RexNode condition; //join的条件
+  // 当前连接操作持有的 Join 判定条件表达式。
+  // 一个行级布尔树。负责对左右表笛卡尔积后的临时行进行断言判断（例如：=($0, $5) 表示左表的第 0 列等于右表的第 5 列）
+  protected final RexNode condition;
+  // 该连接算子向外暴露或传递给右子树的关联变量（Correlation ID）集合
+  // 主要应用于嵌套循环关联连接（Correlated Join）场景，记录需要从左表传递到右表作为变量参数的 ID。
   protected final ImmutableSet<CorrelationId> variablesSet;
+  // 当前 Join 算子持有的 SQL 提示（Hints）列表。
+  // 用于拦截诸如 /*+ BROADCAST(right) */ 或 /*+ MERGE(left, right) */ 这样的用户显式物理指引。
   protected final ImmutableList<RelHint> hints;
 
   /**
    * Values must be of enumeration {@link JoinRelType}, except that
    * {@link JoinRelType#RIGHT} is disallowed.
    */
-  protected final JoinRelType joinType; //join的类型
-
+  //join的类型
+  // 可以是 INNER（内连接）、LEFT（左外连接）、FULL（全外连接）、SEMI（半连接）或 ANTI（反连接）。注释特别指出禁止直接声明 RIGHT，因为 Calcite 内部通常会在规范化阶段将右外连接自动改写置换为左外连接，以简化优化规则的设计。
+  protected final JoinRelType joinType;
+  // 针对连接条件进行深度预剖析的缓存工具包。
+  // 它在 Join 初始化完成时，自动将 condition 拆解为 leftKeys（左表的等值列索引列表）和 rightKeys（右表的等值列索引列表），从而让物理优化规则能够瞬间判定当前连接是否能走高效的 Hash Join。
   protected final JoinInfo joinInfo;
 
   //~ Constructors -----------------------------------------------------------
