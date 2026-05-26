@@ -51,7 +51,9 @@ public interface RelTrait {
    * @return the RelTraitDef that defines this RelTrait
    */
   // 获取定义该特征的“定义器”。
-  // 每一个 RelTrait 必须属于某一个具体的 RelTraitDef（特征类别）。例如，一个表示“按 ID 排序”的 RelCollation 实例，其 getTraitDef() 返回的是 RelCollationTraitDef.INSTANCE。这建立了“实例”与“类别”的绑定关系。
+  // 每一个 RelTrait 必须属于某一个具体的 RelTraitDef（特征类别）。
+  // 例如，一个表示“按 ID 排序”的 RelCollation 实例，
+  // 其 getTraitDef() 返回的是 RelCollationTraitDef.INSTANCE。这建立了“实例”与“类别”的绑定关系。
   RelTraitDef getTraitDef();
 
   /**
