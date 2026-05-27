@@ -770,10 +770,17 @@ public abstract class RelOptRule {
     return description;
   }
 
-  /** 转换规则定义的操作数
+  /**
    * Operand to an instance of the converter rule.
    */
+  // Calcite 优化器在进行跨物理流派/特质转换（Trait Conversion）时的“防追尾/防死循环护栏”。
+  // 当你在不同的存储引擎（如 JdbcToEnumerable, SparkToFlink）或不同的物理特征（如把无序数据变成 Hash 分布）之间设计转换规则时，
+  // 优化器全靠这个特殊的操作数（Operand）来阻断无限套娃的灾难。
   protected static class ConverterRelOptRuleOperand extends RelOptRuleOperand {
+    // 直接调用了父类 RelOptRuleOperand 的构造函数，但它剥夺了开发者的部分自由度，强行写入了两个关键设定：
+    // RelOptRuleOperandChildPolicy.ANY：将孩子节点的匹配策略强行锁死为 ANY。这意味着该转换算子下方无论挂载了多少个、什么类型的孩子，该操作数在第一阶段都一律放行。
+    // ImmutableList.of()：将子操作数列表强行设为空集合。
+    // 设计意图：因为转换算子（Converter）在物理世界中的核心职责是充当物理流派之间的“独木桥”，它本身不具备复杂的树状子拓扑。它只需要紧紧盯着它的直系孩子即可，因此其操作数结构极其简单、扁平。
     <R extends RelNode> ConverterRelOptRuleOperand(Class<R> clazz, RelTrait in,
         Predicate<? super R> predicate) {
       super(clazz, in, predicate, RelOptRuleOperandChildPolicy.ANY,
@@ -784,6 +791,8 @@ public abstract class RelOptRule {
       // Don't apply converters to converters that operate
       // on the same RelTraitDef -- otherwise we get
       // an n^2 effect.
+      // 当优化器推荐了一个算子 rel 过来时，先用 instanceof 盘查它。
+      // 如果它不是转换算子，直接放行；如果它本身已经是一个 Converter 转换算子了，警报拉响，进入第二步深挖。
       if (rel instanceof Converter) {
         if (((ConverterRule) getRule()).getTraitDef()
             == ((Converter) rel).getTraitDef()) {

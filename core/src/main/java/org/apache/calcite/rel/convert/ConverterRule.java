@@ -39,13 +39,30 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
  * Abstract base class for a rule which converts from one calling convention to
  * another without changing semantics.
  */
+// ConverterRule 是 Apache Calcite 优化器框架（特别是基于成本的优化器 VolcanoPlanner）中最核心、使用频率最高的规则基类之一。
+// 在分布式大数据引擎和多数据源联邦查询（如跨 JDBC、Spark、Flink 等）的实际开发中，它扮演着“物理特质/执行流派转换器”的角色。
+// 核心作用
+// 跨物理流派/调用约定转译（Calling Convention Conversion）：
+// 在 Calcite 中，Convention（调用约定）代表了算子的物理底层驱动流派。
+// 例如，LogicalProject（逻辑算子）不能直接执行，必须被转换为物理算子（如 JdbcProject 或 EnumerableProject）。
+// ConverterRule 的核心使命就是将算子从一个物理流派转换到另一个物理流派，而完全不改变其原本的关系代数语义。
+// 物理特征对齐（Trait Matching）：
+// 除了转换 Convention，它还能转换其他维度的 RelTrait（如物理分布特质 RelDistribution、排序特质 RelCollation）。
+// 例如：当一个物理 Join 算子要求其右孩子必须按指定列进行 Hash 分布，而右孩子目前是随机分布时，
+// 优化器就会激活一个 ConverterRule，在右孩子上方强行织入一个 Exchange 转换算子，以实现物理特征对齐。
+// 基于规则体系的“安全熔断机制”：
+//通过继承上一章提到的 ConverterRelOptRuleOperand，该类本身天然免疫同维度物理转换连续叠加引发的 $\mathcal{O}(n^2)$ 级联状态爆炸（无限死循环），确保优化器内部 Memo 空间的健康。
 @Value.Enclosing
 public abstract class ConverterRule
     extends RelRule<ConverterRule.Config> {
   //~ Instance fields --------------------------------------------------------
-
+  // 该转换规则期望拦截/输入的源头物理特质（例如：输入算子必须属于 Convention.NONE 逻辑特质，或者必须满足某种排序）。
   private final RelTrait inTrait;
+  // 该转换规则处理完成后，期望吐出/输出的目标物理特质（例如：输出算子必须满足 EnumerableConvention.INSTANCE）。
   private final RelTrait outTrait;
+  // 输出的目标调用约定的便捷快捷字段（Short-cut）。
+  // 因为在 90% 以上的工业场景中，转换规则都是在处理 Convention 的对齐和转换。为了避免子类频繁编写臃肿的 (Convention) getOutTrait() 强制类型转换代码，
+  // 该字段在构造时如果是 Convention 的实例，就会直接缓存下来供子类就地使用，否则安全解包存为 null。
   protected final Convention out; //输出调用特征
 
   //~ Constructors -----------------------------------------------------------
@@ -151,6 +168,11 @@ public abstract class ConverterRule
   /** Converts a relational expression to the target trait(s) of this rule.
    *
    * <p>Returns null if conversion is not possible. */
+  // 核心抽象方法，
+  // 由业务子类必须实现的物理转译工厂。
+  // 接收一个源算子 rel，子类必须在此编写代码，剥离出其逻辑核心，并返回重新包装、对齐了目标特证 outTrait 的全新物理 RelNode
+  // （例如：接收一个 LogicalProject，通过 new EnumerableProject(...) 将其物理化返回）。
+  // 如果因为某种物理局限或内部属性冲突导致当前节点无法进行特质转译，允许返回 null。
   public abstract @Nullable RelNode convert(RelNode rel);
 
   /**
@@ -159,18 +181,24 @@ public abstract class ConverterRule
    *
    * <p>The union-to-java converter, for example, is not guaranteed, because
    * it only works on unions.
-   * 如果能convert any关系表达式的convention，则返回true
    * @return {@code true} if this rule can convert <em>any</em> relational
    *   expression
    */
+  // 表明当前转换规则是否是“100% 绝对完备的担保转换”。
   public boolean isGuaranteed() {
     return false;
   }
-
+  // 核心执行总入口。
+  // 当优化器在 Memo 中发现匹配的算子时，会回调此方法。
   @Override public void onMatch(RelOptRuleCall call) {
+    // 提取出触发匹配的第 0 个算子节点 rel。
     RelNode rel = call.rel(0);
+    // 执行二次防御性校验：检查该算子当前的 TraitSet 中是否切实包含了规则声明的 inTrait。
     if (rel.getTraitSet().contains(inTrait)) {
+      // 如果包含，则直接启动子类实现的 convert(rel) 物理工厂。
       final RelNode converted = convert(rel);
+      // 检查生成的 converted 新物理节点是否非空。如果成功吐出了新物理节点，
+      // 则调用 call.transformTo(converted) 正式宣布将这个新节点织入 Memo 空间，参与下一轮的 CBO 动态代价估算。
       if (converted != null) {
         call.transformTo(converted);
       }

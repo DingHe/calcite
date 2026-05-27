@@ -35,7 +35,6 @@ import java.util.function.Predicate;
 
 /**
  * Rule that is parameterized via a configuration.
- * 该类主要是通过参数化配置来定义rule
  * <p>Eventually (before Calcite version 2.0), this class will replace
  * {@link RelOptRule}. Constructors of {@code RelOptRule} are deprecated, so new
  * rule classes should extend {@code RelRule}, not {@code RelOptRule}.
@@ -115,7 +114,17 @@ import java.util.function.Predicate;
  *
  * @param <C> Configuration type
  */
+// RelRule 是 Apache Calcite 优化器框架中用于替代传统 RelOptRule 的现代化、参数化（Parameterized）规则基类。
+// 统的 RelOptRule 由于依赖大量且繁琐的构造方法重载、静态工厂方法（如 operand()、operandJ()）以及内部硬编码，导致规则定义臃肿、复用性差，并且难以进行灵活的属性微调。
+// 为了解决这些痛点，Calcite 从 1.x 中后期引入了 RelRule，并在 2.0 时代将其完全确立为定义优化规则的核心底座。
+// 核心作用
+// 全面参数化与配置解耦（Configuration-Driven）：RelRule 将规则的拓扑匹配（Operand）和内部控制行为（如某些阈值或开关）统一抽离到内部 Config 接口中。规则子类不再通过构造函数死板地硬编码匹配逻辑，而是完全由外部注入的配置驱动。
+// 拥抱类型安全的声明式流式 DSL（Domain Specific Language）：提供了由 OperandTransform、OperandBuilder 和 OperandDetailBuilder 组成的现代化流式接口。开发者可以通过清晰的链式调用，声明式地组装出极具语义感的算子树匹配模式。
+// 消除编译期重载爆炸：淘汰了旧体系下各种参数交错的静态重载函数，将类型、特质、过滤谓词、子节点输入策略完全解耦到独立的流式组件方法中。
+// 基于第三方注解的不可变配置生成：全面依托 @Value.Immutable 自动代码生成技术（编译期注解处理器），使规则配置天然具备线程安全、流式构建（Builder Pattern）的现代化特性。
 public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
+  // 当前规则实例持有的只读/不可变配置对象。
+  // 它包含了该规则运行所需的一切元数据（包括操作数生成器、算子工厂、唯一描述信息以及子类自定义的各种微调参数）。
   public final C config;
 
   /** Creates a RelRule. */
@@ -130,9 +139,13 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     //主要方法toRule()、operandSupplier()和withOperandSupplier(OperandTransform transform)
 
     /** Creates a rule that uses this configuration. Sub-class must override. */
+    // 配置转化为规则对象的生命周期终点方法
+    // 子类必须以 default 方法实现此接口。当外部将一个 Config 对象的各项参数通过 Builder 调整完毕后，
+    // 调用 toRule() 就会执行 new MyRule(this)，将当前的配置固化封装为一个真正的、可提交给优化器的规则实例。
     RelOptRule toRule();
 
     /** Casts this configuration to another type, usually a sub-class. */
+    // 提供便捷的安全类型转换（Downcasting）工具。
     default <T extends Object> T as(Class<T> class_) {
       if (class_.isAssignableFrom(this.getClass())) { //说明class_是this的父类
         return class_.cast(this); //把this转为class_类型，父类可以转为子类
@@ -147,6 +160,7 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
 
     /** The factory that is used to create a
      * {@link org.apache.calcite.tools.RelBuilder} during rule invocations. */
+    // 定义当前规则专用的关系代数构建工厂。
     @Value.Default default RelBuilderFactory relBuilderFactory() {
       return RelFactories.LOGICAL_BUILDER;
     }
@@ -163,6 +177,7 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
 
     /** Creates the operands for the rule instance.
      * OperandTransform是一个函数接口，接收OperandBuilder参数，返回Done*/
+    // 获取定义此规则匹配拓扑的操作数转换闭包（供应器）
     @Value.Default default OperandTransform operandSupplier() {
       return s -> {
         throw new IllegalArgumentException("Rules must have at least one "
@@ -178,6 +193,8 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   /** Function that creates an operand.
    *
    * @see Config#withOperandSupplier(OperandTransform) */
+  // 操作数拓扑转换的核心闭包函数式接口。
+  // 它接收一个白纸一张的 OperandBuilder 绘图板，在 Lambda 内部对这块板执行一系列的操作数属性绘制，最终返回一个表示画作落笔的 Done 标记令牌。
   @FunctionalInterface
   public interface OperandTransform extends Function<OperandBuilder, Done> {
   }
@@ -185,24 +202,28 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   /** Callback to create an operand.
    *
    * @see OperandTransform */
+  // 拓扑引导者接口
   public interface OperandBuilder {
     /** Starts building an operand by specifying its class.
      * Call further methods on the returned {@link OperandDetailBuilder} to
      * complete the operand.
-     * 开始构建一个操作数，指定此操作数需要匹配的RelNode类型。relClass是一个Class对象，表示操作数所要匹配的关系表达式节点的类型
-     * 返回一个OperandDetailBuilder对象，用于进一步为该操作数设置细节，如输入模式、转换特性等
      * */
+    // 开始构建一个操作数，指定此操作数需要匹配的RelNode类型。relClass是一个Class对象，表示操作数所要匹配的关系表达式节点的类型
+    // 返回一个OperandDetailBuilder对象，用于进一步为该操作数设置细节，如输入模式、转换特性等
+    // 开启一个标准操作数的构建流程，指定要拦截的目标关系代数节点类型（relClass）。返回明细构建器，用来做进一步属性填充。
     <R extends RelNode> OperandDetailBuilder<R> operand(Class<R> relClass);
 
     /** Supplies an operand that has been built manually.
-     * 直接指定一个已经手动构建的操作数。即允许用户直接传入已经构建好的操作数而不是通过OperandBuilder一步步生成
      * */
+    // 旧版规则兼容型安全接口。允许开发者直接把一个已经在外部手工 new 好的传统 RelOptRuleOperand 拍到当前 Builder 中，无缝绕过流式体系，并立刻返回完成标记 Done。
+    // 直接指定一个已经手动构建的操作数。即允许用户直接传入已经构建好的操作数而不是通过OperandBuilder一步步生成
     Done exactly(RelOptRuleOperand operand);
   }
 
   /** Indicates that an operand is complete.
    *
    * @see OperandTransform */
+  // 纯粹的编译期防断言/防漏写标记型接口。
   public interface Done {
   }
 
