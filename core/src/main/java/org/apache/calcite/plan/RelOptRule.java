@@ -38,10 +38,16 @@ import java.util.function.Predicate;
  * A <code>RelOptRule</code> transforms an expression into another. It has a
  * list of {@link RelOptRuleOperand}s, which determine whether the rule can be
  * applied to a particular section of the tree.
- *  Rule是把一个表达式转为另一个，RelOptReleOperand是决定Rule是否能使用，通过onMatch方法调用转换规则
  * <p>The optimizer figures out which rules are applicable, then calls
  * {@link #onMatch} on each of them.
  */
+// 在 Calcite 中，关系代数树（RelNode Tree）的等价变换和优化全部由 Rule（规则）来驱动。
+// 等价树形重塑：Rule 的核心职责是捕捉查询计划树中的某一特定子树结构（如 Filter 紧挨着 Project），将其转换成逻辑上等价但物理上更优、更高效的新子树结构（如将 Filter 下推到 Project 下方，甚至直接下推入 TableScan）。
+// 声明式模式匹配（Pattern Matching）：Rule 并不盲目处理整个拓扑。
+// 它内部通过包裹一棵由 RelOptRuleOperand 组成的操作数树（Operand Tree），向优化器声明：“我只对具备特定类型（Class）、特定物理特征（Trait）以及满足特定过滤条件（Predicate）的算子局部拓扑感兴趣。”
+// 两阶段驱动机制：
+// 阶段一（matches）：由优化器根据其内部操作数树，在 Memo 空间搜索并进行初步的结构和条件过滤。
+// 阶段二（onMatch）：一旦匹配完全成功，触发此回调，真正出手改写算子，孵化并向优化器提交（transformTo）新算子。
 public abstract class RelOptRule {
   //~ Static fields/initializers ---------------------------------------------
 
@@ -50,23 +56,30 @@ public abstract class RelOptRule {
   /**
    * Description of rule, must be unique within planner. Default is the name
    * of the class sans package name, but derived classes are encouraged to
-   * override.该规则的描述信息，通常用于日志和调试
+   * override.
    */
+  // 该规则在优化器内部的唯一文本描述/名称
   protected final String description;
 
   /**
-   * Root of operand tree.  它定义了规则应用的条件和结构，帮助优化器高效识别和优化查询计划的特定部分，决定规则是否能使用
+   * Root of operand tree.
    */
+  // 操作数树的根节点（Root Operand）
+  // 定义了该规则期望捕获的算子树最顶层节点的特征（如要求最顶层必须是一个 LogicalJoin）。它是规则匹配的第一个入口
   private final RelOptRuleOperand operand;
 
   /** Factory for a builder for relational expressions.
    *
    * <p>The actual builder is available via {@link RelOptRuleCall#builder()}. */
+  // 关系表达式构建器工厂。
   public final RelBuilderFactory relBuilderFactory;
 
   /**
    * Flattened list of operands.把RelOptRuleOperand平铺
    */
+  // 平铺后的一维操作数列表
+  // 通过前序遍历将树状的 operand 及其所有子孙操作数完全拉平。
+  // 优化器在运行时以此一维列表作为行索引，可以极快地通过数组下标（ordinalInRule）对各个匹配到的 RelNode 实施 $\mathcal{O}(1)$ 的随机存取。
   public final List<RelOptRuleOperand> operands;
 
   //~ Constructors -----------------------------------------------------------
@@ -76,8 +89,9 @@ public abstract class RelOptRule {
    *
    * @param operand root operand, must not be null
    */
+  // 最简构造器。仅传入根操作数，默认绑定逻辑算子构建工厂 RelFactories.LOGICAL_BUILDER，其规则描述由系统自动推测
   protected RelOptRule(RelOptRuleOperand operand) {
-    this(operand, RelFactories.LOGICAL_BUILDER, null); //RelFactories.LOGICAL_BUILDER返回RelBuilderFactory工厂
+    this(operand, RelFactories.LOGICAL_BUILDER, null);
   }
 
   /**
@@ -86,6 +100,7 @@ public abstract class RelOptRule {
    * @param operand     root operand, must not be null
    * @param description Description, or null to guess description
    */
+  // 带自定义名称的构造器。允许显式传入独特的 description 字符串，同时默认绑定逻辑算子构建工厂。
   protected RelOptRule(RelOptRuleOperand operand, String description) {
     this(operand, RelFactories.LOGICAL_BUILDER, description);
   }
@@ -97,6 +112,7 @@ public abstract class RelOptRule {
    * @param description Description, or null to guess description
    * @param relBuilderFactory Builder for relational expressions
    */
+  // 核心全功能构造器（前两个构造器最终都流向它）
   protected RelOptRule(RelOptRuleOperand operand,
       RelBuilderFactory relBuilderFactory, @Nullable String description) {
     this.operand = Objects.requireNonNull(operand, "operand");
@@ -104,12 +120,14 @@ public abstract class RelOptRule {
     if (description == null) {
       description = guessDescription(getClass().getName());
     }
+    // 严厉核准规则名称合法性（必须字母开头，禁止包含特殊怪异符号）。
     if (!description.matches("[A-Za-z][-A-Za-z0-9_.(),\\[\\]\\s:]*")) {
       throw new RuntimeException("Rule description '" + description
           + "' is not valid");
     }
     this.description = description;
     this.operands = flattenOperands(operand);
+    // 编译并锁定每个操作数的匹配求解顺序
     assignSolveOrder(operands);
   }
 
@@ -127,10 +145,12 @@ public abstract class RelOptRule {
    *
    * @deprecated Use {@link RelRule.OperandBuilder#operand(Class)}
    */
+  // 它是 Calcite 早期版本（1.x 及更早）中用于构建规则操作数树（Operand Tree）的核心重载工具之一。
+  // 为优化规则（Rule）声明一个局部的算子匹配节点，并为该节点绑定一组子算子匹配规则（operandList）。
   @Deprecated // to be removed before 2.0
   public static <R extends RelNode> RelOptRuleOperand operand(
-      Class<R> clazz,
-      RelOptRuleOperandChildren operandList) {
+      Class<R> clazz, // 目标算子的反射 Class 令牌，用于匹配时进行 instanceof 或类型对齐检查。
+      RelOptRuleOperandChildren operandList) { // 孩子操作数集合。它不仅包裹了子节点的 RelOptRuleOperand 列表，还携带了匹配策略（如 SOME 严格按顺序匹配、UNORDERED 乱序匹配等）。
     return new RelOptRuleOperand(clazz, null, r -> true,
         operandList.policy, operandList.operands);
   }
@@ -415,29 +435,48 @@ public abstract class RelOptRule {
   /**
    * Builds each operand's solve-order. Start with itself, then its parent, up
    * to the root, then the remaining operands in prefix order.
-
-   * 具体的操作流程：
-   * 对于每一个操作数，solveOrder 首先记录该操作数自身和其所有父操作数的编号。
-   * 接着，将其他未出现的操作数编号按顺序补充到 solveOrder 数组中。
-   * 最终，每个操作数的 solveOrder 数组都包含了匹配和求解的完整顺序，从当前操作数开始，再逐步解决相关联的其他操作数。
-   * 这样做的原因是，在优化规则匹配的过程中，可能需要逐步匹配多个操作数，并确保每个操作数都按照正确的上下文关系来求解，从而确保规则匹配和转换的正确性
    */
+  // 是 Calcite 优化器（尤其是 VolcanoPlanner）在规则匹配阶段能够实现高效“上下文感知拓扑匹配”的隐形功臣。
+  // 当优化器在 Memo 空间中发现某一个算子（比如一个 LogicalFilter）刚好对齐了规则中的某一个非根操作数（Operand）时，它不能盲目宣布匹配成功，而是需要顺着某种“导航路线”去验证它的上游父节点、下游子节点以及旁系兄弟节点是否也全部对齐。
+  // 核心任务就是：为规则中的每一个操作数，量身定制并编译出一个最符合其局部视角的“图探索导航数组”（solveOrder）
+  // 为什么需要 solveOrder？
+  // 假设一个规则期望捕获的拓扑结构是：Join(Filter, Project)。这里一共有 3 个操作数，拉平后的顺序（ordinalInRule）通常是：0: Join (根节点)1: Filter (左孩子)2: Project (右孩子)
+  // 在优化器运行期间，匹配的触发入口是多维度的、动态的：
+  // 如果优化器最先注意到一个 Join 算子：它需要以 Join 为起点，先向下看左孩子是不是 Filter，再看右孩子是不是 Project。此时它的探索路线应该是 [0, 1, 2]。
+  // 如果优化器此时在 Memo 中新孵化或扫描到一个 Filter 算子：它会反向查找：“有没有哪个规则正好需要 Filter ？” 查到了这个规则。
+  // 此时，优化器必须以 Filter（编号 1）为第一视角起点。它需要先向上逆流追溯它的父亲是不是 Join（编号 0），确认父亲身份后，再顺着父亲去看另一个右孩子是不是 Project（编号 2）。
+  // 此时它的探索路线就必须变成 [1, 0, 2]。如果每个操作数都死板地按照固定顺序 [0, 1, 2] 去猜，优化器就无法在 $\mathcal{O}(1)`$ 的时间复杂度内通过局部节点的变动反向激活动态匹配。
+
+  // 算法核心物理逻辑（“先直系，后旁系”）
+  // 该方法为每个操作数生成 solveOrder 数组时，
+  // 遵循一个铁律：以当前操作数自身为首发站，沿着亲属树逆流而上直到根节点（直系血亲优先），
+  // 然后再按照前序遍历的自然顺序把剩下的其他节点补全（旁系亲属垫后）
   private static void assignSolveOrder(List<RelOptRuleOperand> operands) {
+    // 外层循环：为每一个操作数定制阵列
     for (RelOptRuleOperand operand : operands) {
+      // 遍历该规则下所有已经拉平的操作数。
+      // 每个操作数身上都有一个独立的 int[] solveOrder 数组，数组的长度正好等于当前规则中所有操作数的总数
       operand.solveOrder = new int[operands.size()];
       int m = 0;
+      // 第一阶段：填充直系血亲链（自底向上攀爬）
       for (RelOptRuleOperand o = operand; o != null; o = o.getParent()) {
+        // 首发站是操作数自己。将自己的全局一维序号 o.ordinalInRule 塞入数组第一个槽位。
         operand.solveOrder[m++] = o.ordinalInRule; //从自身开始到父节点，ordinalInRule表示在规则中的序号
       }
+      // 第二阶段：填充旁系血亲链（查漏补缺）
+      // 算法开启一重全量循环 k（从 0 到 operands.size() - 1，即前序遍历的标准顺序）。
       for (int k = 0; k < operands.size(); k++) {
         boolean exists = false;
-        for (int n = 0; n < m; n++) {   //主要查找其他操作数是否已经排序了
+        for (int n = 0; n < m; n++) {
+          // 检查编号 k 是不是已经在第一阶段被当作“直系血亲”填进去了（exists = true）。
           if (operand.solveOrder[n] == k) {
             exists = true;
             break;
           }
         }
-        if (!exists) {  //如果不排序，则按顺序复制，也就是原来的顺序赋值
+        // 如果 exists == false，说明编号 k 属于当前节点的兄弟节点或者叔表亲节点（旁系分支）。
+        // 将其按前序遍历的剩余自然顺序依次追加填入数组。
+        if (!exists) {
           operand.solveOrder[m++] = k;
         }
       }

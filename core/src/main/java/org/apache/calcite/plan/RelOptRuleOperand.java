@@ -32,7 +32,6 @@ import java.util.function.Predicate;
 /**
  * Operand that determines whether a {@link RelOptRule}
  * can be applied to a particular expression.
- * Operand决定规则是否能应用到特定的表达式
  * <p>For example, the rule to pull a filter up from the left side of a join
  * takes operands: <code>Join(Filter, Any)</code>.
  *
@@ -40,26 +39,44 @@ import java.util.function.Predicate;
  * it is <code>null</code>: <code>Join(Filter <b>()</b>, Any)</code> means
  * that, to match the rule, <code>Filter</code> must have no operands.
  */
+// RelOptRuleOperand（关系优化规则操作数）是实现 基于规则优化（Rule-Based Optimization） 的基石之一
+// 在 Calcite 中，一个优化规则（RelOptRule）想要应用到当前的逻辑算子树（关系表达式树 RelNode）上，必须先完成模式匹配（Pattern Matching）。RelOptRuleOperand 就是用来定义这个匹配模式的树状骨架节点。
+// 核心作用
+// 定义匹配树的结构：优化规则的匹配条件通常不是单一的算术节点，而是一个局部树状结构。例如，规则“将 Filter 提到 Join 上层”需要匹配的模式是 Join(Filter, Any)。这个模式就是由三个嵌套的 RelOptRuleOperand 节点（Join 节点作为根，Filter 和 Any 作为其 children）组成的。
+// 多维度强状态约束：它内部封装了类型（Class）、物理特征（Trait）以及自定义谓词（Predicate）三大卡点，只有当实际的关系算子（RelNode）完美通过这三道门槛时，才算匹配成功。
+// 驱动优化器执行顺序：它内部携带的序号和解题顺序（solveOrder）能明确告知 Volcano 或 Hep 优化引擎在面对错综复杂的算子树时，“先去匹配哪一个分支，后去检查哪一个叶子”，极大地提高了树状拓扑匹配的效率。
+
 public class RelOptRuleOperand {
   //~ Instance fields --------------------------------------------------------
-
-  private @Nullable RelOptRuleOperand parent; //父节点
-  private @NotOnlyInitialized RelOptRule rule; //规则
+  // 父操作数指针。指向当前操作数在操作数树中的上级节点。如果是模式的根节点（如 Join），则为 null。
+  private @Nullable RelOptRuleOperand parent;
+  // 所属优化规则。指向当前操作数注册并服务于哪一个具体的优化规则（RelOptRule）。
+  private @NotOnlyInitialized RelOptRule rule;
+  // 用户自定义匹配谓词。提供深度的动态业务过滤逻辑（例如：限制匹配的 Filter 算子其过滤条件必须包含等值判断）。
   private final Predicate<RelNode> predicate;
 
   // REVIEW jvs 29-Aug-2004: some of these are Volcano-specific and should be
   // factored out
-  public int @MonotonicNonNull [] solveOrder; //它通常用于定义在应用优化规则时，操作数的优先级或处理顺序。较低的 solveOrder 值意味着这个操作数在优化过程中会被优先处理
-  public int ordinalInParent;  //指明当前操作数在父节点的子节点中的位置
-  public int ordinalInRule; ///每个规则可能包含多个操作数，ordinalInRule 用于唯一标识当前操作数在规则中的位置
-  public final @Nullable RelTrait trait; //特征
-  private final Class<? extends RelNode> clazz; //要匹配的关系节点
-  private final ImmutableList<RelOptRuleOperand> children; //子操作数
+  // 优化引擎解题/匹配顺序。Volcano 优化器专属，定义了多叉树操作数被评估匹配的先后优先级，通常较低的值会优先执行匹配尝试。
+  public int @MonotonicNonNull [] solveOrder;
+  // 在父算子中的孩子索引序号。标明当前操作数属于父节点的第几个子节点（从 0 开始）。
+  public int ordinalInParent;
+  // 在整个规则中的唯一平铺序号。规则在扁平化存储所有操作数时，用于唯一标识和快速索引当前操作数。
+  public int ordinalInRule;
+  // 期望匹配的物理特征（如排序、分布式分布等）。为 null 时代表不限制特征。
+  public final @Nullable RelTrait trait;
+  // 期望匹配的关系表达式类型占位符。例如 Project.class、Filter.class，用于反射和类型校验。
+  private final Class<? extends RelNode> clazz;
+  // 不可变的子操作数列表。
+  // 代表当前匹配模式下层的子树结构。
+  private final ImmutableList<RelOptRuleOperand> children;
 
   /**
    * Whether child operands can be matched in any order.
    */
-  public final RelOptRuleOperandChildPolicy childPolicy; //决定子节点的数量
+  // 子节点匹配策略（数量与顺序约束）。
+  // 枚举值，决定子节点的匹配行为。如：ANY（匹配任意子节点）、LEAF（必须是叶子算子）、UNORDERED（无序匹配）等。
+  public final RelOptRuleOperandChildPolicy childPolicy;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -272,17 +289,24 @@ public class RelOptRuleOperand {
     return children;
   }
 
-  /** 返回关系表达式是否匹配该操作数
+  /**
    * Returns whether a relational expression matches this operand. It must be
-   * of the right class and trait.主要判断rule的操作数是否匹配
+   * of the right class and trait.
    */
+  // 整个 Calcite 优化器进行 模式匹配（Pattern Matching） 的核心咽喉要道。
+  // 当优化引擎（如 VolcanoPlanner 或 HepPlanner）在遍历复杂的逻辑算子树（RelNode 树）时，
+  // 它需要知道当前的算子是否符合某个优化规则（RelOptRule）的胃口。这个方法通过 三道由浅入深的关卡，以极高的效率对算子进行层层过滤。
+  // 当前类只负责“单点体检”，而“纵深树状匹配”的控制权被交给了上层的优化器引擎（Planner Call）。
   public boolean matches(RelNode rel) {
-    if (!clazz.isInstance(rel)) {  //类型一致
+    // 第一道关卡：核心类型（Class）匹配
+    if (!clazz.isInstance(rel)) {
       return false;
     }
-    if ((trait != null) && !rel.getTraitSet().contains(trait)) { //包含特征
+    // 第二道关卡：物理特征（Trait）匹配
+    if ((trait != null) && !rel.getTraitSet().contains(trait)) {
       return false;
     }
-    return predicate.test(rel); //谓词测试
+    // 第三道关卡：动态业务谓词（Predicate）匹配
+    return predicate.test(rel);
   }
 }
