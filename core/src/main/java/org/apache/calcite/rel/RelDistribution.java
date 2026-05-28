@@ -69,10 +69,10 @@ public interface RelDistribution extends RelMultipleTrait {
 
   /** Type of distribution. */
   enum Type {
-    //只有一个实例的流，所有记录都被一个实例处理。这个分布适用于数据量较小的情况，所有数据都在一个计算单元中处理
+    // 只有一个实例的流，所有记录都被一个实例处理。这个分布适用于数据量较小的情况，所有数据都在一个计算单元中处理
     /** There is only one instance of the stream. It sees all records. */
     SINGLETON("single"),
-    //数据被哈希到多个实例中，每个实例处理那些哈希值相同的记录。记录按照指定的键进行哈希分配，每个记录只出现在一个实例中
+    // 数据被哈希到多个实例中，每个实例处理那些哈希值相同的记录。记录按照指定的键进行哈希分配，每个记录只出现在一个实例中
     /** There are multiple instances of the stream, and each instance contains
      * records whose keys hash to a particular hash value. Instances are
      * disjoint; a given record appears on exactly one stream. */

@@ -29,13 +29,24 @@ import java.util.List;
 /**
  * A relational expression of one of the
  * {@link org.apache.calcite.adapter.enumerable.EnumerableConvention} calling
- * conventions.EnumerableConvention调用约定的根节点
  */
+// EnumerableRel 是 Apache Calcite 适配器体系（Adapter）中最核心、最著名的一个物理算子基接口。
+// 在大数据执行引擎或多源联邦查询（Federated Query）中，任何一个查询不论其逻辑计划多么精妙，最终都必须落地为能够实际抓取数据、运行在 CPU 上的可执行代码。
+// EnumerableRel 接口就是这一“将关系代数转译为物理机器码”的转折点。
+// 所有属于 EnumerableConvention（内存迭代调用约定）的物理算子（例如 EnumerableProject、EnumerableJoin、EnumerableFilter）都必须继承该接口。
+// 核心作用
+// 作为代码生成（Code Generation）的骨架总指挥：
+//EnumerableRel 最大的特色是通过生成 Java 源代码（利用 Linq4j 框架表达式树）在运行时编译并动态执行查询。
+// 每个子类算子在优化完成后，都要通过该接口交出自己这一层所对应的 Java 代码片段。
+// 连接“自顶向下优化”与“底层物理执行”的桥梁：
+// 继承了现代 Top-Down 物理节点接口 PhysicalNode。也就是说，它是带有自顶向下特征传递能力的、随时可以用于生成最终内存迭代器（Enumerable 序列）的物理算子。
 public interface EnumerableRel
     extends PhysicalNode {
 
   //~ Methods ----------------------------------------------------------------
-
+  // 默认直接返回 null。
+  // 这意味着对大部分常规 Enumerable 物理算子来说，框架默认不帮它们强行击穿特征。
+  // 如果个别算子（如 EnumerableSort）需要支持自顶向下的特质对齐，需要单独去重写覆盖它。
   @Override default @Nullable Pair<RelTraitSet, List<RelTraitSet>> passThroughTraits(
       RelTraitSet required) {
     return null;
@@ -57,6 +68,10 @@ public interface EnumerableRel
    * @param pref Preferred representation for rows in result expression
    * @return Plan for this expression according to a calling convention
    */
+  // 整个 Enumerable 适配器的灵魂核心方法（核心代码生成工厂）
+  // 当 VolcanoPlanner 决定了最终的物理执行计划后，会开启全量物理树的深度优先遍历，轮流回调每一个物理算子的 implement 方法。
+  // implementor：Java 代码生成的上下文大管家，内部持有一个全局变量池、类定义生成器，算子通过它可以相互协作，拼接、组装出一条由 BlockStatement（Java 块语句）构成的完整流式处理流水线。
+  // pref：上层算子对当前算子输出的数据行格式（物理类型）提出的期望/偏好倾向（参见下文 Prefer 的解说）。
   Result implement(EnumerableRelImplementor implementor, Prefer pref);
 
   /** Preferred physical type. */

@@ -40,23 +40,38 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @see DataContexts
  */
+// DataContext 接口是 Apache Calcite 项目中物理执行期（Runtime）的核心全局上下文容器。
+// 在整个 SQL 编译生命周期里，CBO 优化器将逻辑树翻译为可执行的 Java 代码（或物理算子树）后，
+// 这些代码在 JVM 内存中真正开始跑数据的那一刻，必须能够感知外部世界的一切动态状态（例如：当前是谁在查数据？当前时间是多少？超时时间配置了多久？底层的物理表在哪里？）。
+// DataContext 就是充当连接编译静态逻辑与运行时动态现实的唯一信息纽带。
 public interface DataContext {
+  // 代码生成（Code Generation）的锚点
+  // 利用 Linq4j 框架表达式树生成了一个名为 "root" 且被 final 修饰的参数表达式。
+  // 在 Calcite 动态编译生产出的 Java 字节码里，每一个执行方法的主入口形参都会强行绑定这个变量。
+  // 它是全套执行链路中用来在内存中提取元数据、过滤条件的“变量总钥匙”。
   ParameterExpression ROOT =
       Expressions.parameter(Modifier.FINAL, DataContext.class, "root");
   //java代码为 final DataContext root;
   /**
    * Returns a sub-schema with a given name, or null.
    */
+  // 获取当前数据库连接的根元数据命名空间（Root Schema）
+  // 返回的 SchemaPlus 对象是全量表、视图、自定义函数（UDF）的内存拓扑大账本。
+  // 物理算子（例如 EnumerableTableScan）在真正跑数据时，必须调用该方法顺藤摸瓜找到实际存储数据的物理表对象、文件路径、或者底层 JDBC 连接池句柄。
   @Nullable SchemaPlus getRootSchema();
 
   /**
    * Returns the type factory.
    */
+  // 获取运行时行数据物理类型映射工厂。
+  // 虽然优化器在编译期就已经确定了数据类型，但是在最终物理计算、临时落盘序列化、或者通过内存交互（如对齐 Apache Arrow 数据块）时，仍然高频需要利用这个工厂来把 SQL 逻辑类型与 Java 宿主类型进行最终校准或动态反射。
   JavaTypeFactory getTypeFactory();
 
-  /** 查询提供者负责提供查询的执行环境，可能包括查询的优化、执行计划等
+  /**
    * Returns the query provider.
    */
+  // 获取底层查询执行环境提供者。
+  // QueryProvider 来自 Linq4j 框架，它定义了如何在内存中拉起流式迭代器（Enumerable）、如何调度并发线程。它为生成的代码提供了一个统一的、底层引擎无关的流式计算生命周期管理环境。
   QueryProvider getQueryProvider();
 
   /**
@@ -67,9 +82,14 @@ public interface DataContext {
    *
    * @param name Name of variable
    */
+  // 通用动态变量索取池（无类型约束）
+  // 一个通用的 Map 型后备接口。上层算子只需传入特定的变量名字符串（如 "currentTimestamp"），就能从中捕获外界系统灌入的、变化莫测的动态执行状态值。由于返回值是通用的 Object，使用者需要自行强转。
   @Nullable Object get(String name);
 
   /** Variable that may be asked for in a call to {@link DataContext#get}. */
+  // 为了消除通用 get(String name) 字符串拼写易错、需要人肉强转的弊端，
+  // Calcite 在内部高度抽象并规范化了一个强类型的核心参数配置池 —— Variable 枚举。
+  // 它规定了哪些变量是当前查询执行必须感知或推荐感知的。
   enum Variable {
     UTC_TIMESTAMP("utcTimestamp", Long.class), //表示当前 UTC 时间戳。单位是毫秒，表示自 1970 年 1 月 1 日 00:00:00 UTC 至今的毫秒数
 

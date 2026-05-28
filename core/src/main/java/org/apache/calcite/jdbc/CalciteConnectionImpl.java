@@ -401,14 +401,27 @@ abstract class CalciteConnectionImpl
   }
 
   /** Implementation of DataContext. */
+  // Calcite 在物理执行期（Runtime）的真实数据容器
+  // DataContextImpl 的核心使命就是在 SQL 语句开始执行的那一刹那，把抓取到的时区、时间戳、用户信息、外界传入的动态参数（如 ? 占位符绑定的值）一次性强行锁死，并封装进一个线程安全的不可变 Map 中。这确保了整个 SQL 执行生命周期内参数的物理一致性。
+  //
   static class DataContextImpl implements DataContext {
+    // 核心后备参数查找池。
+    // 采用 Google Guava 的 ImmutableMap（不可变映射表）。在构造函数中，它会被装满。所有关于时间、用户、时区、以及外部输入的动态绑定参数（Parameters）都会沉淀在这里。
+    // 因为是不可变的，所以具备天然的线程安全特征，任凭多线程并发执行读取，都不会发生并发冲突。
     private final ImmutableMap<Object, Object> map;
+    // 元数据命名空间句柄。
+    // 它指向了系统的元数据总账本。物理算子（如物理表扫描算子）正是通过它才能顺藤摸瓜在内存中找到真实的物理表、视图以及存储管道。
     private final @Nullable CalciteSchema rootSchema;
+    // 查询执行环境提供者句柄。
+    // 传入的真实物理对象是 CalciteConnectionImpl（Calcite 的连接实现类），由于连接类实现了 Linq4j 的 QueryProvider 接口，它在这里直接扮演了运行时调度器和代码编译触发器的角色。
     private final QueryProvider queryProvider;
+    // 行数据物理类型映射工厂。
+    // 同样在初始化时从 Connection 中无缝提取，专职负责在执行期对数据列的 Java 强类型、序列化格式进行保驾护航。
     private final JavaTypeFactory typeFactory;
 
     DataContextImpl(CalciteConnectionImpl connection,
         Map<String, Object> parameters, @Nullable CalciteSchema rootSchema) {
+      // 将传入的 Calcite 连接实例（CalciteConnectionImpl）向上转型并赋值给 queryProvider。因为连接持有底层的会话状态，所以它将作为运行期调度代码执行的代理人。
       this.queryProvider = connection;
       this.typeFactory = connection.getTypeFactory();
       this.rootSchema = rootSchema;
@@ -416,17 +429,26 @@ abstract class CalciteConnectionImpl
       // Store the time at which the query started executing. The SQL
       // standard says that functions such as CURRENT_TIMESTAMP return the
       // same value throughout the query.
-      final Holder<Long> timeHolder = Holder.of(System.currentTimeMillis()); //sql执行的开始时间
+      // 标准规定：在一个查询事务内，无论执行耗时多久，调用多少次时间函数（如 CURRENT_TIMESTAMP, NOW()），返回的物理时间必须是完全相同的一堵墙。
+      final Holder<Long> timeHolder = Holder.of(System.currentTimeMillis());
 
       // Give a hook chance to alter the clock.
+      // Calcite 框架高级架构师预留给开发者的运行时切面后门（Hook）
+      // 在真实的分布式大数据测试中，测试 CURRENT_TIMESTAMP 这种动态时间函数是非常痛苦的（因为每次断言时间都不一样）。
+      // 通过这段代码，你可以在测试用例运行前，向 Hook.CURRENT_TIME 注册一个回调函数，强行把 timeHolder 里的值改为一个固定的历史时间（比如 1716883200000L）。
+      // 这样，timeHolder.get() 拿到的就是被你篡改后的“确定性时间”，让自动化集成测试变得稳定、可预测。
       Hook.CURRENT_TIME.run(timeHolder);
       final long time = timeHolder.get();
+      // 从当前的 JDBC 会话配置中提取用户设置的时区（如 GMT+8 或 America/New_York）。
       final TimeZone timeZone = connection.getTimeZone();
       final TimeFrameSet timeFrameSet =
           connection.typeFactory.getTypeSystem()
               .deriveTimeFrameSet(TimeFrames.CORE);
+      // 调用 Java 原生 TimeZone.getOffset(time)。
+      // 它传入刚刚冻结的绝对时间戳 time，自动计算出当前时区在这一刻相对于 UTC 零时区的毫秒级时间差（Offset
       final long localOffset = timeZone.getOffset(time);
       final long currentOffset = localOffset;
+      // 捕获环境元数据：用户与多语言区域
       final String user = "sa";
       final String systemUser = System.getProperty("user.name");
       final String localeName = connection.config().locale();
@@ -434,10 +456,12 @@ abstract class CalciteConnectionImpl
           ? Util.parseLocale(localeName) : Locale.ROOT;
 
       // Give a hook chance to alter standard input, output, error streams.
+      // 物理内幕：再次利用 Holder 打包了 JVM 原生的标准输入输出流。接着调用 Hook.STANDARD_STREAMS 开辟拦截窗口。
+      // 工业妙用：在生产环境中，我们绝不希望某个物理算子的报错或者控制台打印直接乱入到主 JVM 的 System.err 中导致日志炸裂。大数据引擎开发者可以通过这个 Hook，将 streamHolder 里的输出流动态替换为基于 Log4j/Logback 封装的自定义管道流（PipedOutputStream），从而实现长查询运行时日志的定向收集。
       final Holder<Object[]> streamHolder =
           Holder.of(new Object[] {System.in, System.out, System.err});
       Hook.STANDARD_STREAMS.run(streamHolder);
-
+      // 注入不可变 Map 容器与“防空指针”大战
       ImmutableMap.Builder<Object, Object> builder = ImmutableMap.builder();
       builder.put(Variable.UTC_TIMESTAMP.camelName, time)
           .put(Variable.CURRENT_TIMESTAMP.camelName, time + currentOffset)
@@ -450,9 +474,12 @@ abstract class CalciteConnectionImpl
           .put(Variable.STDIN.camelName, streamHolder.get()[0])
           .put(Variable.STDOUT.camelName, streamHolder.get()[1])
           .put(Variable.STDERR.camelName, streamHolder.get()[2]);
+      // 这里的 parameters 里面装的是外界在连接执行时，通过 Prepared Statement 或者 API 灌进来的动态命名参数（如 ? 参数绑定的具体值）。
       for (Map.Entry<String, Object> entry : parameters.entrySet()) {
         Object e = entry.getValue();
         if (e == null) {
+          // AvaticaSite.DUMMY_VALUE（最硬核的防御）
+          // 解决：Calcite 采用了变通之道，一旦检测到参数值是 null，就将其偷梁换柱改写为一个专门的虚拟非空单例对象 AvaticaSite.DUMMY_VALUE。
           e = AvaticaSite.DUMMY_VALUE;
         }
         builder.put(entry.getKey(), e);
@@ -470,7 +497,8 @@ abstract class CalciteConnectionImpl
       }
       return o;
     }
-
+    // 要用于为 IDE、数据中台的 SQL 编辑器或者命令行终端提供 SQL 语句的自动补全（Auto-completion）、语法智能提示（Hints）以及错位纠正建议。
+    // 这段代码的本质，就是在物理运行期现场临时拼装出一个“微型 SQL 编译器生态圈”。
     private SqlAdvisor getSqlAdvisor() {
       final CalciteConnectionImpl con = (CalciteConnectionImpl) queryProvider;
       final String schemaName;
