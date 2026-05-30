@@ -24,14 +24,23 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
-/** 类的构造函数
+/**
  * Declaration of a constructor.
  */
+// 在 Calcite 的 Linq4j 抽象语法树（AST）中，ConstructorDeclaration 的主要作用是在内存中以结构化对象的形式，完整抽象和代表 Java 类中的“构造函数（构造方法）”。
+// 当 Calcite 在运行期需要动态生成一个全新的类（通常是为了实现某些特定的物理算子计算逻辑、动态的数据清洗、或者特定的迭代器接口）时，该类往往需要进行状态初始化。
+// 例如，动态生成的类可能需要通过构造函数把外部的上下文变量（如 DataContext、或者外部传进来的核心状态数组）赋值给内部的私有字段：
+//
 public class ConstructorDeclaration extends MemberDeclaration {
-  public final int modifier; //修饰符号
-  public final Type resultType; //构造函数雷名
-  public final List<ParameterExpression> parameters; //参数
-  public final BlockStatement body; //函数体
+  // 构造函数修饰符。使用 java.lang.reflect.Modifier 的位掩码编码（如 Modifier.PUBLIC、Modifier.PRIVATE 等）。
+  public final int modifier;
+  // 构造函数所属的类类型。
+  // 在 Java 中，构造函数没有返回值，它的名称与类名一致。因此，这里借用 resultType 属性来存储当前构造函数所依附的那个宿主类类型（即类名）。
+  public final Type resultType;
+  // 构造函数的形参列表。一个有序集合，存放着初始化该类时所需传入的所有参数（如 [DataContext context]）。
+  public final List<ParameterExpression> parameters;
+  // 构造函数体。由大括号 { ... } 包裹的初始化逻辑代码块（如执行 this.x = x; 等赋值语句）。
+  public final BlockStatement body;
   /** Cached hash code for the expression. */
   private int hash;
 

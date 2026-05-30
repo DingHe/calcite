@@ -27,11 +27,23 @@ import java.util.Objects;
 /**
  * Declaration of a method.
  */
+// 专门用来描述和构建类内部的方法（函数）。
+// 在 Calcite 的 Linq4j 表达式树（AST）中，MethodDeclaration 的作用是在内存中以结构化对象的形式，完整抽象和代表 Java 类中的一个“方法声明”。
+// Calcite 拥有强大的运行时代码生成能力（Code Generation）。
+// 当它把逻辑或物理执行计划（如某一个特定的物理 Join 或 Aggregation 算子）翻译成最终的 Java 源码时，
+// 必须动态生成一个包含特定计算逻辑的方法（最经典的就是生成迭代器里的 next()、hasNext() 方法，或者自定义的 eval() 算术求值方法）。
 public class MethodDeclaration extends MemberDeclaration {
-  public final int modifier; //修饰符号
-  public final String name; //方法名称
-  public final Type resultType; //返回值类型
-  public final List<ParameterExpression> parameters; //参数列表
+  // 方法修饰符。与字段类似，采用 java.lang.reflect.Modifier 的位掩码编码（如 Modifier.PUBLIC | Modifier.STATIC）。
+  public final int modifier;
+  // 方法名称。例如字符串 "eval"、"hasNext"。绝不能为空。
+  public final String name;
+  // 返回值类型。使用 Java 标称类型接口 Type（可以是 Class<?> 如 int.class，或者是泛型类型）。绝不能为空。
+  public final Type resultType;
+  // 方法的形参列表。
+  // 一个有序集合，里面存放着该方法接收的所有入参（包含参数类型和参数名，如 [int a, String b]）。
+  public final List<ParameterExpression> parameters;
+  // 方法体（函数体）。
+  // 由 { ... } 包裹的核心执行代码块，内部可以包含多条 Java 语句（Statement）。
   public final BlockStatement body; //函数体
 
   public MethodDeclaration(int modifier, String name, Type resultType,
@@ -46,11 +58,15 @@ public class MethodDeclaration extends MemberDeclaration {
     this.parameters = parameters;
     this.body = body;
   }
-
+  // 允许利用 Shuttle（穿梭器）深度遍历并改写当前方法内部的代码逻辑（方法体）。
   @Override public MemberDeclaration accept(Shuttle shuttle) {
+    // 首先让穿梭器对方法节点本身进行前置访问。
     shuttle = shuttle.preVisit(this);
     // do not visit parameters
+    // 核心递归点。让穿梭器深入到当前方法的 body（方法体）内部。
+    // 方法体里的多行代码、表达式都会被穿梭器过一遍，如果里面有需要改写的逻辑，会在此处完成并返回一个新的 BlockStatement。
     final BlockStatement body = this.body.accept(shuttle);
+    // 最终将新（或未变）的方法体与自身打包，由 shuttle 决定是否生成并返回一个新的 MethodDeclaration。
     return shuttle.visit(this, body);
   }
 
