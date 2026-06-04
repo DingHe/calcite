@@ -58,19 +58,32 @@ import static org.apache.calcite.linq4j.Nullness.castNonNull;
  *
  * @param <E> Row type
  */
+// CsvEnumerator 是 Apache Calcite 官方文件适配器（calcite-file 模块）中最核心的物理数据读取类。它实现了 Calcite 自定义的 Enumerator 接口。
+// CsvEnumerator 的核心作用是将一个本地的 .csv 文本文件转换为 Calcite 物理执行引擎能够直接识别的、强类型的行流（Row Stream）。
+// 其主要承担以下三项职责：
+// 元数据自推导（Schema Inference）：能够通过读取 CSV 文件的首行（Header），自动解析出表包含哪些列、每列叫什么名字，以及各列对应的数据类型。
+// 流式物理驱动（Streaming / Cursor Driving）：基于底层的 CSVReader，每调用一次 moveNext() 就从磁盘或流中读取一行纯文本数据，并具有过滤和取消标记检测功能。
+// 类型安全转换（Data Unmarshalling）：CSV 文件中的数据在物理上全部是字符串（String）。该类通过内部的 RowConverter 引擎，将这些非结构化的字符串动态地、安全地裁剪并转换为 Java 强类型对象（如 Integer, Long, BigDecimal, 日期时间戳等），以供上层 SQL 算子进行计算。
 public class CsvEnumerator<E> implements Enumerator<E> {
   private static final CalciteLogger LOGGER =
       new CalciteLogger(LoggerFactory.getLogger(CsvEnumerator.class));
-
+  // 底层的物理 CSV 读取器（来自开源组件 OpenCSV）。负责真正和磁盘文件打交道，按行切分文本。
   private final CSVReader reader;
+  // 下推过滤值列表。如果优化器在扫描阶段下推了简单的等值条件（如 WHERE id = '10'），这里会存下对应列的期望值，在读取时直接在底层进行高效过滤。
   private final @Nullable List<@Nullable String> filterValues;
+  // 取消/中断标记。异步线程可以通过修改此标记来中断当前的 SQL 查询。如果用户强行关闭了客户端连接，该标记变为 true，终止数据加载。
   private final AtomicBoolean cancelFlag;
+  // 抽象行转换器策略。决定了将读取到的一行 String[] 数组转换成单列的 Object，还是多列的 Object[]。
   private final RowConverter<E> rowConverter;
+  // 当前行状态缓存。保存最近一次通过 moveNext() 成功转换后的单行物理数据模型。
   private @Nullable E current;
-
+  // 作用：指定标准的日期格式化器（yyyy-MM-dd），显式绑定 GMT 时区，用于将 CSV 的日期字符串转化为 Calcite 内部的 int（距 Epoch 的天数）。
   private static final FastDateFormat TIME_FORMAT_DATE;
+  // 作用：时间格式化器（HH:mm:ss），用于处理 TIME 类型数据。
   private static final FastDateFormat TIME_FORMAT_TIME;
+  // 作用：时间戳格式化器（yyyy-MM-dd HH:mm:ss），用于处理 TIMESTAMP 类型数据。
   private static final FastDateFormat TIME_FORMAT_TIMESTAMP;
+  // 作用：正则表达式模式。用于从 CSV 首行元数据声明中抽取出高精度数字的精度和标度，如匹配字符串 "decimal(10,2)"。
   private static final Pattern DECIMAL_TYPE_PATTERN = Pattern
       .compile("\"decimal\\(([0-9]+),([0-9]+)\\)");
 
@@ -81,14 +94,16 @@ public class CsvEnumerator<E> implements Enumerator<E> {
     TIME_FORMAT_TIMESTAMP =
         FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss", gmt);
   }
-
+  // 入参：数据源路径（source）、取消标记、全局字段类型列表、当前查询所需的字段索引列表（fields，支持列裁剪）。
   public CsvEnumerator(Source source, AtomicBoolean cancelFlag,
       List<RelDataType> fieldTypes, List<Integer> fields) {
     //noinspection unchecked
     this(source, cancelFlag, false, null,
         (RowConverter<E>) converter(fieldTypes, fields));
   }
-
+  // 入参：多增了 stream（是否作为无界流读取）以及 filterValues（等值过滤数组）。
+  // 作用：执行物理初始化。根据 stream 选择实例化标准的 CSVReader 还是监控文件变动的 CsvStreamReader。
+  // 并在最后自动执行 reader.readNext() 跳过首行（Header 标题行）。
   public CsvEnumerator(Source source, AtomicBoolean cancelFlag, boolean stream,
       @Nullable String @Nullable [] filterValues, RowConverter<E> rowConverter) {
     this.cancelFlag = cancelFlag;
@@ -107,7 +122,7 @@ public class CsvEnumerator<E> implements Enumerator<E> {
       throw new RuntimeException(e);
     }
   }
-
+  // 如果上层 SQL 只查询了 1 列，它会聪明地实例化 SingleColumnRowConverter 节省内存；如果要查多列，则走 arrayConverter。
   private static RowConverter<?> converter(List<RelDataType> fieldTypes,
       List<Integer> fields) {
     if (fields.size() == 1) {
@@ -125,6 +140,8 @@ public class CsvEnumerator<E> implements Enumerator<E> {
 
   /** Deduces the names and types of a table's columns by reading the first line
    * of a CSV file. */
+  // 核心静态元数据方法。传入类型工厂和文件源，它会打开文件读取第一行标题（如 id:int,name:string）。通过 colon 分隔符切分出列名与类型字符串，再利用大段 switch-case 将其转换映射为 Calcite 统一的逻辑类型（SqlTypeName），
+  // 最后组装并返回一整个复合行结构（StructType）。
   public static RelDataType deduceRowType(JavaTypeFactory typeFactory,
       Source source, @Nullable List<RelDataType> fieldTypes, Boolean stream) {
     final List<RelDataType> types = new ArrayList<>();
@@ -221,11 +238,11 @@ public class CsvEnumerator<E> implements Enumerator<E> {
     Objects.requireNonNull(source, "source");
     return new CSVReader(source.reader());
   }
-
+  // 返回当前游标指向的物理行对象 current（使用 castNonNull 确保非空检查）。
   @Override public E current() {
     return castNonNull(current);
   }
-
+  // 核心状态机驱动方法
   @Override public boolean moveNext() {
     try {
     outer:

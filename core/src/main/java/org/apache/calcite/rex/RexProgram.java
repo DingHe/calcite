@@ -74,6 +74,13 @@ import static java.util.Objects.requireNonNull;
  *
  * @see RexProgramBuilder
  */
+// RexProgram 是一个具有里程碑意义的核心数据结构。它专门服务于 Calc（计算节点）算子，是整个优化器走向单机高性能流水线（如利用 Linq4j 和 Janino 动态生成 Java 字节码）的核心底座。
+// RexProgram 类的核心作用：打平一切的“公共表达式大本营”
+// 传统的 SQL 表达式采用的是深度嵌套的树状拓扑（AST 树）。例如一个简单的投影：SELECT price * qty, (price * qty) * tax FROM orders。
+// 传统树状问题：在这个表达式里，price * qty 被重复计算了两次。当树很深时，不仅内存占用极大，且公共子表达式消除（CSE, Common Subexpression Elimination） 的计算复杂度极高。
+// RexProgram 彻底颠覆了这种拓扑。它是一个将行级过滤条件（Condition）与字段输出投影（Projects）完美揉合在一起的、不可变的线性计算指令集。
+// 它将树状图彻底“打平（Flatten）” 为一个线性的数组，并在内部通过局部下标引用（RexLocalRef）来组织依赖。上述 SQL 在 RexProgram 内部的扁平化形态如下
+// 终极核心效益：通过将大树解构成线性数组，RexProgram 使得所有的公共表达式天然共享同一个数组下标（完美消除公共子表达式），并且极易被翻译为循环展开的、无任何多余对象开销的物理微指令代码。
 public class RexProgram {
   //~ Instance fields --------------------------------------------------------
 
@@ -82,25 +89,38 @@ public class RexProgram {
    * refer to inputs (using input ordinal #0) or previous expressions in the
    * array (using input ordinal #1).
    */
+  // 一阶段扁平化公共表达式大池子。
+  // 存放当前节点计算要用到的所有细粒度标量算子（如 RexInputRef、RexLiteral、RexCall ）。
+  // 它有极严格的拓扑顺序：排在前面的元素是原始输入，后面的元素只能引用前面的元素（利用 RexLocalRef），绝不允许循环依赖，也不允许前向引用（Forward Reference）。
   private final List<RexNode> exprs;
 
   /**
    * With {@link #condition}, the second stage of expression evaluation.
    */
+  // 二阶段最终输出投影映射序列。
+  // 长度与当前算子最终吐出的列数完全一致。里面存储的不是复杂的表达式树，而是纯粹的数组下标指针（RexLocalRef），直接勾连并锁定 exprs 池子中的某一项计算结果。
   private final List<RexLocalRef> projects;
 
   /**
    * The optional condition. If null, the calculator does not filter rows.
    */
+  // 可选的行级布尔过滤条件指针。
+  // 如果为 null 代表当前计算节点不进行任何 WHERE 过滤；如果不为 null，则它也是一个局部引用指针，锁定 exprs 数组里某一个最终算出来为 Boolean 类型的节点的下标。
   private final @Nullable RexLocalRef condition;
-
-  private final RelDataType inputRowType; //输入数据类型
-
-  private final RelDataType outputRowType; //输出数据类型
+  // 上游输入行的元数据类型（Schema）。
+  // 标记当前程序吞入的每一行包含哪些字段、字段名称及对应的数据类型。
+  private final RelDataType inputRowType;
+  // 当前程序最终吐出的输出行元数据类型（Schema）。
+  // 标记通过 projects 映射输出后，最终交付给下游父算子的数据流列结构。
+  private final RelDataType outputRowType;
 
   /**
    * Reference counts for each expression, computed on demand.
    */
+  // 延迟计算的表达式引用计数计数器。
+  // 数组长度与 exprs 一致。
+  // 用来记录 exprs[i] 被后续表达式、projects 或 condition 累计引用的总次数。
+  // 如果次数 > 1，则代表它是一个真正的公共子表达式，在代码生成时可以被安全地提炼成一个局部临时变量。
   private int @MonotonicNonNull[] refCounts;
 
   //~ Constructors -----------------------------------------------------------
@@ -216,12 +236,22 @@ public class RexProgram {
    * @param rexBuilder    Builder of rex expressions
    * @return A program
    */
+  // 作为一个高层门面（Facade），负责接收外界传入的、传统的树状“投影表达式列表”和“过滤条件表达式”，
+  // 然后借助 RexProgramBuilder 这个“大熔炉”，将它们打平（Flatten）、去重并焊接成一个标准化的线性 RexProgram 指令集。
   public static RexProgram create(
+      // 上游输入算子吐给当前节点的行元数据类型（Schema）
+      // 让内部的 RexProgramBuilder 明确知道初始输入流里一共有多少列、每一列叫什么名字、是什么数据类型，以便正确解析表达式中的 RexInputRef（类似于 $0, $1）。
       RelDataType inputRowType,
-      List<? extends RexNode> projectExprs, //投影表达式
-      @Nullable RexNode conditionExpr,  //条件表达式
+      // 最终要输出的投影（SELECT 后面）表达式树列表。
+      List<? extends RexNode> projectExprs,
+      // 可选的行过滤（WHERE 后面）条件表达式树。
+      // 同样是一棵常规的布尔表达式树（例如 a > 10），如果 SQL 里没有写 WHERE 过滤，则传入 null。
+      @Nullable RexNode conditionExpr,
+      // 输出投影列的别名（Alias）列表。
       @Nullable List<? extends @Nullable String> fieldNames,
+      // 表达式构建器工厂。
       RexBuilder rexBuilder) {
+    // 如果外部调用方没有提供输出列名列表（fieldNames == null），则调用 Collections.nCopies 制造一个长度与投影列数完全相同、里面全是 null 的虚拟不可变列表，用作占位符。
     if (fieldNames == null) {
       fieldNames = Collections.nCopies(projectExprs.size(), null);
     } else {
@@ -229,11 +259,18 @@ public class RexProgram {
           : "fieldNames=" + fieldNames
           + ", exprs=" + projectExprs;
     }
+    // RexProgramBuilder 的关系就像 StringBuilder 之于 String。
+    // 因为 RexProgram 本身是完全不可变的（Immutable），所有复杂的去重、打平、排序拓扑逻辑必须在一个可变的容器里完成。
     final RexProgramBuilder programBuilder =
         new RexProgramBuilder(inputRowType, rexBuilder);
+    // 依次遍历每一列投影表达式树。
+    // 调用 programBuilder.addProject(...)。这个方法非常重型，当一棵复杂的表达式大树被丢进 addProject 时，Builder 会使用深度优先遍历（DFS）把这棵树彻底“撕碎”并“打平”：
+    // 它会把树上的每一个细粒度叶子节点、中间计算节点依次剥离出来。
+    // 检查这些剥离出来的项在内部大池子里是否已经存在（公共子表达式消除）。如果存在，直接复用其数组下标；如果不存在，将其追加进大池子尾部。
     for (int i = 0; i < projectExprs.size(); i++) {
       programBuilder.addProject(projectExprs.get(i), fieldNames.get(i));
     }
+    // Builder 也会采用 DFS 将这棵布尔条件树彻底打平，消灭掉条件树里与前面投影列重复的计算。
     if (conditionExpr != null) {
       programBuilder.addCondition(conditionExpr);
     }
@@ -244,6 +281,9 @@ public class RexProgram {
    * Create a program from serialized output.
    * In this case, the input is mainly from the output json string of {@link RelJsonWriter}
    */
+  // 典型的反序列化（Deserialization）工厂方法
+  // 核心作用是：从一个已经序列化的媒介（通常是 SQL 优化器生成的 JSON 文本或分布式节点传输的执行计划字符串）中，重新读取并重构（还原）出一个完整的、内存中的不可变 RexProgram 对象。
+  // RelInput input：代表一个关系表达式的输入读取器（元数据包装器）。
   public static RexProgram create(RelInput input) {
     final List<RexNode> exprs =
         requireNonNull(input.getExpressionList("exprs"), "exprs");
@@ -275,6 +315,7 @@ public class RexProgram {
    *
    * @param pw Plan writer
    */
+  // 主要职责是：根据传入的计划呈现器（RelWriter）的类型，采用不同的策略将当前 RexProgram 的内部核心组件（表达式池、投影、条件等）输出为可读的执行计划或可序列化的文本。
   public RelWriter explainCalc(RelWriter pw) {
     if (pw instanceof RelJsonWriter) {
       return pw
@@ -354,6 +395,11 @@ public class RexProgram {
    *
    * @param refs References
    */
+  // 计算一个指针列表从最前端（Index = 0）开始，有多少个连续的表达式属于“平庸的（Trivial）”等值物理映射。
+  // 什么是“平庸的映射（Trivial Projection）”？
+  // 在编译器和数据库优化器中，如果一个投影操作（SELECT）只是原封不动地按顺序搬运上游输入列，没有发生任何实质性的列交换、列过滤或者数学计算，这个投影就被称为 Trivial（平庸/琐碎的）。
+  // 情况 A（平庸）：上游输入是 (a, b, c)，下游 SELECT a, b。此时指针列表对应为 [$0, $1]。因为第 0 位置放 $0，第 1 位置放 $1，这属于完美的平庸映射。
+  // 情况 B（非平庸）：上游输入是 (a, b, c)，下游 SELECT b, a。此时指针列表对应为 [$1, $0]。虽然没有发生计算，但因为列的顺序发生了解构和交换，这就不是平庸映射。
   private static int countTrivial(List<RexLocalRef> refs) {
     for (int i = 0; i < refs.size(); i++) {
       RexLocalRef ref = refs.get(i);

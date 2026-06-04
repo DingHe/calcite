@@ -487,17 +487,29 @@ import static java.util.Objects.requireNonNull;
  *
  * <p>Immutable.
  */
+// RexImpTable 是一个极其庞大且处于核心枢纽地位的类。它负责连接 Calcite 抽象的逻辑表达式世界与可运行的物理代码世界。
+// RexImpTable 的核心职责就是：代码生成器中的“算子翻译官”。
+// 在 Calcite 的逻辑计划（如 LogicalProject、LogicalFilter）中，所有的标量表达式、条件判断、内置函数和聚合函数都是以 RexNode（行表达式） 的抽象形式存在的（例如：代表加法的 RexCall(+, [a, b])）。
+// 当 Calcite 的 Enumerable 适配器（物理执行引擎） 试图将这些逻辑算子编译并生成实际可执行的 Java AST 字节码（通过 Linq4j 框架） 时，它必须知道每一个抽象的 SqlOperator 应该如何用 Java 语言写出来。
+// RexImpTable 的内部维系了一张庞大的注册映射表（Map）。它将 SQL 算子（如 PLUS、SUBSTRING、COUNT 等）与具体的代码生成器实现类（如 NotNullImplementor、CallImplementor）一一绑定。
+// 对于标量函数（如 ABS(x)）：它指导 Linq4j 生成对应的 Java 静态方法调用：Math.abs(x)。
+// 对于聚合函数（如 SUM(x)）：它指导 Linq4j 在生成代码时，如何初始化累加器（init）、如何迭代累加（add）、如何输出最终结果（result）。
 public class RexImpTable {
   /** The singleton instance. */
+  // 整个优化器在生成 Enumerable 代码时，统统通过此实例来寻找算子的翻译策略。
+  // 内部的 Builder().populate() 在类加载时会一口气将成百上千个 SQL 内置函数、聚合算子注册进池子里。
   public static final RexImpTable INSTANCE =
       new RexImpTable(new Builder().populate());
-
+  // 编译期 Java null 值的常量表达式缓存。用来在生成的 Java 代码中快捷代表 SQL 的 NULL。
   public static final ConstantExpression NULL_EXPR =
       Expressions.constant(null);
+  // 作用：编译期 Java false 值的常量表达式缓存。
   public static final ConstantExpression FALSE_EXPR =
       Expressions.constant(false);
+  // 作用：编译期 Java true 值的常量表达式缓存。
   public static final ConstantExpression TRUE_EXPR =
       Expressions.constant(true);
+  //
   public static final ConstantExpression COMMA_EXPR =
       Expressions.constant(",");
   public static final ConstantExpression COLON_EXPR =
@@ -507,10 +519,22 @@ public class RexImpTable {
   public static final MemberExpression BOXED_TRUE_EXPR =
       Expressions.field(null, Boolean.class, "TRUE");
 
+  // 标量算子查找表。
+  // Key 是 Calcite 的 SQL 算子模型，Value 是对应的 Java 代码生成执行器。
   private final ImmutableMap<SqlOperator, RexCallImplementor> map;
+  // 聚合算子查找表。
+  // 用于存放诸如 COUNT、SUM、AVG 等聚合函数生成代码时的阶段性逻辑。
   private final ImmutableMap<SqlAggFunction, Supplier<? extends AggImplementor>> aggMap;
+  // Key (SqlAggFunction)：标准的 SQL 聚合函数算子（如 ROW_NUMBER、RANK、DENSE_RANK、LEAD、LAG、FIRST_VALUE 等）。
+  // Value (Supplier<? extends WinAggImplementor>)：一个生产窗口聚合代码生成器的工厂（Supplier）。
   private final ImmutableMap<SqlAggFunction, Supplier<? extends WinAggImplementor>> winAggMap;
+  // 复杂事件处理（CEP）代码生成查找表
+  // Key (SqlMatchFunction)：SQL 标准中最复杂的算子之一 —— MATCH_RECOGNIZE（流式/批式行模式匹配算子） 内部的专用函数（如 PREV、NEXT、CLASSIFIER、MATCH_NUMBER 等）。
+  // Value (Supplier<? extends MatchImplementor>)：复杂事件处理（CEP）代码生成器的工厂。
   private final ImmutableMap<SqlMatchFunction, Supplier<? extends MatchImplementor>> matchMap;
+  // 表函数（TVF）代码生成查找表
+  // Key (SqlOperator)：表函数（Table-Valued Function, TVF） 算子。最典型的代表就是我们前面深入研究过的窗口表函数（如 TUMBLE、HOP、SESSION）。
+  // Value (Supplier<? extends TableFunctionCallImplementor>)：表函数专属代码生成器的工厂。
   private final ImmutableMap<SqlOperator, Supplier<? extends TableFunctionCallImplementor>>
       tvfImplementorMap;
 
@@ -1493,9 +1517,13 @@ public class RexImpTable {
   }
 
   /** Implementor for the {@code SUM} windowed aggregate function. */
+  // 专门负责将 SQL 中的 SUM（求和） 聚合函数转换为可执行的 Java 物理表达式字节码。
+  // SumImplementor 是 SUM 算子的物理代码生成“执行官”。
   static class SumImplementor extends StrictAggImplementor {
     @Override protected void implementNotNullReset(AggContext info,
         AggResetContext reset) {
+      // 它会检查 SUM 函数在 Java 中的目标返回类型。如果是 BigDecimal，它会在语法树中生成高精度零常量 BigDecimal.ZERO；
+      // 如果是其他数字类型（如 int、long、double），则直接生成普通的数值常数 0。
       Expression start = info.returnType() == BigDecimal.class
           ? Expressions.constant(BigDecimal.ZERO)
           : Expressions.constant(0);
@@ -1504,7 +1532,7 @@ public class RexImpTable {
           Expressions.statement(
               Expressions.assign(reset.accumulator().get(0), start)));
     }
-
+    // 生成将当前行数据累加到求和状态中的 Java 核心迭代代码。
     @Override public void implementNotNullAdd(AggContext info,
         AggAddContext add) {
       Expression acc = add.accumulator().get(0);
@@ -4519,11 +4547,18 @@ public class RexImpTable {
   }
 
   /** Implementor for the {@code IS NULL} SQL operator. */
+  // 专门负责将 SQL 阶段的 IS NULL 条件表达式翻译为可执行的 Java 物理表达式。
+  // 在 Calcite 的架构中，SQL 语句通过校验器（Validator）后会转换为逻辑关系代数树（RelNode），
+  // 其中的条件过滤或投影通常由 RexCall（行表达式调用，例如 IS NULL(x)）来表示。而要将这些逻辑树最终变成可以在 JVM 中高效运行的 Java 字节码，就必须依赖代码生成器（Code Generator）将其打平为 Linq4j 框架的 Expression 语法树。
+  // IsNullImplementor 的核心作用就是担任 IS NULL 算子的“物理翻译官”：
+  // 桥接逻辑到物理：它负责捕获逻辑树中的 IS NULL 调用，并在代码生成阶段将其翻译为 Java 语言中标准的 x == null 物理判定。
   private static class IsNullImplementor extends AbstractRexCallImplementor {
     IsNullImplementor() {
       super("is_null", NullPolicy.STRICT, false);
     }
 
+    // Type type：期望生成的 Java 物理表达式的目标返回类型（在 Java 中通常是基础类型 boolean 或包装类型 Boolean）。
+    // List<Expression> argValueList：当前算子的物理参数表达式列表（在这里代表被检查的对象）。
     @Override Expression getIfTrue(Type type, final List<Expression> argValueList) {
       return Expressions.constant(true, type);
     }

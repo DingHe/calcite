@@ -49,6 +49,12 @@ public abstract class Types {
   /**
    * Creates a type with generic parameters.
    */
+  // 核心作用是：在运行时动态地将一个基础类型（Raw Type）和一组泛型实参（Type Arguments）组装、构建成一个完整的泛型类型（ParameterizedType）。
+  // 参数 type (Type)： 指定泛型的原生类型 / 基础类型（Raw Type）。
+  // 示例：如果您想构建 List<String>，这个参数就是 List.class。
+  // 参数 typeArguments (Type... typeArguments)：作用：一个可变长参数（Varargs），指定该泛型类型所接受的泛型实参列表（Type Arguments）。
+  // 示例：如果您想构建 List<String>，这里传入 String.class；如果是 Map<String, Integer>，这里依次传入 String.class, Integer.class。
+  // 返回组装后的类型。如果没有泛型参数，返回原类型；如果有泛型参数，返回一个代表该泛型组合的 ParameterizedType 实例。
   public static Type of(Type type, Type... typeArguments) {
     if (typeArguments.length == 0) {
       return type;
@@ -528,9 +534,22 @@ public abstract class Types {
   }
 
   /** Implementation of {@link ParameterizedType}. */
+  // 直接实现了 Java 标准反射库中的 java.lang.reflect.ParameterizedType 接口
+  // 这个类的核心作用是：在运行时手动构建、表示并维持一个 Java 的“泛型类型”（参数化类型）。
+  // 为什么需要它？（解决的核心痛点）
+  // 在 Java 中，由于泛型擦除（Type Erasure）机制，普通的编译代码在运行期间会丢失泛型信息（例如 List<String> 在运行期间仅仅是一个普通的 List）。
+  // 然而，Apache Calcite 包含一个强大的代码生成器（Linq4j），它需要在运行时动态生成、推导并反射分析复杂的 Java 表达式和动态类（例如，在动态生成强类型的底层迭代器 Enumerator<Employee> 或数据流 Enumerable<Record> 时）。
+  // 为了在运行时向 JVM 声明或比对这些带有 <...> 泛型骨架的完整类型，Calcite 无法直接依靠简单的 Class 对象，必须依靠 ParameterizedType 接口的实现。
+  // 由于 JDK 原生并没有公开提供一个现成的、非反射反射包内的 ParameterizedType 实现类，Calcite 便自己实现了一个静态内部类 ParameterizedTypeImpl 来作为泛型的内存数据载体。
   static class ParameterizedTypeImpl implements ParameterizedType {
+    // 存储原始类型（抹去泛型后的基础类型）。
+    // 示例：对于泛型 List<String>，它的 rawType 就是 interface java.util.List 的 Class 对象。
     private final Type rawType;
+    // 存储实际的泛型参数列表（即尖括号 <> 内部的类型定义）。
+    // 示例：对于双参数泛型 Map<Integer, String>，该列表内部按顺序存储了两个元素：Integer.class 和 String.class。
     private final List<Type> typeArguments;
+    // 存储所属类型（内部类所依附的外层类类型）
+    // 如果定义了一个外部类 Map 和它的内部类 Entry，当表示 Map.Entry<K, V> 时，ownerType 就代表外层的 Map 类型。如果是顶层普通类，该属性则为 null。
     private final @Nullable Type ownerType;
 
     ParameterizedTypeImpl(Type rawType, List<Type> typeArguments,

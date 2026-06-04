@@ -47,19 +47,26 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 
-/** Calc 类代表了 Calcite 查询优化框架中的计算节点，用于在查询中执行投影、表达式计算和过滤操作，
- * 例如SELECT quantity * price AS total_price
- * FROM orders
- * WHERE total_price > 100;
- * Calc 会将 quantity * price 作为新的计算字段，并将结果放到输出的 total_price 列中
+/**
  * <code>Calc</code> is an abstract base class for implementations of
  * {@link org.apache.calcite.rel.logical.LogicalCalc}.
  */
+// Calc 类的核心作用：多合一的高性能“万能算子”
+// 在关系代数中，传统的算子划分是非常原子化的。例如：
+// Filter：专门负责处理 WHERE 过滤条件。
+// Project：专门负责处理 SELECT 列裁剪与投影。
+// 但是，在实际执行阶段，如果数据流先经过一个 Filter 滤掉一部分行，接着马上流入 Project 进行列计算，数据会被反复读取、装箱、拆箱。
+// Calc 算子的诞生就是为了彻底打破这个壁垒。它是一个将 Filter（条件过滤）和 Project（投影计算）完美融合为一体的“万能复合算子”。它内部通过包裹一个极其精密的指令集对象 RexProgram，可以在单次遍历（Single Pass）中，同时完成：
+// 行级过滤（Filtering）。
+// 中间表达式计算（Expression Evaluation，如常数折叠、多列标量计算）。
+// 最终列投影输出（Projecting）。
 public abstract class Calc extends SingleRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
-
+  // SQL 提示（Hints）集合。
+  // 物理内幕：它实现了 Hintable 接口。如果在底层的 SQL 中写了类似 SELECT /*+ NO_INDEX, MAX_EXEC_TIME(100) */ 的 Hint 指令，这些元数据会被一路向下透传，最终安全地存储在 hints 列表中，供底层的物理执行引擎在运行时进行特定的策略干预。
   protected final ImmutableList<RelHint> hints;
-//RexProgram 对象，描述如何对输入数据进行计算，包括输入输出类型、计算表达式、投影和条件等
+  // 当前计算节点的“灵魂执行程序”。
+  // 物理内幕：这是一个高度优化的指令集对象（RexProgram）。它内部不直接存储庞大的树状表达式，而是将所有的通用表达式、中间计算变量、输入引用全部打平放入一个公共的扁平化 List<RexNode> exprs 数组里，下游的过滤条件（Condition）和投影输出（Projects）全部通过数组下标（即 RexLocalRef 局部引用）来存取，从而实现了极高的内存复用率和计算效率。
   protected final RexProgram program;
 
   //~ Constructors -----------------------------------------------------------
@@ -80,6 +87,8 @@ public abstract class Calc extends SingleRel implements Hintable {
       RelNode child,
       RexProgram program) {
     super(cluster, traits, child);
+    // 极其关键。
+    // Calc 节点的最终输出行结构（包含哪些列、什么类型）完全由它包裹的 program 决定，因此直接从 program 中提取输出类型赋值给自身的 rowType。
     this.rowType = program.getOutputRowType();
     this.program = program;
     this.hints = ImmutableList.copyOf(hints);
@@ -137,7 +146,7 @@ public abstract class Calc extends SingleRel implements Hintable {
     Util.discard(collationList);
     return copy(traitSet, child, program);
   }
-  //检查计算程序中是否包含窗口聚合函数。这对于优化和查询计划生成非常重要
+  //  判定当前的计算节点内部是否包含了窗口聚合函数（Window / OLAP Function，如 ROW_NUMBER() OVER (...)）。
   /** Returns whether this Calc contains any windowed-aggregate functions. */
   public final boolean containsOver() {
     return RexOver.containsOver(program);
@@ -167,7 +176,7 @@ public abstract class Calc extends SingleRel implements Hintable {
   @Override public ImmutableList<RelHint> getHints() {
     return hints;
   }
-  //估算该计算操作的行数，通常在优化器中用于成本估算
+  // 估算该计算操作的行数，通常在优化器中用于成本估算
   @Override public double estimateRowCount(RelMetadataQuery mq) {
     return RelMdUtil.estimateFilteredRows(getInput(), program, mq);
   }
@@ -184,7 +193,10 @@ public abstract class Calc extends SingleRel implements Hintable {
   @Override public RelWriter explainTerms(RelWriter pw) {
     return program.explainCalc(super.explainTerms(pw));
   }
- //允许访问和修改计算程序中的表达式，适用于树遍历和重写操作
+  // 允许访问和修改计算程序中的表达式，适用于树遍历和重写操作
+  // Calc 是一个极其核心的物理/逻辑关系算子，它将 Project（投影）和 Filter（过滤）合二为一，其内部核心的计算逻辑全部封装在 RexProgram 中。
+  // 核心作用是：允许外界通过传入一个 RexShuttle（表达式转换器），
+  // 对当前 Calc 算子内部维护的整套表达式进行全方位的批量转换（如列索引重映射、常量折叠等），并在表达式发生改变时，按需构建出一个挂载了全新 RexProgram 的新 Calc 算子。
   @Override public RelNode accept(RexShuttle shuttle) {
     List<RexNode> oldExprs = program.getExprList();
     List<RexNode> exprs = shuttle.apply(oldExprs);

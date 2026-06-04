@@ -237,11 +237,18 @@ import java.util.Objects;
  * <p>The third characteristic is whether the input table supports
  * pass-through columns or not.
  */
+// TableCharacteristic（表特性类）是用于支持 SQL 标准多态表函数（Polymorphic Table Functions，简称 PTF） 的核心元数据类。
+// 当一个 SQL 表函数的入参本身就是一张“表”（即表类型参数）时，分布式计算引擎（如 Flink、Spark 或 Calcite 自身的 Enumerable 引擎）需要知道应该如何调度、分发和处理这张输入表的数据。
+// TableCharacteristic 的作用就是定义和描述表函数入参（输入表）的三个核心物理与语义特征：
+// 语义分类（Semantics）：区分输入表是行语义（Row Semantics）还是集语义（Set Semantics）。这决定了计算引擎是否可以把数据打散到任意分布式节点上独立并发处理，还是必须按照特定字段进行 Shuffle 分区聚合。
+// 空表剪枝行为（Prune If Empty）：定义当输入表完全没有数据（空表）时，优化器是否可以直接把该执行节点从执行计划中“裁剪/抹除掉”，从而避免平白无故浪费分布式算力去初始化算子。
+// 列透传行为（Pass-Through Columns）：定义输入表的原始列是否可以无缝“穿越”该表函数，直接作为表函数最终输出结果集的一部分。
 public class TableCharacteristic {
 
   /**
    * Input table has either row semantics or set semantics.
    */
+  // 保存该输入表的语义类型（ROW 或 SET）。
   public final Semantics semantics;
 
   /**
@@ -251,6 +258,9 @@ public class TableCharacteristic {
    * a virtual processor (or more than one virtual processor in the presence
    * of other input tables).
    */
+  // 空表剪枝标记。
+  //  若为 true，上游表无数据时，DBMS 直接在编译期移除该算子的虚拟处理器。
+  //  若为 false，即使没有数据，也必须在运行期真实实例化该算子（因为有些表函数在空输入时依然需要输出总结行或特定默认行）。
   public final boolean pruneIfEmpty;
 
   /**
@@ -258,6 +268,8 @@ public class TableCharacteristic {
    * entire input row available in the output, qualified by a range variable
    * associated with the input table. Otherwise the value is false.
    */
+  // 是否支持列透传。
+  // 若为 true，输入表的所有原始列会自动追加到表函数的输出结果集中；若为 false，输出结果集则完全由表函数自身返回的列决定。
   public final boolean passColumnsThrough;
 
   private TableCharacteristic(
@@ -302,6 +314,7 @@ public class TableCharacteristic {
   /**
    * Input table has either row semantics or set semantics.
    */
+  // 定义了输入表的最关键数据切分语义：
   public enum Semantics {
     /**
      * Row semantics means that the result of the Window TableFunction
@@ -310,6 +323,9 @@ public class TableCharacteristic {
      * individual rows, and send each single row to a different virtual
      * processor.
      */
+    // 表函数的计算逻辑完全是逐行独立决策的（Row-by-row）
+    // 引擎可以把输入表彻底打散，甚至把每一行数据发送到完全不同的虚拟计算节点（Virtual Processor）上独立并发执行。
+    // 典型案例：如源码注释提及的 CSVReader('abc.csv')，解析 CSV 文件时每行数据的解析互不干扰。
     ROW,
 
     /**
@@ -318,6 +334,9 @@ public class TableCharacteristic {
      * A partition may not be split across virtual processors, nor may a
      * virtual processor handle more than one partition.
      */
+    // 表函数的输出结果依赖于数据的分区与集合状态（如聚合、TopN、窗口函数）。
+    // 属于相同 PARTITION BY 键的数据绝对不允许被拆分到不同的计算节点，必须由同一个物理算子完整处理。
+    // 典型案例：如源码注释提及的 TopN(TABLE orders PARTITION BY region ORDER BY sales)，必须把同一个 region 的数据汇聚在一起才能算出准确的 Top 3。
     SET
   }
 

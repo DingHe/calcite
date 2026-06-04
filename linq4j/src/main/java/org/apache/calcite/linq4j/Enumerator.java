@@ -28,6 +28,13 @@ import org.checkerframework.framework.qual.Covariant;
  *
  * @param <T> Element type
  */
+// 在 Java 标准库中，我们习惯使用 java.util.Iterator（迭代器）来遍历集合。然而，Calcite 在执行物理计划、拉取行数据（Row Data）时，并没有采用原生的 Iterator，而是引入了自定义的 Enumerator（枚举器）。
+//为什么 Calcite 不直接用 Java 的 Iterator？
+// 语义对齐 .NET LINQ：Calcite 的前身和部分底层设计（Linq4j）旨在将 .NET 优雅的 LINQ 表达式查询能力移植到 Java 中，Enumerator 的指针游标模型更贴合 LINQ 的流式转换设计。
+// 游标模型差异（解耦“移动”与“获取”）：
+// Java 的 Iterator.next() 是一个复合操作：它将指针向下移动一位，并且同时返回新位置的数据。
+// Calcite 的 Enumerator 采用分离模型：用 moveNext() 负责单纯的指针移动，用 current() 负责单纯的数据获取。这种分离在处理复杂的流式计算、多层算子嵌套、甚至是条件分支和假冷启动时，逻辑控制会更加灵活和精准。
+
 @Covariant(0)
 public interface Enumerator<T> extends AutoCloseable {
   /**
@@ -66,6 +73,10 @@ public interface Enumerator<T> extends AutoCloseable {
    *          has not been called, has not been called since the most
    *          recent call to {@code reset}, or returned false
    */
+  // 获取集合或数据流中当前光标指向的元素
+  // 冷启动限制：当一个 Enumerator 刚刚被 new 出来，或者刚刚执行完 reset() 方法时，游标处于第一个元素之前的“真空期”。
+  // 此时绝对不能直接调用 current()，否则其行为是未定义的，或将直接抛出 NoSuchElementException。必须先调用 moveNext() 成功后，才能读取 current()。
+  // 幂等性（无副作用）：该方法不会改变游标的任何物理位置。这意味着，在不调用 moveNext() 或 reset() 的情况下，无论你连续调用多少次 current()，它都必须吐出完全相同的那个对象。
   T current();
 
   /**
@@ -93,6 +104,8 @@ public interface Enumerator<T> extends AutoCloseable {
    *         next element; {@code false} if the enumerator has passed the end of
    *         the collection
    */
+  // 驱动游标，向后移动一个位置指向下一个元素。
+  // 返回 true：说明成功移动到了有效的数据行，此时可以安全地调用 current() 来提取此行数据。
   boolean moveNext();
 
   /**
@@ -118,6 +131,7 @@ public interface Enumerator<T> extends AutoCloseable {
    * created, which is consistent with {@link #moveNext()} and
    * {@link #current()}.
    */
+  // 作用：强行将当前游标重置回最初的初始位置（即第一个元素之前的“真空期”位置）。
   void reset();
 
   /**
@@ -126,5 +140,6 @@ public interface Enumerator<T> extends AutoCloseable {
    * <p>This method is idempotent. Calling it multiple times has the same effect
    * as calling it once.
    */
+  // 作用：关闭枚举器并释放与之关联的任何物理或逻辑资源。
   @Override void close();
 }

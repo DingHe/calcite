@@ -139,12 +139,13 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   private final Expression root;
   // 核心组件，用于告诉翻译器“如何获取输入列的数据”（例如从一个 Object[] 数组中按索引取值）
   final RexToLixTranslator.@Nullable InputGetter inputGetter;
-  // 代码收集器。翻译过程中生成的每一行 Java 变量声明和赋值语句都会存放在这里。
+  // 代码收集器。
+  // 翻译过程中生成的每一行 Java 变量声明和赋值语句都会存放在这里。
   private final BlockBuilder list;
   // 用于存放生成的静态成员或常量定义。
   private final @Nullable BlockBuilder staticList;
   // 用于处理相关子查询（Correlated Subquery）中的变量引用。
-  private final @Nullable Function1<String, InputGetter> correlates;
+  private final @Nullable Funtion1<String, InputGetter> correlates;
 
   /**
    * Map from RexLiteral's variable name to its literal, which is often a
@@ -176,8 +177,13 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   private final Map<RexNode, Result> rexResultMap = new HashMap<>();
   // 期望的 Java 存储类型
   private @Nullable Type currentStorageType;
-
-  private RexToLixTranslator(@Nullable RexProgram program,
+  // 核心作用是：扮演一个“工厂方法兼大总管”，
+  // 负责收集编译所需的所有上下文元数据，并在内部临时孵化出一个具体的翻译器实例，最终将一组关系代数投影表达式（RexNode）批量收割、翻译为 Java 语言的表达式节点（Expression）。
+  private RexToLixTranslator(
+      // 待翻译的逻辑程序模型。
+      // 里面紧凑地平铺了所有的输入、局部中间计算以及最终的投影（ProjectList）名单。
+      @Nullable RexProgram program,
+      // Java 类型工厂。用于建立 SQL 逻辑类型与 Java 物理 class/Type 之间的强映射桥梁。
       JavaTypeFactory typeFactory,
       Expression root,
       @Nullable InputGetter inputGetter,
@@ -213,12 +219,38 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    *                   variables
    * @return Sequence of expressions, optional condition
    */
-  public static List<Expression> translateProjects(RexProgram program,
-      JavaTypeFactory typeFactory, SqlConformance conformance,
-      BlockBuilder list, @Nullable BlockBuilder staticList,
-      @Nullable PhysType outputPhysType, Expression root,
-      InputGetter inputGetter, @Nullable Function1<String, InputGetter> correlates) {
+  // 返回值 List<Expression>：翻译完成后的 Java 表达式（指针）列表。
+  // 代表最终输出的每个 Project 列在 Java 代码里对应的那个变量。
+  public static List<Expression> translateProjects(
+      // 待翻译的逻辑程序模型。
+      // 里面紧凑地平铺了所有的输入、局部中间计算以及最终的投影（ProjectList）名单。
+      RexProgram program,
+      // Java 类型工厂。
+      // 用于建立 SQL 逻辑类型与 Java 物理 class/Type 之间的强映射桥梁。
+      JavaTypeFactory typeFactory,
+      // SQL 语法兼容性规范（如某些特殊内置函数的 Null 处理和截断行为需要符合特定数据库的标准）。
+      SqlConformance conformance,
+      // 代码沙箱/普通语句块构建器。
+      // 翻译过程中动态生成的各种 Java 局部变量声明（如 final int v1 = 1 + 2;）都会被顺手塞进这个容器里。
+      BlockBuilder list,
+      // 静态/成员变量块构建器。
+      // 如果某些表达式计算非常昂贵或包含常量模板，需要提炼成类的 static 静态成员或类字段，则写进这里。可为 null。
+      @Nullable BlockBuilder staticList,
+      // 输出端的物理类型大纲。
+      // 它不仅包含 SQL 的行列元数据，还定义了这些列在 Java 内存里到底该用什么容器或格式物理存储（例如是用 Object[] 数组、Row 对象还是普通的 POJO 类）。
+      @Nullable PhysType outputPhysType,
+      // 根节点表达式。
+      // 在物理生成的 Java 代码中，通常代表传入的上下文入参 root0 或 DataContext root。
+      Expression root,
+      // 输入提取策略。
+      // 用来指导翻译器在 Java 代码中遇到 $0, $1 这种对上游输入表的字段引用时，应该去哪里生成什么样的抓取代码（例如生成 ((Object[]) root.get("inputRecord"))[0]）。
+      InputGetter inputGetter,
+      // 相关变量（Correlated Variables）的数据提供器。
+      // 用于处理复杂的相关子查询（Nested Loops Join / Correlate）。它通过相关变量的名字（如 $cor0），返回对应的 InputGetter 来获取外部查询块的当前行数据。
+      @Nullable Function1<String, InputGetter> correlates) {
+    // 声明一个用于存放物理存储类型的列表指针，初始为 null。
     List<Type> storageTypes = null;
+    // 提纯并对齐输出字段的物理 Java 类型
     if (outputPhysType != null) {
       final RelDataType rowType = outputPhysType.getRowType();
       storageTypes = new ArrayList<>(rowType.getFieldCount());
@@ -240,11 +272,24 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     return translateProjects(program, typeFactory, conformance, list, null,
         outputPhysType, root, inputGetter, correlates);
   }
-
+  // 表函数（Table Function，如 EXPLODE、UNNEST 等 UDTF）与普通的标量函数（如 ABS、SUBSTRING）不同。标量函数输入一行吐出一个值，而表函数输入一行可以吐出一个集合或多行数据。因此，它的翻译需要特殊的数据流管道支持。
+  // 静态方法的作用是：为表函数的物理代码生成快速开辟一个隔离的、临时的翻译官实例（RexToLixTranslator），并立刻将翻译任务委派出去。
   public static Expression translateTableFunction(JavaTypeFactory typeFactory,
       SqlConformance conformance, BlockBuilder list,
-      Expression root, RexCall rexCall, Expression inputEnumerable,
-      PhysType inputPhysType, PhysType outputPhysType) {
+      // 查询运行期的根上下文表达式指针。
+      Expression root,
+      // 核心逻辑对象。
+      // 代表当前正在被翻译的表函数调用节点（例如 EXPLODE(my_array_column)）。它里面包含了函数定义和传入的参数列表。
+      RexCall rexCall,
+      // 上游物理数据流集合的表达式指针。
+      // 指向输入数据集的 Enumerable 集装箱。因为表函数需要消费上游吐出来的数据来动态膨胀出新行。
+      Expression inputEnumerable,
+      // 输入数据的物理行类型元数据。
+      PhysType inputPhysType,
+      // 表函数计算完成后，最终输出数据的物理行类型元数据。
+      PhysType outputPhysType) {
+    // program = null、allCorrelateVariables = null：因为表函数的逻辑和常规的 Calc/Project 算子不同，它不需要绑定外层的全局计算蓝图或关联变量。
+    // 内幕目的：环境隔离。 确保表函数的代码生成在一个干净的上下文中进行，不与普通的常规标量投影翻译混淆。
     final RexToLixTranslator translator =
         new RexToLixTranslator(null, typeFactory, root, null, list,
             null, new RexBuilder(typeFactory), conformance, null);
@@ -274,18 +319,24 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
   Expression translate(RexNode expr, RexImpTable.NullAs nullAs) {
     return translate(expr, nullAs, null);
   }
-
+  // 用于翻译单条标量表达式的核心入口方法（Overload）
+  // 连接 Calcite “三值逻辑元数据（Nullability）” 与“实际物理代码生成”的咽喉要道。
+  // 它的核心任务是根据表达式是否可能为 NULL，自动推导并锁定运行时应对空值的物理策略（NullAs），然后再转交给更底层的翻译引擎。
   Expression translate(RexNode expr, @Nullable Type storageType) {
+    // 调用 isNullable(expr) 方法。这会穿透当前表达式，去查询 Calcite 的类型系统和元数据中枢：“这个表达式在运行时，有没有可能算出来一个 SQL 的 NULL 值？”
     final RexImpTable.NullAs nullAs =
         RexImpTable.NullAs.of(isNullable(expr));
     return translate(expr, nullAs, storageType);
   }
-  // 决定了逻辑节点最终如何变成一个可执行的 Java 表达式。
+  // 拉起访问者模式（Visitor Pattern）对逻辑表达式树进行物理重组，并在产出 Java 代码的最后一刻，完成“物理类型对齐（StorageType）”与“空值状态机（NullAs）处理”的终极拼装。
+  // RexNode expr：等待被解构并翻译的物理底层逻辑表达式树节点。
+  // RexImpTable.NullAs nullAs：层算子强制指定的空值（NULL）物理应对策略。明确指示当前表达式如果算出来 SQL 的 NULL，应该在 Java 代码中怎么表现（是直接返回 Java 的 null、还是翻译成默认值 0/false、亦或是抛出异常）。
+  // @Nullable Type storageType： 最终期望将结果存入的 JVM 物理目标类型暗示（如 int.class 或 Integer.class）。
   Expression translate(RexNode expr, RexImpTable.NullAs nullAs,
       @Nullable Type storageType) {
     // 将当前翻译任务期望的 Java 物理类型（如 int.class 或 Integer.class）存入全局状态。
     currentStorageType = storageType;
-    // 触发递归翻译。
+    // 将当前翻译器实例（this，作为一个 RexVisitor 访问者）注入到 expr 节点中，正式打响树形结构的深度优先解构（DFS）
     final Result result = expr.accept(this);
     // 将翻译得到的变量强制转换为目标 storageType。
     final Expression translated =
@@ -1051,6 +1102,10 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
    *
    * @return translated expressions
    */
+  // 核心使命是：批量翻译一组表达式（如 SELECT 后的多个投影列），并结合外部传入的底层存储类型暗示（Storage Type Hints），
+  // 在翻译期进行精准的“类型对齐”，最大程度地消灭无意义的强制类型转换（Casting）与拆装箱（Boxing/Unboxing）开销。
+  // List<? extends RexNode> operandList： 等待被翻译成 Java 代码的 RexNode 逻辑表达式树列表。比如 SQL 里的 SELECT a, b + 1, c，这三个列对应的逻辑节点就会组成一个 operandList 扔进来。
+  // @Nullable List<? extends @Nullable Type> storageTypes： 物理存储类型的“强提示/暗示”（Hints）列表。对应 operandList 中每个表达式最终在 JVM 内部被物化存储时的 Java 类型（如 int.class, Integer.class, String.class）。
   public List<Expression> translateList(List<? extends RexNode> operandList,
       @Nullable List<? extends @Nullable Type> storageTypes) {
     final List<Expression> list = new ArrayList<>(operandList.size());
@@ -1061,11 +1116,15 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
       if (storageTypes != null) {
         desiredType = storageTypes.get(i);
       }
+      // 将当前的逻辑表达式 rex 和期望对齐的物理类型 desiredType 一起泵入底层的单标量翻译引擎 translate(rex, desiredType)。
       final Expression translate = translate(rex, desiredType);
       list.add(translate);
       // desiredType is still a hint, thus we might get any kind of output
       // (boxed or not) when hint was provided.
       // It is favourable to get the type matching desired type
+      // 如果外界没有提供明确的存储类型提示（desiredType == null），并且当前逻辑表达式通过元数据推导被证明是绝对不可能为 NULL 的列（!isNullable(rex)）。
+      // 既然一列数据不可能是 NULL，且外界没有强制要把它存进 Object[] 这种需要包装的容器里，那么翻译器在默认情况下必须、绝对只能将它翻译为 JVM 的原生基础基本类型（如 int, long, double），
+      // 而绝对不允许返回包装类（如 Integer, Long, Double）。
       if (desiredType == null && !isNullable(rex)) {
         assert !Primitive.isBox(translate.getType())
             : "Not-null boxed primitive should come back as primitive: "
@@ -1074,15 +1133,23 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
     }
     return list;
   }
-
+  // 专门负责拦截并处理 SQL 中的窗口表函数（Window Table Function）。
+  // 窗口表函数（例如 Apache Calcite 中的 TUMBLE、HOP、SESSION 等滚动/滑动时间窗口函数）是流计算和高级批处理的核心算子。
+  // 它的核心任务是通过注册表（RexImpTable）动态查找到对应的物理实现器，并将代码生成的控制权交接出去。
+  // RexCall rexCall：正在被翻译的窗口表函数调用树节点。它代表形如 TUMBLE(TABLE stream_data, DESCRIPTOR(rowtime), INTERVAL '1' MINUTE) 的表达式树。它不仅包含了操作符（Operator），还打包了所有的入参（如数据源、时间戳列指示器、窗口大小等）。
+  // Expression inputEnumerable： 上游物理数据源集合的 Linq4j 表达式指针（代表 Enumerable 集装箱）。
   private Expression translateTableFunction(RexCall rexCall, Expression inputEnumerable,
       PhysType inputPhysType, PhysType outputPhysType) {
+    // 强行拦截检查当前正在处理的 SQL 操作符是否属于 SqlWindowTableFunction
     assert rexCall.getOperator() instanceof SqlWindowTableFunction;
+    // RexImpTable.INSTANCE 是 Calcite 所有内置函数和算子在代码生成期的“超级中央注册表”（Registry）。
     TableFunctionCallImplementor implementor =
         RexImpTable.INSTANCE.get((SqlWindowTableFunction) rexCall.getOperator());
     if (implementor == null) {
       throw Util.needToImplement("implementor of " + rexCall.getOperator().getName());
     }
+    // 翻译官（this）完成了路由职责，
+    // 调用 implementor.implement，把当前的翻译上下文、数据源指针、逻辑调用树以及物理行元数据毫无保留地全盘交给了那个特定的窗口实现器。
     return implementor.implement(
         this, inputEnumerable, rexCall, inputPhysType, outputPhysType);
   }

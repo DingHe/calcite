@@ -36,7 +36,7 @@ import java.util.List;
 // 所有属于 EnumerableConvention（内存迭代调用约定）的物理算子（例如 EnumerableProject、EnumerableJoin、EnumerableFilter）都必须继承该接口。
 // 核心作用
 // 作为代码生成（Code Generation）的骨架总指挥：
-//EnumerableRel 最大的特色是通过生成 Java 源代码（利用 Linq4j 框架表达式树）在运行时编译并动态执行查询。
+// EnumerableRel 最大的特色是通过生成 Java 源代码（利用 Linq4j 框架表达式树）在运行时编译并动态执行查询。
 // 每个子类算子在优化完成后，都要通过该接口交出自己这一层所对应的 Java 代码片段。
 // 连接“自顶向下优化”与“底层物理执行”的桥梁：
 // 继承了现代 Top-Down 物理节点接口 PhysicalNode。也就是说，它是带有自顶向下特征传递能力的、随时可以用于生成最终内存迭代器（Enumerable 序列）的物理算子。

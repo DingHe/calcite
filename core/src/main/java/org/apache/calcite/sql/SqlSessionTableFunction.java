@@ -34,6 +34,14 @@ import com.google.common.collect.ImmutableList;
  *   <li>an interval parameter to specify a inactive activity gap to break sessions</li>
  * </ol>
  */
+// 用于支持 SESSION（会话窗口表函数） 的核心实现类。
+// 在流处理和时序数据分析中，会话窗口（Session Window） 是一种非常特殊的窗口模式。与固定大小的滚动窗口（Tumble）或滑动窗口（Hop）不同，会话窗口根据数据的活跃度动态切分时间。
+// 它由一个不活跃间隔（Inactive Gap）来定义。如果两物理条数据之间的时间差超过了这个设定的 Gap，则前一个会话结束，后一个会话开始。
+// 定义 SESSION 函数的语法规范：它规定了会话窗口函数所能接受的参数模板，最大允许 4 个参数（最少 3 个）：
+// 第一参数（DATA）：TABLE 关系数据源。
+// 第二参数（TIMECOL）：DESCRIPTOR，声明带有水位线的时间列。
+// 第三参数（KEY，可选/位置多变）：DESCRIPTOR，用于指定作为会话键的列（如 DESCRIPTOR(user_id)）。
+// 第四参数（SIZE，代表 Gap）：INTERVAL，指定会话之间划分边界的不活跃时间间隔（如 INTERVAL '30' MINUTE）。
 public class SqlSessionTableFunction extends SqlWindowTableFunction {
   public SqlSessionTableFunction() {
     super(SqlKind.SESSION.name(), new OperandMetadataImpl());

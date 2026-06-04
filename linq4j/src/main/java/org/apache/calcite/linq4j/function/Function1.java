@@ -38,7 +38,7 @@ public interface Function1<T0, R> extends Function<R> {
   // 语义：输入什么，就原样返回什么 ($f(x) = x$)。
   // 应用场景：在进行某些不需要改变数据的转换操作（如 SELECT * 或某些逻辑占位）时，直接使用这个预定义的静态常量，可以避免重复创建对象，提高性能并减少 GC 压力。
   Function1<Object, Object> IDENTITY = v0 -> v0;
-  // 参数 (T0 a0)：接收一个类型为 T0 的输入参数。
+  // 参数 (T0 a0)：接收一个类型为 Tc0 的输入参数。
   // 返回值 (R)：返回处理后的类型为 R 的结果。
   // 详解：在 Calcite 生成的 Java 代码中，这个方法通常包含了 SQL 标量函数（Scalar Functions）的具体实现。
   R apply(T0 a0);
