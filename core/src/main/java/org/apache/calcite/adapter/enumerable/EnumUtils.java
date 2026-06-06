@@ -803,47 +803,66 @@ public class EnumUtils {
    * <p>Note that it only works for batch scenario. E.g. all data is known and
    * there is no late data.
    */
+  // 核心使命是：动态编织一个匿名内部类函数（Lambda 表达式），该函数接收一条原始输入行，不仅原封不动地复制所有的原始字段，还会运用精准的时间切片算法，实时计算并追加 window_start 和 window_end 两个物理列。
+  // 这加进来的两列有什么用？
+  // 这两列是整个流计算和时序分析的物理地基。
+  // 在这之后，SQL 引擎如果遇到了 GROUP BY window_start, window_end，底层的哈希算子或者排序算子，就可以直接拿刚刚追加的这两个物理格子里的大数字（long）进行极其高效的常规分组聚合。
+  // 通过“只加两列”，Calcite 成功地把一个高大上的“流式滚动时间窗口”问题，完美降维打击退化成了最普通的、数据库最擅长的“基础基本类型 Hash Group By”问题。
+
   static Expression tumblingWindowSelector(
+      // PhysType inputPhysType：输入行物理类型。用于指导如何按索引抽取原始字段。
       PhysType inputPhysType,
+      // PhysType outputPhysType：输出行物理类型。包含了原始字段加上 window_start、window_end 的完整 Schema，指导最终如何将新老字段打包成一条记录（如 Object[]）。
       PhysType outputPhysType,
+      // Expression wmColExpr：时间戳列抓取表达式。即上一层拼装好的、能够从当前行中提取出时间戳字段的代码指针（如 ((Object[])_input)[3]）。
       Expression wmColExpr,
+      // Expression windowSizeExpr：窗口大小表达式。运行时对应的滚动周期毫秒数常量（如 3600000L 代表1小时）。
       Expression windowSizeExpr,
+      // Expression offsetExpr：时间偏移量表达式。用于时区对齐的毫秒数常量（如默认的 0L）。
       Expression offsetExpr) {
     // Generate all fields.
+    // 创建一个表达式容器列表，用来按物理索引顺序收集最终要投射出去的所有列。
     final List<Expression> expressions = new ArrayList<>();
     // If input item is just a primitive, we do not generate specialized
     // primitive apply override since it won't be called anyway
     // Function<T> always operates on boxed arguments
+    // 这里利用 Primitive.box(...) 强行将输入行类型进行包装，并动态声明一个名为 "_input" 的输入参数对象。它是接下来 Lambda 表达式的入参牌
     final ParameterExpression parameter =
         Expressions.parameter(Primitive.box(inputPhysType.getJavaRowType()), "_input");
     final int fieldCount = inputPhysType.getRowType().getFieldCount();
+    // 利用 inputPhysType.fieldReference，顺着刚刚声明的 _input 变量，生成提取第 i 列数据的 Java 代码，并指定其物理目标类型。
     for (int i = 0; i < fieldCount; i++) {
       Expression expression =
           inputPhysType.fieldReference(parameter, i,
               outputPhysType.getJavaFieldType(expressions.size()));
       expressions.add(expression);
     }
+    // 在语法树中强制为时间戳抓取表达式（wmColExpr）套上一层向 JVM 基础基本类型 long 转换的 Cast 指令。
+    // 因为窗口时间戳的切片算术必须在原生 long 纯数字上运行，以确保性能。
     final Expression wmColExprToLong = EnumUtils.convert(wmColExpr, long.class);
 
     // Find the fixed window for a timestamp given a window size and an offset, and return the
     // window start.
     // wmColExprToLong - (wmColExprToLong + windowSizeMillis - offsetMillis) % windowSizeMillis
+    // $$windowStart = ts - (ts + size - offset) \% size$$
     Expression windowStartExpr =
         Expressions.subtract(wmColExprToLong,
             Expressions.modulo(
                 Expressions.add(wmColExprToLong,
                     Expressions.subtract(windowSizeExpr, offsetExpr)),
             windowSizeExpr));
-
     expressions.add(windowStartExpr);
 
     // The window end equals to the window start plus window size.
     // windowStartMillis + sizeMillis
+    // 计算逻辑：滚动窗口的结束时间（window_end）在数学上恒等于 它的起始时间（window_start）加上 窗口的固定大小（windowSize）。
     Expression windowEndExpr =
         Expressions.add(windowStartExpr, windowSizeExpr);
 
     expressions.add(windowEndExpr);
-
+    // outputPhysType.record(expressions) 把我们折腾了半天的、包含了【所有原始列 + window_start列 + window_end列】的表达式大列表，
+    // 根据输出的物理形态（如 Object[]），一揽子打包成一条标准的 Java 行记录初始化表达式。
+    // Expressions.lambda(...)：最后，将这个打包好的长表达式作为函数体，与一开始声明的入参指针 parameter（即 _input）熔炼缝合在一起，生成一个标准的 Linq4j Lambda 表达式（绑定到 Function1 接口上）。
     return Expressions.lambda(Function1.class,
         outputPhysType.record(expressions), parameter);
   }

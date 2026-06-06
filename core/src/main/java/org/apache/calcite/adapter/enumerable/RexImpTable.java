@@ -1479,24 +1479,43 @@ public class RexImpTable {
   }
 
   /** Implementor for the {@code COUNT} windowed aggregate function. */
+  // 继承自 StrictWinAggImplementor，专门负责在 CodeGen 期间为 COUNT(...) OVER (...) 窗口聚合函数 编织最高效的 Java 运行期字节码。
+  // 核心使命是：在生成最终的 Enumerator 物理管道类时，向 current() 方法或窗口滑动状态机中灌入计数累加指令。对于普通的 COUNT(col) 窗口函数，它会生成类似 count++ 的自增语句。
+  // 在 SQL 中，COUNT(*) 或 COUNT(非空列) 的本质其实就是计算当前窗口帧（Window Frame）里到底包含多少行。
+  // 常规做法：为每一行初始化一个 counter = 0，然后启动一个 while 循环去遍历当前窗口 Frame 内的每一行，每走一行执行一次 counter++。这涉及恐怖的循环开销和内存寻址。
+  // Calcite 的降维打击：CountWinImplementor 会在编译期提前洞察算子的元数据。
+  // 一旦它发现入参绝对不可能为 NULL，它就会在代码生成前夕将计算直接熔断。在运行期，它彻底免除多行数据的遍历与累加循环，而是直接向外层框架索要当前窗口帧的物理行数（result.getFrameRowCount()），从而将窗口计数的性能提升数倍。
   static class CountWinImplementor extends StrictWinAggImplementor {
+    // 这是一个编译期（CodeGen 期间）的控制流状态旗帜（Flag），默认值为 false。
+    // 它在 getNotNullState 方法（编译期第一阶段）中被动态计算。如果判定为 true，代表当前窗口 COUNT 完美的触发了上述的“降维打击”特快通道。
     boolean justFrameRowCount;
 
     @Override public List<Type> getNotNullState(WinAggContext info) {
       boolean hasNullable = false;
+      // 通过 info.parameterRelTypes() 遍历当前 COUNT 函数的所有输入列类型。
+      // 只要发现有一列在元数据上允许为 NULL（如 COUNT(nullable_col)），就将 hasNullable 标记为 true。
       for (RelDataType type : info.parameterRelTypes()) {
         if (type.isNullable()) {
           hasNullable = true;
           break;
         }
       }
+      // 检查窗口排除条件：info.getExclude() == RexWindowExclusion.EXCLUDE_NO_OTHER 意味着当前窗口没有附加任何诸如 EXCLUDE CURRENT ROW 或 EXCLUDE GROUP 等剥离特定行的复杂高级语法，
+      // 窗口帧是一个完整、连续的块。
+      // 触发降维打击：此时直接将成员变量 justFrameRowCount 挂载为 true！并惊人地返回了一个空列表 Collections.emptyList()。
+      // 不向内存申请状态槽位：这意味着告诉外层代码生成器：“这个 COUNT 算子在运行期不需要在内存中开辟任何 long 或 int 的状态变量来存计数（stateSize = 0）！”，彻底省去了运行期状态维护的内存开销。
       if (!hasNullable && info.getExclude() == RexWindowExclusion.EXCLUDE_NO_OTHER) {
         justFrameRowCount = true;
         return Collections.emptyList();
       }
+      // 走常规路径：如果条件不满足（比如 COUNT(nullable_col)），则老老实实回退调用 super.getNotNullState(info)，
+      // 向 JVM 申请一个常规的 long.class 状态槽位（Slot 0）用来存放计数。
       return super.getNotNullState(info);
     }
-
+    // 动态编织、生成窗口求值过程中，数据行流过时如何执行累加的 Java 代码。
+    // 特快路径拦截：首先判定 if (justFrameRowCount) return;。如果旗帜为 true，方法直接原地空转，不向当前代码块灌入任何一行 Java 语句！
+    // 这意味着在最终生成的运行期 Java 类中，该窗口帧遍历循环体内部是完全空白的，彻底消灭了行级遍历自增。
+    // 常规路径编织：如果旗帜为 false，则利用 Linq4j 语法树向当前的计算代码块 add.currentBlock() 中疯狂追加一条强力自增语句。
     @Override public void implementNotNullAdd(WinAggContext info,
         WinAggAddContext add) {
       if (justFrameRowCount) {
@@ -1506,7 +1525,8 @@ public class RexImpTable {
           Expressions.statement(
               Expressions.postIncrementAssign(add.accumulator().get(0))));
     }
-
+    // 动态编织、生成当前窗口聚合计算结束、向更上游导出并交付最终 COUNT 结果的 Java 表达式指针。
+    // 特快路径导出：如果 justFrameRowCount 为 true，当前方法会直接返回由外层窗口上下文提前计算好并封装在其中的表达式指针：result.getFrameRowCount()。
     @Override protected Expression implementNotNullResult(WinAggContext info,
         WinAggResultContext result) {
       if (justFrameRowCount) {
@@ -4598,29 +4618,68 @@ public class RexImpTable {
   }
 
   /** Implements the {@code TUMBLE} table function. */
+  // 在 SQL 中，滚动窗口函数（如 TUMBLE(TABLE stream_data, DESCRIPTOR(ts), INTERVAL '1' HOUR)）会将输入的数据流，按照指定的时间戳列和时间间隔（Interval）切分成一个个互不重叠的、固定的时间桶（Time Buckets）。
+  // 该类的核心使命就是：在 CodeGen 编译期间，解构该函数的全部逻辑参数（时间戳列索引、窗口大小、偏移量），并无缝对接到 Calcite 内置的运行时滑动机制（Linq4j 的特定工具方法）上。
+  // 在 Calcite 逻辑优化阶段结束后，TUMBLE 被表达为一个 RexCall。TumbleImplementor 的职责就是作为一个“大总装线”，把这些静态的逻辑树节点组装成一个可以附着在 inputEnumerable 管道上的、能够动态为每一行计算并追加 window_start 和 window_end 的强类型 Java 表达式。
   private static class TumbleImplementor implements TableFunctionCallImplementor {
     @Override public Expression implement(RexToLixTranslator translator,
         Expression inputEnumerable,
         RexCall call, PhysType inputPhysType, PhysType outputPhysType) {
       // The table operand is removed from the RexCall because it
       // represents the input, see StandardConvertletTable#convertWindowFunction.
+      // 正如注释所述，在 Calcite 的逻辑转换阶段，TUMBLE 的第 0 个参数（即 TABLE 关键字指向的底层数据源表）已经被剔除了，
+      // 因为它是直接通过外部的 inputEnumerable 传入的。
+      // 因此，此时的 getOperands().get(1) 锁定的正是窗口大小（如 INTERVAL '1' HOUR）。
+      // 这一行将其翻译成 Linq4j 的常数或时间间隔对象表达式 intervalExpression。
       Expression intervalExpression = translator.translate(call.getOperands().get(1));
+      // 此时的第 0 个操作数是 SQL 中的 DESCRIPTOR(ts_column) 语法节点。这个节点在 Calcite 内部被表达为一个 RexCall（它的操作符是 DESCRIPTOR）。
       RexCall descriptor = (RexCall) call.getOperands().get(0);
+      // 利用 Linq4j 的 Expressions.parameter 指令，动态声明一个变量名为 "_input" 的局部变量表达式指针。
+      // 变量的类型被严格限定为上游物理行类型的包装类（inputPhysType.getJavaRowType()）。它是未来运行时正在滑过的每一行原始数据的“占位指针”。
       final ParameterExpression parameter =
           Expressions.parameter(Primitive.box(inputPhysType.getJavaRowType()),
               "_input");
+
       Expression wmColExpr =
+          // 利用输入行的物理特性，动态编织出一段能够从刚才声明的 _input 变量中准确抽取出该时间戳列数据的 Java 访问表达式（例如 ((Object[])_input)[3]）。
           inputPhysType.fieldReference(parameter,
+              // 深入到 DESCRIPTOR 内部，抓到具体被指定的那个时间戳列引用（RexInputRef）。
+              // .getIndex()：就地抠出该时间戳列在原始输入行中的绝对物理索引编号。
               ((RexInputRef) descriptor.getOperands().get(0)).getIndex(),
               outputPhysType.getJavaFieldType(
                   inputPhysType.getRowType().getFieldCount()));
 
       // handle the optional offset parameter. Use 0 for the default value when offset
       // parameter is not set.
+      // SQL 窗口允许传入可选的 Offset 参数来对齐时区（如 TUMBLE(..., INTERVAL '1' DAY, INTERVAL '8' HOUR) 代表按天切分但从早 8 点开始算桶）。
+      // 如果参数列表尺寸大于 2，说明用户传了偏移量，调用翻译器去编译它；否则，直接利用 Expressions.constant(0, long.class) 在生成的 Java 代码中强行硬编码灌入一个 0L 的长整型常量作为默认偏移。
       final Expression offsetExpr = call.getOperands().size() > 2
           ? translator.translate(call.getOperands().get(2))
           : Expressions.constant(0, long.class);
 
+      // 最终的代码
+      //// 编译期最终顺着 return Expressions.call(...) 交付出来的运行时 Java 真实执行代码：
+      //final Enumerable _inputEnumerable = child.execute();
+      //return Extensions.tumbling(
+      //    _inputEnumerable,
+      //    // 经由 EnumUtils.tumblingWindowSelector 动态拼装出来的行级切片转换器
+      //    new Function1() {
+      //        public Object apply(Object _input) {
+      //            // 1. wmColExpr：物理抓取时间戳
+      //            long timestamp = (Long) ((Object[]) _input)[3];
+      //            // 2. 结合 intervalExpression(1小时) 和 offsetExpr(0) 动态计算所属滚动桶
+      //            long window_start = (timestamp - 0L) / 3600000L * 3600000L + 0L;
+      //            long window_end = window_start + 3600000L;
+      //            // 3. 顺着 outputPhysType 的期望，将原行数据与新算出的两条窗口列（start, end）缝合打包
+      //            return new Object[] {
+      //                ((Object[]) _input)[0], // 原始列A
+      //                ((Object[]) _input)[1], // 原始列B
+      //                window_start,           // 窗口切片新增列：window_start
+      //                window_end              // 窗口切片新增列：window_end
+      //            };
+      //        }
+      //    }
+      //);
       return Expressions.call(
           BuiltInMethod.TUMBLING.method,
           inputEnumerable,
