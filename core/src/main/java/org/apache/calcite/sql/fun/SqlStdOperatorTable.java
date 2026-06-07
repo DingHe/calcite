@@ -1636,7 +1636,11 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           ReturnTypes.INTEGER_NULLABLE,
           OperandTypes.BINARY,
           SqlFunctionCategory.NUMERIC);
-
+  // 参数 1："UPPER"（函数逻辑注册名称）
+  // ReturnTypes.ARG0_NULLABLE（返回值类型推导策略 - SqlReturnTypeInference）
+  // 类型对齐：UPPER 函数吐出来的结果类型，必须跟它传入的第 0 个参数（即第一个入参）的类型完全一致。如果传进来的列是 VARCHAR(20)，那转大写后吐出来的也铁定是 VARCHAR(20)。
+  // OperandTypes.CHARACTER（入参类型严格强校验器 - SqlOperandTypeChecker）
+  // 类型检查：强制约束传入的这唯一一个参数，其 SQL 数据类型必须属于 CHARACTER 家族（如 CHAR、VARCHAR 等字符文本类型）。如果你写出 UPPER(123)（传入了 INT），这个安检器会在编译期瞬间拦截并抛出类型不匹配的致命异常，斩断不合法 SQL 下发到执行层的可能。
   public static final SqlFunction UPPER =
       SqlBasicFunction.create("UPPER",
           ReturnTypes.ARG0_NULLABLE,

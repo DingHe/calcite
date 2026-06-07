@@ -147,43 +147,56 @@ import static java.util.Objects.requireNonNull;
  * If null arguments are possible, the code-generation framework checks for
  * nulls before calling the functions.
  */
+// 扮演着极其核心的角色。它是系统在运行期（Runtime）的基础函数库与算子落地的大本营。
+// SqlFunctions 是 Calcite 动态代码生成（Code Generation）的底层支撑者和终点站。
+// 当我们执行一条 SQL 语句时，Calcite 的优化器会将其翻译成一段动态生成的 Java 物理代码（基于 Linq4j 语法树）。但诸如字符串反转、哈希计算、正则匹配、填充字节等复杂的 SQL 内置函数，
+// 如果全部在代码生成阶段依靠语法树去底层拼装，会导致生成的 Java 源码极其臃肿且难以维护。
+// 因此，Calcite 采用了一种高明的“职责分离”策略：将所有 SQL 标准内置函数的物理执行逻辑，全部在 SqlFunctions 类中用原生 Java 代码实现。
+// 动态生成的代码只需要像调用普通的静态工具类一样，直接调用 SqlFunctions.md5(x) 或 SqlFunctions.lpad(s, n) 即可。
+// 三大核心设计特征：
+// 强类型系统保证：抹平了 SQL 弱类型与 Java 强类型之间的鸿沟，对各种基础类型、ByteString（二进制）、BigDecimal 以及时间日期对象进行了极为严密的重载设计。
+// 编译期性能优化：类上被打上了 @Deterministic（确定性）注解。Calcite 的优化器在进行常量折叠（Constant Folding）时，如果发现输入是常量，会直接在编译期调用这些方法求值，从而免去了运行期的计算。
+// 刻意忽略 NULL 检查：如类注释所述，该类的大部分方法故意不进行 null 校验。这是为了压榨性能，因为外层的代码生成框架（如父类 StrictAggImplementor 过滤锁）已经确保了在调用前过滤掉 null，避免了重复校验带来的 CPU 开销。
+
 @SuppressWarnings("UnnecessaryUnboxing")
 @Deterministic
 public class SqlFunctions {
+  // 常量逗号 ","，常用于内部复杂的列表字符串切分或拼接。
   private static final String COMMA_DELIMITER = ",";
-
+  // 科学计数法格式化器（0.0E0），用于特定场景下将浮点数转换为特定格式字符串。
   @SuppressWarnings("unused")
   private static final DecimalFormat DOUBLE_FORMAT =
       NumberUtil.decimalFormat("0.0E0");
-
+  // 缓存当前 JVM 实例的默认时区（TimeZone.getDefault()），为时间转换提供基准。
   private static final TimeZone LOCAL_TZ = TimeZone.getDefault();
-
+  // 国际化无关的星期格式化器（如返回 "Monday"），固定采用 Locale.ROOT。
   private static final DateTimeFormatter ROOT_DAY_FORMAT =
       DateTimeFormatter.ofPattern("EEEE", Locale.ROOT);
-
+  // 国际化无关的月份格式化器（如返回 "January"）。
   private static final DateTimeFormatter ROOT_MONTH_FORMAT =
       DateTimeFormatter.ofPattern("MMMM", Locale.ROOT);
-
+  // 引入 Commons-Codec 的 Soundex 算法实例，用于计算英语单词的发音相似度（语音索引）。
   private static final Soundex SOUNDEX = new Soundex();
-
+  // Soundex 编码的标准长度，固定为 4。
   private static final int SOUNDEX_LENGTH = 4;
-
+  // 莱文斯坦距离（字符串编辑距离）的算法实例，用于计算两个文本之间的差异度。
   private static final LevenshteinDistance LEVENSHTEIN_DISTANCE =
       LevenshteinDistance.getDefaultInstance();
-
+  // 正则表达式 [\t\n\r\s]，专门用于在 Base64 解码前瞬间剔除换行、制表符等空白干扰符。
   private static final Pattern FROM_BASE64_REGEXP = Pattern.compile("[\\t\\n\\r\\s]");
-
+  // Base32 编解码的物理执行实例。
   private static final Base32 BASE_32 = new Base32();
 
   // Some JVMs can't allocate arrays of length Integer.MAX_VALUE; actual max is somewhat smaller.
   // Be conservative and lower this value a little.
   // @see http://hg.openjdk.java.net/jdk8/jdk8/jdk/file/tip/src/share/classes/java/util/ArrayList.java#l229
   // Note: this variable handling is inspired by Apache Spark
+  // 安全的数组最大边界界定（Integer.MAX_VALUE - 15），规避部分虚拟机因对象头占用导致内存溢出的 Bug。
   private static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 15;
-
+  // 闭包函数：安全地将一个 Java List 转换为 Linq4j 引擎可以识别的 Enumerable 迭代器流。
   private static final Function1<List<Object>, Enumerable<Object>> LIST_AS_ENUMERABLE =
       a0 -> a0 == null ? Linq4j.emptyEnumerable() : Linq4j.asEnumerable(a0);
-
+  // 高阶多路流级联函数：输入多个列表的数组，动态对其生成笛卡尔积（Cartesian Product）迭代器。
   @SuppressWarnings("unused")
   private static final Function1<Object[], Enumerable<@Nullable Object[]>> ARRAY_CARTESIAN_PRODUCT =
       lists -> {
@@ -205,16 +218,19 @@ public class SqlFunctions {
    * <p>This is a straw man of an implementation whose main goal is to prove
    * that sequences can be parsed, validated and planned. A real application
    * will want persistent values for sequences, shared among threads. */
+  // 线程本地变量，缓存当前线程下各个 Sequence（序列）的最新值，用于优化 SQL 序列号生成器的测试与验证。
   private static final ThreadLocal<@Nullable Map<String, AtomicLong>> THREAD_SEQUENCES =
       ThreadLocal.withInitial(HashMap::new);
 
   /** A byte string consisting of a single byte that is the ASCII space
    * character (0x20). */
+  // 包装了 ASCII 空格字符（0x20）的单字节二进制对象，专门供二进制填充函数使用。
   private static final ByteString SINGLE_SPACE_BYTE_STRING =
       ByteString.of("20", 16);
 
   // Date formatter for BigQuery's timestamp literals:
   // https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#timestamp_literals
+  // 专门为了兼容 Google BigQuery 语法的极其复杂的全容错时间戳字面量解析格式化器。
   private static final DateTimeFormatter BIG_QUERY_TIMESTAMP_LITERAL_FORMATTER =
       new DateTimeFormatterBuilder()
           // Unlike ISO 8601, BQ only supports years between 1 - 9999,
@@ -248,6 +264,7 @@ public class SqlFunctions {
           .toFormatter(Locale.ROOT);
 
   /** Whether the current Java version is 8 (1.8). */
+  // 静态布尔探针，检测当前环境是否处于古老的 JDK 8 运行期，用于处理某些特定的 JDK 特性兼容。
   private static final boolean IS_JDK_8 =
       System.getProperty("java.version").startsWith("1.8");
 
@@ -258,6 +275,9 @@ public class SqlFunctions {
    *
    * <p>The method is marked {@link NonDeterministic} to prevent the generator
    * from storing its value as a constant. */
+  // 断言检查函数。
+  // 技术内幕：检查 condition 是否为 true。如果不成立，直接抛出 IllegalStateException。
+  // 该方法打上了 @NonDeterministic 注解，强行阻止优化器在编译期将其错判为常量，确保运行期拦截能百分之百生效。
   @NonDeterministic
   public static boolean throwUnless(boolean condition, String message) {
     if (!condition) {
@@ -267,6 +287,7 @@ public class SqlFunctions {
   }
 
   /** SQL TO_BASE64(string) function. */
+  // 将普通字符串或二进制 ByteString 编码为标准的 Base64 文本。
   public static String toBase64(String string) {
     return toBase64_(string.getBytes(UTF_8));
   }
@@ -287,6 +308,7 @@ public class SqlFunctions {
   }
 
   /** SQL FROM_BASE64(string) function. */
+  // 将 Base64 文本还原解码为二进制 ByteString。
   public static @Nullable ByteString fromBase64(String base64) {
     try {
       base64 = FROM_BASE64_REGEXP.matcher(base64).replaceAll("");
@@ -297,6 +319,7 @@ public class SqlFunctions {
   }
 
   /** SQL TO_BASE32(string) function. */
+  // 实现字符串及二进制对象的 Base32 编码与解码转换，底层依托 Apache Commons-Codec 库实现。
   public static String toBase32(String string) {
     return toBase32_(string.getBytes(UTF_8));
   }
