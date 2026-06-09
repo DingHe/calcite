@@ -27,8 +27,10 @@ import java.lang.reflect.Type;
  * <p>Analogous to LINQ's System.Linq.QueryProvider.
  */
 // QueryProvider 的核心作用是解析并执行表达式树（Expression Tree）。
-// 查询的“工厂”与“执行引擎”：它不仅负责将逻辑上的 Expression 包装成可操作的 Queryable 对象，还负责最终将这些表达式转化为物理操作（如内存迭代、SQL 调用或 API 请求）。
-// 解耦声明与执行：用户在编写 .where().select() 时，只是在构建一颗表达式树。QueryProvider 的存在使得这颗树可以被延迟执行，或者被翻译成其他语言（如 SQL）。
+// 查询的“工厂”与“执行引擎”：它不仅负责将逻辑上的 Expression 包装成可操作的 Queryable 对象，
+// 还负责最终将这些表达式转化为物理操作（如内存迭代、SQL 调用或 API 请求）。
+// 解耦声明与执行：用户在编写 .where().select() 时，只是在构建一颗表达式树。
+// QueryProvider 的存在使得这颗树可以被延迟执行，或者被翻译成其他语言（如 SQL）。
 // 支持单值与集合返回：它既能处理返回一组数据的查询（executeQuery），也能处理返回聚合结果（如 COUNT, MAX）的查询（execute）。
 
 public interface QueryProvider {

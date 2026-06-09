@@ -99,17 +99,25 @@ import static java.util.Objects.requireNonNull;
  *
  * <p>Abstract to allow newer versions of JDBC to add methods.
  */
+// CalciteConnectionImpl 是整个 JDBC 驱动的核心物理实现大本营。它继承自 Apache Avatica 的 AvaticaConnection，并实现了我们前面拆解过的 CalciteConnection 与 Linq4j 的 QueryProvider。
+// 整个查询生命周期的中央枢纽。无论你是通过标准的 JDBC 执行一条 SQL 文本，还是通过 Linq4j 框架执行一棵表达式语法树（Expression Tree），甚至是在 Data-Midend（数据中台）中进行跨异构数据源的联邦查询，最终都会汇聚到这个类里进行状态绑定与多模驱动。
 abstract class CalciteConnectionImpl
     extends AvaticaConnection
     implements CalciteConnection, QueryProvider {
+  // 当前连接专用的行数据与列数据强类型映射工厂
   public final JavaTypeFactory typeFactory;
-
-  final CalciteSchema rootSchema; //CalciteSchema内部封装了用户定义的schema。
+  // 包裹了用户所有自定义 Schema 的元数据核心总账本。虽然用户在外层看到的是 SchemaPlus，但其底层的物理载体就是这个具有层级关系的 CalciteSchema 树。
+  final CalciteSchema rootSchema;
+  // 一个专门用来延迟创建或拉取 CalcitePrepare 编译引擎实例的懒加载供应者（Supplier）。确保在需要编译 SQL 时才去初始化昂贵的编译器组件。
   final Supplier<CalcitePrepare> prepareFactory;
-  final CalciteServer server = new CalciteServerImpl(); //代表连接之间的共享状态
+  // 当前 JDBC 连接持有的一个轻量级“服务器控制台”实例（其具体实现为内部类 CalciteServerImpl）。它核心用来跨 Statement 缓存和共享状态，
+  // 例如追踪和存储当前连接下所有活跃状态的语句（Statements）、结果集迭代器（Iterators）以及用于取消长时间查询的取消标志（cancelFlag）。
+  final CalciteServer server = new CalciteServerImpl();
 
   // must be package-protected
-  static final Trojan TROJAN = createTrojan(); //通过Trojan访问此类的内部状态
+  // 基于 Avatica 特殊后门设计的静态特洛伊木马对象。
+  // 它允许 Calcite 越过包可见性的限制，直接在运行时强行提取或注入 Avatica 内部的语句状态（如提取 PreparedStatement 绑定的动态参数列表）。
+  static final Trojan TROJAN = createTrojan();
 
   /**
    * Creates a CalciteConnectionImpl.

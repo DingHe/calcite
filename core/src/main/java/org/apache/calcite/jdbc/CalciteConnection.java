@@ -38,22 +38,31 @@ import java.util.Properties;
  * {@link QueryProvider} interface, you can use a connection to execute
  * expression trees as queries.
  */
+// 跨界缝合：JDBC 标准与 LINQ4J 运行时引擎的终极桥梁
+// 继承了 java.sql.Connection，意味着它是一个标准的 JDBC 连接，完全可以无缝接入任何标准的 Java 数据库连接池（如 HikariCP、Druid）或 BI 客户端工具。
+// 同时继承了 org.apache.calcite.linq4j.QueryProvider，这意味着它自身就是一个LINQ 表达式查询提供者，能够直接在内存中编织并流式驱动 Linq4j 语法树表达式。
+// 支持联邦数据源的“动态 Schema 挂载中心”
+// 正如源码注释所说，你可以从一个“空连接”开始，
+// 在运行期动态地将 MySQL、Oracle、Elasticsearch 甚至是内存中的 CSV 文件等不同的数据源，作为虚拟 Schema 挂载到这个连接中，
+// 然后直接用一句 SQL 实现跨异构存储的动态关联查询（Federated Query）。
 public interface CalciteConnection extends Connection, QueryProvider {
   /**
    * Returns the root schema.
-   * calcite添加的方法
    * <p>You can define objects (such as relations) in this schema, and
    * also nested schemas.
    *
    * @return Root schema
    */
+  // 获取当前 Calcite 连接的根 Schema（Root Schema）包装器。
+  // 这是整个 Calcite 数据字典（Catalog）的生命之源。SchemaPlus 是一个层级树状结构，通过它，开发人员可以在运行期调用 rootSchema.add("my_mysql_db", new JdbcSchema(...))。
   SchemaPlus getRootSchema();
 
   /**
    * Returns the type factory.
-   *calcite添加的方法
    * @return Type factory
    */
+  // 获取当前连接专用的 Java 类型工厂（Java Type Factory）。
+  // Calcite 作为一套多方言、跨存储的联邦查询引擎，必须有一套底层机制把外部世界形形色色的类型（如 Oracle 的 NUMBER、MySQL 的 BIGINT）统一映射转换成 JVM 内存看得懂的强类型（如 long.class、Integer.class）。
   JavaTypeFactory getTypeFactory();
 
   /**
@@ -68,16 +77,20 @@ public interface CalciteConnection extends Connection, QueryProvider {
    *
    * @return properties
    */
+  // 返回当前物理连接底层的原生属性配置集合（Properties）。
   Properties getProperties();
-  //设置schema
+  // 设置当前连接的默认工作空间/上下文 Schema（Default Schema）。
+  // 当用户在客户端执行了 USE my_schema 或者在连接串里指定了默认 Schema 后，
+  // SQL 解析器在遇到没有写前缀的表名（如直接写 SELECT * FROM users）时，就会自动把这一层设定的 schema 路径作为默认前缀补全上去。
   // in java.sql.Connection from JDK 1.7, but declare here to allow other JDKs
   @Override void setSchema(String schema) throws SQLException;
- //返回schema
   // in java.sql.Connection from JDK 1.7, but declare here to allow other JDKs
+  // 获取当前连接正在使用的默认 Schema 名称。
   @Override String getSchema() throws SQLException;
-  //连接配置
+  // 获取当前连接的只读高级配置对象（CalciteConnectionConfig）。
+  // 它把前面的 Properties 统一包装、封装成了强类型的、具备良好体系结构的配置引脚。
   CalciteConnectionConfig config();
-  //连接的上下文
+  // 为即将投入执行的 SQL 语句（Statement）在内部孵化并创造一个专门的编译准备上下文（Context）。
   /** Creates a context for preparing a statement for execution. */
   Context createPrepareContext();
 }

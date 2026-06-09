@@ -25,7 +25,8 @@ import java.lang.reflect.Type;
 /**
  * Extension to {@link Table} that can translate itself to a {@link Queryable}.
  */
-// 在 Apache Calcite 的架构中，QueryableTable 是一个比 ScannableTable 更高级的接口。它主要用于 Linq4j（Calcite 仿照 .NET LINQ 开发的 Java 实现）驱动的查询场景，
+// 在 Apache Calcite 的架构中，QueryableTable 是一个比 ScannableTable 更高级的接口。
+// 它主要用于 Linq4j（Calcite 仿照 .NET LINQ 开发的 Java 实现）驱动的查询场景，
 // 其核心逻辑是将表视为一个可以进行流式计算的 Java 集合。
 // QueryableTable 的核心作用是将 SQL 表转换为一个可执行的表达式树（Expression Tree）。
 // 强类型集成：与 ScannableTable 返回通用的 Object[] 不同，QueryableTable 通常与具体的 Java 类（POJO）绑定。
