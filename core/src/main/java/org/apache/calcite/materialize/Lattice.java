@@ -95,17 +95,62 @@ import static java.util.Objects.requireNonNull;
  * Structure that allows materialized views based upon a star schema to be
  * recognized and recommended.
  */
+// Lattice（格子/晶格模型）是用于实现高级 OLAP 多维分析优化、星型模型（Star Schema）识别以及物化视图自动推荐/改写的核心元数据类。
+// Lattice 的核心作用是对数据仓库中的星型/雪花模型（一个事实表绑定多个维表）进行全局的语义层抽象。
+// 它将多张通过外键等值连接的表，统一平铺并映射为一个包含所有可用维度（columns）和度量（defaultMeasures）的虚拟大宽表。
+// 核心功能包括：
+// 星型模型识别与解析：能够通过一段原始的星型连接 SQL，自动分析出表与表之间的拓扑连接树（LatticeRootNode）。
+// 切片组合生成（Tile / Data Cube）：能够基于用户指定的维度和度量组合，自动生成物理物化视图的建表/刷新 SQL 语句（sql / countSql）。
+// 物化视图智能推荐（TileSuggester）：结合代价模型（CBO）与统计信息提供者（LatticeStatisticProvider），在给定的时间限制（algorithmMaxMillis）内，自动计算并向系统推荐最优的物化视图预聚合组合（类似于 Data Cube 中的上卷与下钻决策）。
+// Lattice解决的问题
+// 自动识别和抽象星型/雪花模型（语义层统一）
+// 在没有 Lattice 之前，优化器看到的只是一堆散乱的物理表（事实表、维度表）和一堆复杂的 JOIN 算子。
+// 解决的问题：Lattice 允许你通过一段标准的星型连接 SQL，直接把这堆乱七八糟的表抽象、固化为一张虚拟的“多维大宽表”。
+// 效果：它自动理清了谁是事实表、谁是维表、它们是通过什么外键关联的，并为所有可用的维度（Columns）和度量（Measures）分配了全局唯一的索引。这给优化器提供了一个完美的、上帝视角的多维数据模型语义层。
+// 自动判定物化视图的“包含与覆盖”关系（路由改写）
+// 假设你为了加速查询，已经提前把 事实表 + 时间维 + 地域维 聚合后的数据物化成了一张表 $M$。此时用户发送了一个只查询 事实表 + 时间维 的 SQL。
+// 解决的问题：在传统数据库中，优化器很难直接发现“其实查表 $M$ 再聚合一下，比直接查原始事实表要快得多”。
+// 效果：Lattice 内部将所有连接树打上了结构指纹（digest）并提取了全局路径（paths）。当用户输入查询时，Calcite 会为用户的查询也生成一个临时的 Lattice 树，然后通过：
+// 物化视图Lattice.contains(用户查询Lattice)
+// 这一行代码，秒级判定出物化视图是否完全覆盖了用户查询的维度。如果包含，优化器就会自动把你的 SQL 改写去查那张预聚合表，用户完全感知不到。
+// 解决“到底该建哪些物化视图”的决策难题（智能推荐/Cube剪枝）
+// 如果一张事实表有 10 个维度，理论上这些维度可以组合出 $2^{10} = 1024$ 种不同的聚合切片（在 OLAP 里叫 Tile 或 Cuboid）。如果把这些切片全部物理建表，存储空间会爆炸，计算资源也会耗尽
+// 解决的问题：数据工程师无法拍脑袋决定“我到底该建哪几个组合的物化视图收益最高”。
+// 效果：Lattice 引入了 TileSuggester（平铺块推荐算法）。它结合了 CBO（基于代价的优化）和空间限制：
+// 它利用数学公式预估出每一个维度组合（Tile）聚合后的行数。
+// 在你设定的时间限制内（例如 algorithmMaxMillis=10000），采用启发式算法，自动挑选出最具性价比、能以最小的存储代价加速最多查询的维度组合推荐给你。
+// 动态按需连接与剪枝（消除冗余 JOIN）
+// 有时候，一个物化视图大宽表定义了 5 张表的 JOIN。但用户今天的查询很轻量，只涉及其中 2 张表。
+// 解决的问题：如果直接查大宽表物化视图，或者无脑使用传统改写，可能会带上很多没用的 JOIN 导致性能下降。
+// 效果：Lattice 具备强大的连接剪枝（Join Pruning）能力。它在通过多维模型生成物理 SQL 时，会扫描用户要的维度，发现另外 3 张维表没用到，就会在生成的 SQL 中直接把这 3 张维表的 JOIN 语句人间蒸发（剪掉），从而保证生成的底层查询绝对纯净高效。
 public class Lattice {
+  // 当前 Lattice 所属的 Calcite 根 Schema。
+  // 一切物理表元数据解析和验证的基础空间。
   public final CalciteSchema rootSchema;
+  // 整棵星型模型连接树的不可变根节点（对应事实表）。
+  // 通过它能访问到树上所有的维表节点、连接条件和完整路径指纹。
   public final LatticeRootNode rootNode;
+  // 该多维模型中注册的所有列（包含基础物理列和派生表达式列）的全局有序列表。
+  // Lattice 内部每个列都有一个唯一的全局递增索引（ordinal），后续的多维分析完全基于该索引。
   public final ImmutableList<Column> columns;
+  // 是否启用自动物化视图改写
+  // 若为 true，优化器在遇到匹配的查询时会自动使用基于此 Lattice 生成的物化表。
   public final boolean auto;
+  // 是否启用自动物化视图推荐优化算法（Tile Suggester）。
   public final boolean algorithm;
+  // 物化视图推荐算法运行的最大允许超时时间（毫秒）
   public final long algorithmMaxMillis;
+  // 底层事实表（未聚合前）的预估行数基数。
   public final double rowCountEstimate;
+  // 当前多维模型中定义的默认度量（聚合指标）集合（已排序且去重）。
   public final ImmutableList<Measure> defaultMeasures;
+  // 当前 Lattice 中明确配置或生成的平铺块（Tile，即特定的维度聚合组合）列表。
   public final ImmutableList<Tile> tiles;
+  // 记录每个列（通过 ordinal 标识）在原始查询中的使用行为。
+  // 映射表为 列索引 -> [是否作为度量参数, 是否作为分组维度] 的布尔标记图，用于判断列的真实用途。
   public final ImmutableListMultimap<Integer, Boolean> columnUses;
+  // 当前多维模型的基数/统计信息提供者。
+  // 用于预估某个维度组合聚合后的行数，是 CBO 优化算法的底层数据支撑。
   public final LatticeStatisticProvider statisticProvider;
 
   private Lattice(CalciteSchema rootSchema, LatticeRootNode rootNode,
@@ -123,9 +168,9 @@ public class Lattice {
     this.defaultMeasures = defaultMeasures.asList(); // unique and sorted
     this.tiles = requireNonNull(tiles, "tiles");
     this.columnUses = columnUses;
-
+    // 在正式交付给优化器之前，启动内部一致性终审。
     assert isValid(Litmus.THROW);
-
+    // 确保多维推荐算法（Tile Suggester）拥有一底层的“原始事实表行数基数”。
     if (rowCountEstimate == null) {
       // We could improve this when we fix
       // [CALCITE-429] Add statistics SPI for lattice optimization algorithm
@@ -134,6 +179,7 @@ public class Lattice {
     checkArgument(rowCountEstimate > 0d);
     this.rowCountEstimate = rowCountEstimate;
     @SuppressWarnings("argument.type.incompatible")
+    // 将当前已经组装过关的 Lattice 实例反向注入给统计提供者工厂，激活最终的基数查询接口。
     LatticeStatisticProvider statisticProvider =
         requireNonNull(statisticProviderFactory.apply(this));
     this.statisticProvider = statisticProvider;

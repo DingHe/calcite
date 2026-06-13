@@ -550,11 +550,16 @@ public abstract class CalciteSchema {
    * therefore in principle it could belong to several schemas, or
    * even the same schema several times, with different names. In this
    * respect, it is like an inode in a Unix file system.
-   * CalciteSchema作为键，表、子schema等作为值
    * <p>The members of a schema must have unique names.
    */
+  // CalciteSchema（模式/数据库）中所有成员的抽象基类。
+  // 无论是子模式（Sub-schema）、表（Table）、视图（View）还是函数（Function），只要想依附于某个 CalciteSchema 之下，都必须是 Entry 的子类。
+  // 注释中用了一个非常形象的比喻：类比 Unix 文件系统中的 inode。
   public abstract static class Entry {
+    // 表示当前 Entry 所隶属的、上一级的 CalciteSchema 对象
+    // 相当于文件系统中文件所在的“父目录”。由于是 final 的，一旦初始化就不能更改，确保了层级关系的稳定性。
     public final CalciteSchema schema;
+    // 前 Entry 在所属 schema 中的唯一标识名称（如表名、子模式名）。
     public final String name;
 
     protected Entry(CalciteSchema schema, String name) {
@@ -569,13 +574,15 @@ public abstract class CalciteSchema {
   }
 
   /** Membership of a table in a schema. */
+  // 专门用于表示注册到 Schema 中的表（或视图）的生命周期与元数据占位符。它不仅持有了真实的表对象引用，还维护了与该表相关的 SQL 视图定义
   public abstract static class TableEntry extends Entry {
+    // 存储与该表相关的 SQL 语句集合，通常用于视图（View）
     public final ImmutableList<String> sqls;
 
     protected TableEntry(CalciteSchema schema, String name,
         ImmutableList<String> sqls) {
       super(schema, name);
-      this.sqls = requireNonNull(sqls, "sqls"); //包含sql语句
+      this.sqls = requireNonNull(sqls, "sqls");
     }
 
     public abstract Table getTable();

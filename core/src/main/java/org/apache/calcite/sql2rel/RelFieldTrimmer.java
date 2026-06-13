@@ -109,6 +109,13 @@ import java.util.Set;
  * tree just for reordering. Could ease the transition by writing methods that
  * convert BitSet to Mapping and vice versa.
  */
+// RelFieldTrimmer（字段裁剪器）的核心作用是：在关系代数树（RelNode AST）中，自顶向下、递归地裁剪掉所有未被上层算子使用的冗余字段。
+// 在 SQL 转化为关系代数节点时（SqlToRelConverter 阶段），通常会将表的所有列全部拉取出来。如果用户写的 SQL 是：
+// SELECT name FROM users WHERE age > 18
+// 虽然用户只需要 name 列，但底层可能把用户表的 id, name, age, create_time 等所有列全扫描出来了。RelFieldTrimmer 通过对整棵树进行深度的、自顶向下的分析，只保留那些真正参与 SELECT、WHERE（Filter 条件）、ORDER BY（Sort 键）或 JOIN（关联条件）计算的列。
+// 多方法动态路由（Multi-method Dispatch）：由于它继承自 ReflectiveVisitor，它不采用死板的 if-else 判断节点类型，
+// 而是利用 Calcite 的 ReflectUtil 通过反射动态将不同类型的算子路由到对应的重载方法 trimFields(SpecificRelNode, ...)。
+// 联合变化（TrimResult）：裁剪字段会导致当前算子的输出 RowType 发生坍塌（列数变少）。因此，改变子节点的输出意味着父节点中所有对子节点的列索引引用（RexInputRef）都必须进行重置刷新。该类通过维护一个 Mapping（映射表）来完成新老索引的平滑校准。
 public class RelFieldTrimmer implements ReflectiveVisitor {
   //~ Static fields/initializers ---------------------------------------------
 

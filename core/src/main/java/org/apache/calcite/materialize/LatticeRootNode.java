@@ -24,9 +24,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Root node in a {@link Lattice}. It has no parent. */
+// 专门用来表示整棵连接树（Join Tree）的根节点（即事实表 / Fact Table Node）。
+// LatticeRootNode 的核心作用是作为多维晶格模型（Lattice Graph）的中心锚点和全局管理者。
+// LatticeRootNode 通过对子树进行展平、提取路径，向优化器提供了如下关键能力：
+// 全局拓扑快照：它将嵌套的树结构展平，使得优化器可以通过一个线性列表（descendants）快速访问树中的任意维表节点。
+// 包含关系判定：它是物化视图改写决策的关键。通过比对两条 SQL 生成的 LatticeRootNode 的路径集合，Calcite 可以瞬间判断出“物化视图 A 包含的维度是否完全覆盖了当前查询 B 的维度”，进而决定能否进行物化改写。
 public class LatticeRootNode extends LatticeNode {
   /** Descendants, in prefix order. This root node is at position 0. */
+  // 以前序遍历（Prefix Order / Pre-order）顺序存储的、包含根节点自身在内的所有后代节点的不可变列表。
+  // 位置 0 的节点永远是当前这个根节点（事实表）本身。通过这个属性，外部组件无需再写复杂的递归算法，直接遍历这个 List 就能拿到整棵拓扑树上的所有表。
   public final ImmutableList<LatticeNode> descendants;
+  // 存储从该根节点（事实表）出发，到达树中所有后代维表节点的所有关联路径（Path）集合。
+  // 每一条 Path 都是由若干条“边（Step）”串联起来的维度路径（例如 事实表 -> 客户表 -> 城市表）。这些路径代表了当前晶格模型所支持的全部维度分析能力。
   final ImmutableList<Path> paths;
 
   @SuppressWarnings("method.invocation.invalid")

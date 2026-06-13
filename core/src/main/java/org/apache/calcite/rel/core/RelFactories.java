@@ -76,54 +76,59 @@ import static java.util.Objects.requireNonNull;
  * Contains factory interface and default implementation for creating various
  * rel nodes.
  */
+// RelFactories 的核心作用是解耦关系表达式（RelNode）的构建逻辑，为 Calcite 内部（如优化器 Rule、RelBuilder）提供统一的、可定制的抽象工厂模式实现。
+// 统一接口规范：它将各种 RelNode（如 Project, Filter, Join 等）的创建行为抽象为内部的 Factory 接口。
+// 支持多生态/多 Convention：通过这些接口，优化器可以在不改变核心 Rule 代码的前提下，通过替换底层 Factory 来生成不同物理引擎或 Calling Convention（调用约定）的节点（例如，默认生成逻辑节点 LogicalProject，但可以定制生成 Spark 或 Flink 的物理节点）。
+// 配合 RelBuilder 管道化构建：该类组装的高级工厂（如 LOGICAL_BUILDER）能够允许开发者以流畅的 API（Fluent API）模式去构建整棵关系代数语法树。
 public class RelFactories {
+  // 默认投影算子工厂，内部实例为 ProjectFactoryImpl，用于创建标准的 LogicalProject 节点。
   public static final ProjectFactory DEFAULT_PROJECT_FACTORY =
       new ProjectFactoryImpl();
-
+  // 默认过滤算子工厂，内部实例为 FilterFactoryImpl，用于创建标准的 LogicalFilter 节点。
   public static final FilterFactory DEFAULT_FILTER_FACTORY =
       new FilterFactoryImpl();
-
+  // 默认连接算子工厂，内部实例为 JoinFactoryImpl，用于创建标准的 LogicalJoin 节点。
   public static final JoinFactory DEFAULT_JOIN_FACTORY = new JoinFactoryImpl();
-
+  // 认相关关联算子工厂，内部实例为 CorrelateFactoryImpl，用于创建标准的 LogicalCorrelate 节点（通常处理 Correlated Subquery）。
   public static final CorrelateFactory DEFAULT_CORRELATE_FACTORY =
       new CorrelateFactoryImpl();
-
+  // 默认排序与切片（Limit/Offset）算子工厂，内部实例为 SortFactoryImpl，用于创建标准的 LogicalSort 节点。
   public static final SortFactory DEFAULT_SORT_FACTORY =
       new SortFactoryImpl();
-
+  // 默认数据分布式交换算子（Exchange）工厂，内部实例为 ExchangeFactoryImpl，用于分布式计算中的数据重分区。
   public static final ExchangeFactory DEFAULT_EXCHANGE_FACTORY =
       new ExchangeFactoryImpl();
-
+  // 默认排序交换算子工厂，内部实例为 SortExchangeFactoryImpl，在做数据交换的同时保证分区间或分区内数据的有序性。
   public static final SortExchangeFactory DEFAULT_SORT_EXCHANGE_FACTORY =
       new SortExchangeFactoryImpl();
-
+  // 默认聚合/分组算子工厂，内部实例为 AggregateFactoryImpl，用于创建标准的 LogicalAggregate 节点。
   public static final AggregateFactory DEFAULT_AGGREGATE_FACTORY =
       new AggregateFactoryImpl();
-
+  // 默认抽样算子工厂，内部实例为 SampleFactoryImpl，用于创建在大数据场景下做数据仿样/抽样的 Sample 节点。
   public static final SampleFactory DEFAULT_SAMPLE_FACTORY =
       new SampleFactoryImpl();
-
+  // 默认复杂事件处理算子工厂，内部实例为 MatchFactoryImpl，用于实现类似 SQL MATCH_RECOGNIZE 的模式匹配。
   public static final MatchFactory DEFAULT_MATCH_FACTORY =
       new MatchFactoryImpl();
-
+  // 默认集合操作算子工厂，内部实例为 SetOpFactoryImpl，根据 SQL 类型可以创建 Union、Minus 或 Intersect。
   public static final SetOpFactory DEFAULT_SET_OP_FACTORY =
       new SetOpFactoryImpl();
-
+  // 默认内联常量元组算子工厂，内部实例为 ValuesFactoryImpl，常用于 SELECT 1 或 INSERT INTO ... VALUES ... 场景。
   public static final ValuesFactory DEFAULT_VALUES_FACTORY =
       new ValuesFactoryImpl();
-
+  // 默认表扫描算子工厂，内部实例为 TableScanFactoryImpl，是整棵关系代数树的叶子节点，负责读取元数据表。
   public static final TableScanFactory DEFAULT_TABLE_SCAN_FACTORY =
       new TableScanFactoryImpl();
-
+  // 默认表函数扫描算子工厂，内部实例为 TableFunctionScanFactoryImpl，用于处理表函数（Table-Valued Functions）。
   public static final TableFunctionScanFactory
       DEFAULT_TABLE_FUNCTION_SCAN_FACTORY = new TableFunctionScanFactoryImpl();
-
+  // 默认快照算子工厂，内部实例为 SnapshotFactoryImpl，主要用于时态表（Temporal Tables）查询，拦截指定快照版本的数据。
   public static final SnapshotFactory DEFAULT_SNAPSHOT_FACTORY =
       new SnapshotFactoryImpl();
-
+  // 默认暂存/假脱机算子工厂（实验性），内部实例为 SpoolFactoryImpl，用于物化或暂存中间计算结果（常在复杂递归或重复读中应用）。
   public static final SpoolFactory DEFAULT_SPOOL_FACTORY =
       new SpoolFactoryImpl();
-
+  // 默认迭代连结算子工厂（实验性），内部实例为 RepeatUnionFactoryImpl，用于支持递归查询（如常用于计算图拓扑、SQL 中的 WITH RECURSIVE）。
   public static final RepeatUnionFactory DEFAULT_REPEAT_UNION_FACTORY =
       new RepeatUnionFactoryImpl();
 
@@ -159,6 +164,11 @@ public class RelFactories {
    * {@link org.apache.calcite.rel.logical.LogicalProject} of the
    * appropriate type for this rule's calling convention.
    */
+  // ProjectFactory 是一个抽象工厂接口，其核心作用是定义如何创建关系代数中的“投影（Project）”算子（即 SQL 中的 SELECT 字段映射与计算）
+  // 在 Apache Calcite 的优化器（如 VolcanoPlanner 或 HepPlanner）执行优化规则（RelOptRule）时，经常需要创建新的节点来替换旧的节点。如果直接通过 new LogicalProject(...) 硬编码硬点，代码就失去了灵活性。
+  //通过抽象出 ProjectFactory，优化器可以根据当前的调用约定（Calling Convention）动态地替换底层的工厂：
+  // 在逻辑优化阶段，它可以映射为 ProjectFactoryImpl，生成标准的 LogicalProject。
+  // 在物理对接阶段（如对接 Spark、Flink 或 具体的数据库引擎），可以注入对应的物理工厂，生成 SparkProject 或 FlinkHiveProject，而不需要修改上层的优化规则代码。
   public interface ProjectFactory {
     /**
      * Creates a project.
@@ -170,6 +180,10 @@ public class RelFactories {
      * @return a project
      * @deprecated Use {@link #createProject(RelNode, List, List, List, Set)} instead
      */
+    // RelNode input 当前投影算子的下游/输入数据源算子（即数据从哪里来）
+    // List<RelHint> hints  SQL 提示（Hints）列表。 如果在 SQL 中写了 SELECT /*+ MAX_EXECUTION_TIME(1000) */ a FROM t，这些控制执行策略的元数据信息会以 RelHint 的形式保存在这个 List 中，并透传给最终生成的 Project 节点。
+    // List<? extends RexNode> childExprs 投影表达式列表。这是 Project 算子的灵魂，定义了每一列应该如何计算。
+    // @Nullable List<? extends @Nullable String> fieldNames 投影输出的字段名称/别名列表。该参数被设计为可空（@Nullable）。
     @Deprecated // to be removed before 2.0
     default RelNode createProject(RelNode input, List<RelHint> hints,
         List<? extends RexNode> childExprs, @Nullable List<? extends @Nullable String> fieldNames) {
@@ -188,6 +202,9 @@ public class RelFactories {
      *                     projection expressions
      * @return a project
      */
+    // Set<CorrelationId> variablesSet  当前投影算子引发或向下传递的相关变量（Correlating Variables）集合
+    // 这通常出现在相关子查询（如 WHERE t1.a > (SELECT AVG(t2.x) FROM t2 WHERE t2.y = t1.b)）的去关联（De-correlation）或重写中。
+    // 当读取输入行时，这些变量会被赋值，以便在这个投影表达式内部，或者传递给下游表达式去引用外层查询的字段。
     RelNode createProject(RelNode input, List<RelHint> hints,
         List<? extends RexNode> childExprs, @Nullable List<? extends @Nullable String> fieldNames,
         Set<CorrelationId> variablesSet);
@@ -197,6 +214,7 @@ public class RelFactories {
    * Implementation of {@link ProjectFactory} that returns a vanilla
    * {@link org.apache.calcite.rel.logical.LogicalProject}.
    */
+  // 直接调用LogicalProject的create方法
   private static class ProjectFactoryImpl implements ProjectFactory {
     @Override public RelNode createProject(RelNode input, List<RelHint> hints,
         List<? extends RexNode> childExprs, @Nullable List<? extends @Nullable String> fieldNames,

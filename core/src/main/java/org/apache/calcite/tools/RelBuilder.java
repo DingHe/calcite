@@ -182,14 +182,38 @@ import static java.util.Objects.requireNonNull;
  *
  * <p>It is not thread-safe.
  */
+// org.apache.calcite.tools.RelBuilder 是一个出镜率极高、最核心的工具类之一。
+// 它采用建造者模式（Builder Pattern）并结合了操作数栈（Stack）的设计思想，专门用于编排、构建和重构关系代数表达式树（RelNode）。
+// 在 Calcite 中，直接调用各种物理/逻辑算子的构造函数（例如 new LogicalProject(...), new LogicalFilter(...)）来手工组装一棵算子树是非常痛苦且容易出错的。你需要自己处理复杂的类型推导（RelDataType）、全局宇宙上下文（RelOptCluster）传递以及繁琐的字段索引（RexInputRef）计算。
+// RelBuilder 核心解决的就是算子树手工构建复杂、可读性差、容易出错的问题：
+// 统一的脚手架接口：它提供了一套极度流畅的 流式 API（Fluent API）。例如，构建一个普通的查询，使用 RelBuilder 只需要一气呵成：
+// builder.scan("EMP")
+//       .filter(builder.equals(builder.field("DEPTNO"), builder.literal(10)))
+//       .project(builder.field("ENAME"))
+//       .build();
+// 基于栈（Stack）的算子管理：它的绝大多数算子方法（如 filter, project, join）都属于隐式入栈/出栈操作。例如，当你调用 scan("A") 时，A 算子会被压入内部栈顶；紧接着调用 filter，它会自动从栈顶弹出 A，包裹上一层 Filter 后再压回栈顶；当调用 join 时，它会自动弹出栈顶的两棵树进行关联。
+// 插件式物理算子替换（解耦核心）：RelBuilder 默认生产的是标准的逻辑算子（LogicalProject 等）。
+// 但在不同的计算引擎（如 Hive、Flink、Spark）集成时，可以通过传入不同的工厂配置（RelFactories.Struct），
+// 在完全不修改流式代码结构的前提下，直接让 builder.filter 生产出 HiveFilter 或 FlinkStreamFilter。
 @Value.Enclosing
 public class RelBuilder {
+  // 当前关系代数树运行的全局集群/宇宙上下文环境。
+  // 持有了优化器（Planner）实例、类型工厂（RelDataTypeFactory）、表达式建造器（RexBuilder）以及元数据查询系统。所有的算子和行表达式节点诞生时，都必须绑定到同一个 cluster。
   protected final RelOptCluster cluster;
+  // 全局的关系型元数据大纲（Schema）。
+  // 主要用于通过表名字符串（如 scan("EMP")）反向检索物理表的元数据。由于在纯内存计算或直接传递 RelNode 的轻量优化场景下可能不需要 catalog 检索，因此允许为 null。
   protected final @Nullable RelOptSchema relOptSchema;
+  // 最核心的内部状态：操作数栈。
+  // 这是一个双端队列（当作栈使用），用来存储当前阶段已经构建好的、处于悬挂状态的 RelNode 及其字段别名映射（封装在内部类 Frame 中）。流式调用算子方法时，就是在此栈上不断进行压栈（Push）和弹栈（Pop）的拓扑组装。
   private final Deque<Frame> stack = new ArrayDeque<>();
+  // 行表达式（RexNode）简化器。
+  // 每当你在 RelBuilder 中构建布尔过滤条件时（例如 AND(true, x = 1)），这个组件会利用底层的谓词推导（Predicates）和执行器，自动在编译期将其常数折叠或简化为 x = 1，从而提升整体树的初始质量。
   private RexSimplify simplifier;
+  // RelBuilder 的运行时控制行为配置对象。
   private final Config config;
+  // 视图展开器。
   private final RelOptTable.ViewExpander viewExpander;
+  // 抽象算子工厂结构体（内含各种核心算子的 Factory）
   private RelFactories.Struct struct;
 
   protected RelBuilder(@Nullable Context context, RelOptCluster cluster,
@@ -225,9 +249,14 @@ public class RelBuilder {
    *
    * <p>The default view expander does not support expanding views.
    */
+  // 负责为当前正在创建的 RelBuilder 推导并绑定一个视图展开器（ViewExpander）。
+  // 在大数据和数据库系统中，“视图（View）”本质上是一个存储在元数据中的虚拟 SQL 查询。
+  // 当你在流式 API 中调用 builder.scan("MY_VIEW") 时，RelBuilder 内部不能直接去扫物理表，
+  // 而是需要通过 ViewExpander 把这个视图的底层 SQL 捞出来，解析并展开成一棵子算子树塞进当前的位置。
   private static RelOptTable.ViewExpander getViewExpander(RelOptCluster cluster,
       Context context) {
     return context.maybeUnwrap(RelOptTable.ViewExpander.class)
+        // 如果用户根本没有在 context 里配过视图展开器，则触发此保底分支。
         .orElseGet(() -> ViewExpanders.simpleContext(cluster)); //ViewExpanders.simpleContext里面并没有实现视图的展开逻辑
   }
 
@@ -236,7 +265,9 @@ public class RelBuilder {
    * <p>Overrides {@link RelBuilder.Config#simplify} if
    * {@link Hook#REL_BUILDER_SIMPLIFY} is set.
    */
+  // 负责推导、衍生出符合当前环境要求的最终运行时控制配置对象（Config）。它的核心价值在于提供了一种通过全局“钩子（Hook）”在运行时强制介入/扭转优化行为的后门机制。
   private static Config getConfig(Context context) {
+    // 首先尝试从上下文 context 中解包获取用户设定的高级配置 Config。如果解包不出来，说明用户想要用开箱即用的体验，此时直接选用系统内置的默认大盘配置 Config.DEFAULT。
     final Config config =
         context.maybeUnwrap(Config.class).orElse(Config.DEFAULT);
     boolean simplify = Hook.REL_BUILDER_SIMPLIFY.get(config.simplify());
@@ -244,7 +275,9 @@ public class RelBuilder {
   }
 
   /** Creates a RelBuilder. */
+  // 暴露给整个 Calcite 社区最通用、最标准的静态公共工厂方法（主入口）
   public static RelBuilder create(FrameworkConfig config) {
+    // 调用 Calcite 框架提供的准备工具。这是一个控制反转（IoC）的高阶函数。
     return Frameworks.withPrepare(config,
         (cluster, relOptSchema, rootSchema, statement) ->
             new RelBuilder(config.getContext(), cluster, relOptSchema));
@@ -252,7 +285,17 @@ public class RelBuilder {
 
   /** Creates a copy of this RelBuilder, with the same state as this, applying
    * a transform to the config. */
+  // 允许你基于当前 RelBuilder 的所有已有元数据和状态，快速克隆出一个“局部临时改变了构建规则”的全新 RelBuilder 副本。
+  // 在编写高级优化规则（Optimizer Rules）或定制数据转换时，你经常会遇到一种“既要、又要”的尴尬两难境地：
+  // 全局环境：你希望新创建的算子树依然在原来的 cluster 宇宙中，能看到原来的元数据大纲 relOptSchema。
+  // 局部策略：但是，对于接下来要流式组装的这几步特定算子，你希望临时改变其构建策略。例如，接下来要构建一处特殊的逻辑，你希望临时关闭常数折叠（simplify = false），或者临时允许 Project 算子无限合并膨胀（bloat = 10000）。
+  // 你必须手动把老 builder 的 cluster、relOptSchema、context 挨个抽取出来，自己解包配置、手动修改后再去重新 new RelBuilder(...)。这不仅繁琐，而且极易丢失老 builder 已经加载好的工厂结构体（struct）。
+  // 用了函数式编程（UnaryOperator 单元算子），允许你在不破坏原有 RelBuilder 配置的前提下，一行代码派生出一个临时改变了规则的“分身”。
+  // UnaryOperator<Config> transform 一个配置转换函数（接收一个 Config 对象，处理后必须返回一个新的 Config 对象）。
   public RelBuilder transform(UnaryOperator<Config> transform) {
+    // ontexts.of(struct, ...)：
+    //
+    //逻辑：将当前的算子物理工厂结构体 this.struct（里面保存了当前正在使用的 FilterFactory、ProjectFactory 等）与刚刚生成的全新 Config 一起，重新揉碎、打包成一个全新的上下文大对象（Context）。
     final Context context =
         Contexts.of(struct, transform.apply(config));
     return new RelBuilder(context, cluster, relOptSchema);
@@ -289,6 +332,28 @@ public class RelBuilder {
    * <p>In pipelined cases such as this one, the lambda must return this
    * RelBuilder. But {@code let} return values of other types.
    */
+  // 终结被 if 语句打断的流式管道
+  // 在开发复杂的 SQL 转换器时，经常需要根据业务配置动态地叠加算子。传统的流式代码一旦遇到分支逻辑（例如：如果参数不为空，就加一层 rename 算子），就必须强行断开链式调用，声明变量，等 if 判定完后再继续链式调用。
+  // let 方法通过引入高阶函数（函数作为参数），允许你将 if-else 这样的条件控制块直接“内联”融入到一气呵成的单条流式管道中。
+  // let 方法非常大方，它不强制要求闭包必须返回 RelBuilder 本身，而是允许返回任意类型 R。
+  // 如果 R 是 RelBuilder：你可以在 Lambda 内部继续写 .filter().project()，然后让 Lambda 把当前的 builder 吐出来，支持后续继续 .build()。
+  // 结合官方注释的对比示例
+  //传统的痛苦写法（被 if 打断）：
+  // 必须断开管道，因为 if 语句没办法作为一个算子连在 filter() 后面
+  //relBuilder.push(rel)
+  //          .filter(condition); // 管道第一次断开
+  //
+  //if (fieldNames != null) {
+  //  relBuilder.rename(fieldNames); // 管道第二次断开
+  //}
+  //
+  //return relBuilder.build();
+  // 使用 let 后的优雅写法（单条管道一气呵成）：
+  // return relBuilder.push(rel)
+  //    .filter(condition)
+  //    // r 就是传入的 relBuilder 实例
+  //    .let(r -> fieldNames == null ? r : r.rename(fieldNames))
+  //    .build(); // 从头到尾不需要任何局部变量，一个分号直接到终点
   public <R> R let(Function<RelBuilder, R> consumer) {
     return consumer.apply(this);
   }
@@ -308,6 +373,17 @@ public class RelBuilder {
 
   /** Returns new RelBuilder that adopts the convention provided.
    * RelNode will be created with such convention if corresponding factory is provided. */
+  // RelBuilder 类中用于改变物理算子方言/物理执行引擎特征的一个极度核心、且带有副作用的公共方法：adoptConvention（采纳物理特征约束）。
+  // RelBuilder 的灵魂在于它拥有一个抽象工厂结构体属性 this.struct。而这个方法正是通过动态改变这个结构体，从而改变接下来生成的算子树宿主命运的开关。
+  // 在 Apache Calcite 中，Convention（特征约束/方言）代表了一棵算子树最终要在哪里运行。
+  // 如果特征是 Convention.NONE，那么它就是一棵纯粹、抽象的逻辑算子树（如 LogicalFilter）。
+  // 如果特征是 SparkModel.CONVENTION、FlinkStream.CONVENTION 或 JDBC.CONVENTION，那么它代表这棵树是要丢给 Spark、Flink 或者是特定关系型数据库（如 MySQL/Oracle）直接去执行的物理算子树。
+  // 传统的优化器在将一棵“逻辑树”翻译成“特定引擎的物理树”时，需要编写极其庞大且复杂的优化规则（ConverterRule），在 Volcano 引擎里反复推导碰撞、计算代价、替换节点。这对于一些直观的、定制化的、目的性极强的翻译工作来说，性能损耗大且开发成本高。
+  // adoptConvention 的解法
+  //它允许你在建树的途中，直接给 RelBuilder“换脑”。
+  // 调用该方法后，RelBuilder 内部的底层工厂指针会被瞬间整体打包替换。
+  // 接下来你再调用流式 API（如 .filter().project()）时，生产出来的将不再是普通的 LogicalFilter，
+  // 而是直接生产出对应引擎的物理算子（例如 JdbcFilter、SparkFilter 等）。
   public RelBuilder adoptConvention(Convention convention) {
     this.struct = convention.getRelFactories();
     return this;
@@ -320,6 +396,11 @@ public class RelBuilder {
 
   /** Creates a {@link RelBuilderFactory}, a partially-created RelBuilder.
    * Just add a {@link RelOptCluster} and a {@link RelOptSchema} */
+  // 用于高阶函数式编程的静态工厂方法。它们通过引入一个名为 RelBuilderFactory（工厂的工厂 / 模板工厂） 的高度抽象接口，
+  // 彻底解决了在多线程或多会话（Session）场景下，如何“一次性配置物理算子插件，处处安全实例化”的架构难题。
+  // 典型的函数式接口（Functional Interface），只接收运行期的两个核心环境参数，即可实例化一个 RelBuilder。
+  // RelBuilder 是**非线程安全（Not thread-safe）**的，因为它内部死死绑定了一个带有状态的“操作数栈（stack）”。
+  //这意味着在生产环境（例如一个并发接收 SQL 查询的 Spring Boot Gateway 或 Web 服务器）中，你绝对不能把它声明为一个全局单例（Singleton）供所有线程共享。每个查询请求进入系统，都必须拥有自己专属的、全新干净的 RelBuilder 实例。
   public static RelBuilderFactory proto(final Context context) {
     return (cluster, schema) -> new RelBuilder(context, cluster, schema);
   }
@@ -350,6 +431,10 @@ public class RelBuilder {
    * that are not supported by the builder. If, while creating such expressions,
    * you need to use previously built expressions as inputs, call
    * {@link #build()} to pop those inputs. */
+  // 将一个现成的算子节点“强行压入”操作数栈顶
+  // 通常情况下，我们是通过流式 API（如 .scan(), .filter()）隐式地向栈里放算子的。但在以下两种高级场景中，你需要直接调用 push
+  // 打破常规，编织外部算子：你在外部自己通过 new MyCustomRelNode(...) 手工写了一个 Calcite 原生 RelBuilder 压根不支持的自定义特种算子。此时，你可以通过 push(myCustomNode) 强行把它塞进 RelBuilder 的宇宙中，作为后续链式调用的输入。
+  // 多分支缝合（如 Join/Union 准备）：当你需要做两表 Join 时，你必须先 push 左表算子树，再 push 右表算子树，让栈里同时积压两棵树，最后才能调用 .join()。
   public RelBuilder push(RelNode node) {
     stack.push(new Frame(node));
     return this;
@@ -357,12 +442,14 @@ public class RelBuilder {
 
   /** Adds a rel node to the top of the stack while preserving the field names
    * and aliases. */
+  // 在“完全保留字段元数据和别名”的前提下，偷换栈顶的物理算子
   private void replaceTop(RelNode node) {
     final Frame frame = stack.pop();
     stack.push(new Frame(node, frame.fields));
   }
 
   /** Pushes a collection of relational expressions. */
+  // 批量将一组已经构建好的关系表达式（RelNode）节点压入 RelBuilder 的内部工作栈中。
   public RelBuilder pushAll(Iterable<? extends RelNode> nodes) {
     for (RelNode node : nodes) {
       push(node);
@@ -371,6 +458,7 @@ public class RelBuilder {
   }
 
   /** Returns the size of the stack. */
+  // 返回当前 RelBuilder 内部工作栈的深度（元素个数）
   public int size() {
     return stack.size();
   }
@@ -379,26 +467,30 @@ public class RelBuilder {
    *
    * <p>Throws if the stack is empty.
    */
+  // 构建并返回最终的关系表达式树。这是 RelBuilder 链式调用的终点方法。
   public RelNode build() {
     return stack.pop().rel;
   }
 
   /** Returns the relational expression at the top of the stack, but does not
    * remove it. */
+  // 查看（不弹出）当前栈顶的关系表达式（最顶层的算子节点）
   public RelNode peek() {
     return castNonNull(peek_()).rel;
   }
 
+  // 查看当前栈顶的内部包装对象 Frame（包含 RelNode 及其附加的元数据字段信息）。
   private @Nullable Frame peek_() {
     return stack.peek();
   }
 
   /** Returns the relational expression {@code n} positions from the top of the
    * stack, but does not remove it. */
+  // 获取距离栈顶 从上往下数第 n 个位置 的关系表达式（n=0 代表栈顶本身，n=1 代表栈顶下面紧挨着的元素）
   public RelNode peek(int n) {
     return peek_(n).rel;
   }
-
+  // 获取距离栈顶第 n 个位置的内部 Frame 对象。
   private Frame peek_(int n) {
     if (n == 0) {
       // more efficient than starting an iterator
@@ -409,10 +501,11 @@ public class RelBuilder {
 
   /** Returns the relational expression {@code n} positions from the top of the
    * stack, but does not remove it. */
+  // 根据多路输入总数和指定的输入序号，查看栈中对应的关系表达式。这在处理多路 Join、Union 或 Correlate 时极为重要。
   public RelNode peek(int inputCount, int inputOrdinal) {
     return peek_(inputCount, inputOrdinal).rel;
   }
-
+  // 将“算子的多路输入视角”转换为“栈的从上往下倒数视角”。
   private Frame peek_(int inputCount, int inputOrdinal) {
     return peek_(inputCount - 1 - inputOrdinal);
   }
@@ -423,6 +516,11 @@ public class RelBuilder {
    * @param inputCount Number of inputs
    * @param inputOrdinal Input ordinal
    */
+  // 计算在给定的复数个输入源中，指定序号 inputOrdinal 的输入源在其左侧所有输入源的字段总偏移量（Field Offset）。
+  // 应用场景：
+  // 常用于多路连接（Multi-Join）或集合操作。例如：
+  // 栈里有三个输入源：A（2个字段）、B（3个字段）、C（4个字段）。
+  // 如果我们要引用 B 树里的字段，由于 A 在 B 的左边，B 的字段索引不能从 0 开始，而必须加上 A 的字段总数（偏移量 = 2）。
   private int inputOffset(int inputCount, int inputOrdinal) {
     int offset = 0;
     for (int i = 0; i < inputOrdinal; i++) {
@@ -433,6 +531,8 @@ public class RelBuilder {
 
   /** Evaluates an expression with a relational expression temporarily on the
    * stack. */
+  // 在 RelBuilder 的内部工作栈上临时压入一个关系表达式节点 r，
+  // 在这个临时上下文中执行一段特定的操作（由函数 fn 定义），并在操作结束后自动将该节点从栈中弹出，恢复原样。
   public <E> E with(RelNode r, Function<RelBuilder, E> fn) {
     try {
       push(r);
@@ -443,6 +543,10 @@ public class RelBuilder {
   }
 
   /** Performs an action with a temporary simplifier. */
+  // 临时改变或增强表达式简化器（RexSimplify）的逻辑。
+  // 在传入的函数 fn 执行期间使用新的简化器规则，执行完毕后自动恢复为原有的简化器。
+  // simplifierTransform：一个双参数函数。它接收当前 RelBuilder 和原有的简化器（previousSimplifier），并返回一个加工/增强后的新简化器。
+  // fn：在此临时简化器环境中需要执行的具体操作函数。
   public <E> E withSimplifier(
       BiFunction<RelBuilder, RexSimplify, RexSimplify> simplifierTransform,
       Function<RelBuilder, E> fn) {
@@ -457,6 +561,9 @@ public class RelBuilder {
 
   /** Performs an action using predicates of
    * the {@link #peek() current node} to simplify. */
+  // 这是 withSimplifier 的一个典型高阶应用。
+  // 它通过元数据查询（Metadata Query）获取当前栈顶节点已经具备的断言（谓词/过滤条件），并把这些断言作为已知的“先验知识”注入到临时简化器中。
+  // 在这段作用域内构建的所有表达式，都会自动利用这些已知的过滤条件进行深度化简。
   public <E> E withPredicates(RelMetadataQuery mq,
       Function<RelBuilder, E> fn) {
     final RelOptPredicateList predicates = mq.getPulledUpPredicates(peek());
@@ -466,11 +573,17 @@ public class RelBuilder {
   // Methods that return scalar expressions
 
   /** Creates a literal (constant expression). */
+  // 用来构建标量表达式（Scalar Expressions）的，也就是 SQL 中作用于单行、返回单个值的表达式（如常量、函数调用、算术运算等）。
+  // 用来将一个 Java 原生对象（Object）安全、动态地转换为 Calcite 内部的行表达式常量——RexLiteral。
+  // RexBuilder：Calcite 中专门用来构建行表达式（Row Expressions，即 RexNode 系列，如 RexLiteral, RexCall, RexInputRef）的工厂类
+  // TypeFactory (RelDataTypeFactory)：类型工厂，用来创建或获取 Calcite 中的 SQL 数据类型系统（RelDataType）。
   public RexLiteral literal(@Nullable Object value) {
     final RexBuilder rexBuilder = cluster.getRexBuilder();
+    // 如果 Java 对象为 null，首先通过类型工厂创建一个 SQL 层的 NULL 类型定义（SqlTypeName.NULL），然后让 rexBuilder 生成一个对应类型的 NullLiteral 标量。
     if (value == null) {
       final RelDataType type = getTypeFactory().createSqlType(SqlTypeName.NULL);
       return rexBuilder.makeNullLiteral(type);
+    // 如果对象是 Boolean（true 或 false），直接调用 makeLiteral，生成 SQL 中的布尔常量（对应 SQL 的 BOOLEAN）。
     } else if (value instanceof Boolean) {
       return rexBuilder.makeLiteral((Boolean) value);
     } else if (value instanceof BigDecimal) {
@@ -494,6 +607,13 @@ public class RelBuilder {
     }
   }
 
+  // 核心作用是在构建关联子查询（Correlated Subquery）时，动态生成一个关联变量（Correlation Variable，即 RexCorrelVariable）。
+  // 通过这个变量，内层的子查询可以引用外层查询的字段（例如，实现类似于外表 EMP 的当前行传递到内表过滤条件中的功能）。
+  // 在标准 SQL 中，相关子查询非常常见，例如：
+  // SELECT * FROM EMP e
+  //WHERE e.sal > (SELECT AVG(sal) FROM DEPT d WHERE d.deptno = e.deptno)
+  //--                                                   ↑ 这里的 e.deptno 就是关联引用
+  // 内部使用了 Java 8 的方法引用（Method Reference） v::set，将其转换为一个 Consumer<RexCorrelVariable>，然后直接转发调用给下面的核心方法（方法 2）。
   @Deprecated // to be removed before 2.0
   public RelBuilder variable(Holder<RexCorrelVariable> v) {
     return variable(v::set);
@@ -510,6 +630,9 @@ public class RelBuilder {
    *        .filter(builder.equals(builder.field(0), v.get()))
    * }</blockquote>
    */
+  // 基于 Consumer 响应式回调的核心方法
+  // 目前官方推荐的核心方法。它利用好莱坞原则（“不要给我们打电话，我们会给你打电话”），通过回调函数 Consumer 将系统新创建的关联变量“推送”给开发者定义好的变量接收器。
+  // 创建的相关变量给consumer消费
   public RelBuilder variable(Consumer<RexCorrelVariable> consumer) {
     consumer.accept((RexCorrelVariable)
         getRexBuilder().makeCorrel(peek().getRowType(),
@@ -534,6 +657,11 @@ public class RelBuilder {
    * @param inputOrdinal Input ordinal
    * @param fieldName Field name
    */
+  // 核心作用是：通过“字段名称（String）”而非“数字索引（int）”，去寻找并创建对上游/父级关系算子（RelNode）中某个特定列的引用节点（RexInputRef）。
+  // int inputCount 当前上下文中所期望的总输入算子数量（通常代表当前 RelBuilder 栈顶有多少个活动的 RelNode 供你查询）。场景：单表操作（如 Filter/Project）传 1；双表 Join 操作传 2。
+  // int inputOrdinal 含义：目标字段所属的具体输入算子索引（从 0 开始）。场景：如果是 Join 操作，0 代表左表（Left Input），1 代表右表（Right Input）。
+  // String fieldName 含义：你想要引用的列名字符串。例如 "name"、"salary" 等。
+  // 返回值 RexInputRef 含义：返回精确定位到该列的绝对索引引用节点。注意，它不像前两个方法返回基类 RexNode，这里直接返回了子类类型 RexInputRef。
   public RexInputRef field(int inputCount, int inputOrdinal, String fieldName) {
     final Frame frame = peek_(inputCount, inputOrdinal);
     final List<String> fieldNames = Pair.left(frame.fields());
@@ -563,25 +691,44 @@ public class RelBuilder {
    * @param inputOrdinal Input ordinal
    * @param fieldOrdinal Field ordinal within input
    */
+  // 在通过 RelBuilder 构建 SQL 关系表达式树时，根据指定的输入算子和字段索引，创建一个行表达式节点（RexNode，通常是 RexInputRef），
+  // 用于引用下游/父级算子的某个特定字段，并根据需要自动处理字段别名（Alias）
+  // 在 Calcite 内部，当你想在 Filter（Where 条件）或 Project（Select 字段）中引用某个表的列时，都需要通过这个方法来计算它在当前输入栈（Stack）中的绝对偏移量并生成引用。
+  // int inputCount 含义：当前操作期望的总输入算子数量（即当前栈顶有多少个关联的 RelNode 参与计算）。场景：如果是普通的单表操作（如 Filter/Project），inputCount 通常为 1；如果是双表关联操作（如 Join），inputCount 通常为 2。
+  // int inputOrdinal 含义：目标字段所属的输入算子的索引（从 0 开始计数）场景：在单表操作中只能是 0；在 Join 操作中，0 代表左表（Left Input），1 代表右表（Right Input）。
+  // int fieldOrdinal 目标字段在它所属的那个输入算子中的列相对索引/位置（从 0 开始计数）举例：如果左表有 (id, name, age) 三列，你想引用 name，那么 fieldOrdinal 就是 1。
   public RexInputRef field(int inputCount, int inputOrdinal, int fieldOrdinal) {
     return (RexInputRef) field(inputCount, inputOrdinal, fieldOrdinal, false);
   }
-   //创建引用父节点的RexNode节点
+
   /** As {@link #field(int, int, int)}, but if {@code alias} is true, the method
    * may apply an alias to make sure that the field has the same name as in the
    * input frame. If no alias is applied the expression is definitely a
    * {@link RexInputRef}. */
+  // 在通过 RelBuilder 构建 SQL 关系表达式树时，根据指定的输入算子和字段索引，创建一个行表达式节点（RexNode，通常是 RexInputRef），
+  // 用于引用下游/父级算子的某个特定字段，并根据需要自动处理字段别名（Alias）
+  // 在 Calcite 内部，当你想在 Filter（Where 条件）或 Project（Select 字段）中引用某个表的列时，都需要通过这个方法来计算它在当前输入栈（Stack）中的绝对偏移量并生成引用。
+  // int inputCount 含义：当前操作期望的总输入算子数量（即当前栈顶有多少个关联的 RelNode 参与计算）。场景：如果是普通的单表操作（如 Filter/Project），inputCount 通常为 1；如果是双表关联操作（如 Join），inputCount 通常为 2。
+  // int inputOrdinal 含义：目标字段所属的输入算子的索引（从 0 开始计数）场景：在单表操作中只能是 0；在 Join 操作中，0 代表左表（Left Input），1 代表右表（Right Input）。
+  // int fieldOrdinal 目标字段在它所属的那个输入算子中的列相对索引/位置（从 0 开始计数）举例：如果左表有 (id, name, age) 三列，你想引用 name，那么 fieldOrdinal 就是 1。
+  // boolean alias 是否强制应用字段别名。
   private RexNode field(int inputCount, int inputOrdinal, int fieldOrdinal,
       boolean alias) {
     final Frame frame = peek_(inputCount, inputOrdinal);
     final RelNode input = frame.rel;
     final RelDataType rowType = input.getRowType();
+    // 严格检查传入的列相对索引 fieldOrdinal 是否越界。
+    // 如果小于 0 或者大于当前算子的总列数，直接抛出 IllegalArgumentException 异常，并打印出当前算子所有可用的字段名，便于开发者调试。
     if (fieldOrdinal < 0 || fieldOrdinal > rowType.getFieldCount()) {
       throw new IllegalArgumentException("field ordinal [" + fieldOrdinal
           + "] out of range; input fields are: " + rowType.getFieldNames());
     }
-    final RelDataTypeField field = rowType.getFieldList().get(fieldOrdinal); //获取第fieldOrdinal个字段
+    // 根据相对索引，获取该列的类型和名称信息（RelDataTypeField）。
+    final RelDataTypeField field = rowType.getFieldList().get(fieldOrdinal);
+    // 计算绝对偏移量（Offset）。
+    // Calcite 的字段引用机制：在诸如 Join 的多表环境中，Calcite 会将左表和右表的字段“扁平化”合并成一个连续的字段序列。
     final int offset = inputOffset(inputCount, inputOrdinal);
+    // 创建标准的字段引用节点
     final RexInputRef ref = cluster.getRexBuilder()
         .makeInputRef(field.getType(), offset + fieldOrdinal);
     final RelDataTypeField aliasField = frame.fields().get(fieldOrdinal);
@@ -727,25 +874,38 @@ public class RelBuilder {
   }
 
   /** Creates a call to a scalar operator. */
+  // 核心作用是：创建一个标量操作符（Scalar Operator）的调用节点（RexCall）。
+  // 在 Calcite 树中，无论是算术运算（如 +, -）、比较运算（如 >, <），还是逻辑运算（如 AND, OR），乃至特定的 SQL 关键字（如 LIKE, BETWEEN），在行表达式层面都被统一表示为 RexCall。
+  // 不仅负责通用函数的构建，还针对特殊的 SQL 操作符进行了等价语法重写或简化（例如将 NOT LIKE 转换为 NOT(LIKE)）。
+  // SqlOperator operator：SQL 操作符元数据（例如 SqlStdOperatorTable.PLUS 代表加号，或者特定的内置/自定义函数对象）。
+  // List<RexNode> operandList：该操作符对应的入参/操作数列表。例如加法需要两个操作数，BETWEEN 需要三个操作数。
+  // 特殊操作符的拦截重写（Switch 块） 以及 通用的默认构建逻辑。
   private RexCall call(SqlOperator operator, List<RexNode> operandList) {
     switch (operator.getKind()) {
     case LIKE:
     case SIMILAR:
       final SqlLikeOperator likeOperator = (SqlLikeOperator) operator;
+      // 检查该操作符是否是被否定的（即用户写的是 NOT LIKE 或 NOT SIMILAR TO）。
       if (likeOperator.isNegated()) {
+        // 通过 likeOperator.not() 拿到正向的 LIKE 操作符（notLikeOperator），
+        // 然后递归调用 call(notLikeOperator, operandList) 创建出标准的 LIKE 表达式，最后在外层套上一个 not(...) 节点
         final SqlOperator notLikeOperator = likeOperator.not();
         return (RexCall) not(call(notLikeOperator, operandList));
       }
       break;
     case BETWEEN:
+      // 如果是 BETWEEN 算子（如 x BETWEEN a AND b），首先通过 assert 断言其操作数列表 operandList 必须严格等于 3 个（目标值、下界、上界）
       assert operandList.size() == 3;
+      // 转发给专门处理区间判断的 between(...) 方法。
       return (RexCall) between(operandList.get(0), operandList.get(1),
           operandList.get(2));
     default:
       break;
     }
     final RexBuilder builder = cluster.getRexBuilder();
+    // 动态类型推导（Type Inference）。
     final RelDataType type = builder.deriveReturnType(operator, operandList);
+    // 正式物理组装并返回 RexCall 节点。
     return (RexCall) builder.makeCall(type, operator, operandList);
   }
 
@@ -1185,10 +1345,18 @@ public class RelBuilder {
    *
    * @see #project
    */
+  // 核心作用是：将一个行表达式（RexNode）包装在一个指定名称的别名（Alias）中，其行为相当于 SQL 中的 expr AS alias。
+  // RexNode expr：输入的行表达式（可以是字段引用 RexInputRef、函数调用 RexCall、或者已经是带有 AS 的表达式）。
+  // String alias：期望为这个表达式指定的新的别名字符串。
   public RexNode alias(RexNode expr, String alias) {
+    // 将字符串别名转化为字面量节点
     final RexNode aliasLiteral = literal(alias);
     switch (expr.getKind()) {
+    // 获取当前表达式的语法类型（SqlKind）
     case AS:
+      // 说明传入的 expr 已经是一个别名表达式了（即类似 x AS old_alias）。在 Calcite 中，AS 被视为一个函数调用（RexCall），它有两个子操作数（Operands）：
+      // call.operands.get(0)：被起别名的原始表达式（x）。
+      // call.operands.get(1)：当前的旧别名字面量（old_alias）。
       final RexCall call = (RexCall) expr;
       if (call.operands.get(1).equals(aliasLiteral)) {
         // current alias is correct
@@ -4754,9 +4922,21 @@ public class RelBuilder {
    *
    * <p>Describes a previously created relational expression and
    * information about how table aliases map into its row type. */
+  // 操作数栈帧
+  // RelBuilder 是基于一个操作数栈（Stack）来管理算子的。而这个栈里存储的元素，并不是孤零零的 RelNode，而是被包裹在这个 Frame 对象里。
+  // 在 SQL 或关系代数中，有两个致命的痛点，如果只靠原生的 RelNode 极难优雅地解决：
+  // 表别名（Table Alias）与作用域的追踪：比如 SQL 中写了 SELECT * FROM emp AS e JOIN dept AS d。后续当你写 WHERE e.id = d.id 时，优化器必须知道 e.id 到底指向哪张表的哪一列。但原生的 RelNode 在做完 Join 后，底层表别名 e 和 d 的语义往往就丢失了，只剩下一堆扁平的字段。
+  // 字段位置的动态映射：由于两个表 Join 之后，右表的字段索引（Index）会整体发生偏移，调用方很难实时记住每个字段当前的精确下标。
+  // Frame 就是为此而生的：它是 RelBuilder 内部的“元数据保护壳”。它不仅持有了底层的关系代数节点（rel），还死死地捆绑维护了一张“表别名集合 -> 字段元数据”的实时映射表（fields）。
+  // 有了 Frame，不管算子树怎么叠加、怎么 Join、字段下标怎么变，RelBuilder 都能根据别名（如 "e"）秒级帮用户定位到正确的列。
   private static class Frame {
+    // 当前栈帧所包裹的真实关系代数表达式节点（算子树）
+    // 核心的物理/逻辑数据载体，例如一个 LogicalTableScan、LogicalProject 或一棵复杂的 Join 树。
     final RelNode rel;
-    final ImmutablePairList<ImmutableSet<String>, RelDataTypeField> fields; //别名和原字段的映射
+    // 最核心的元数据设计：别名集合到字段域的不可变映射双列集合。
+    // RelDataTypeField：字段的真实元数据（包含字段名、字段类型、字段在当前行类型中的绝对索引 index）。
+    // ImmutableSet<String>：绑定在这个字段上的所有合法别名（Aliases）。一个字段为什么会有多个别名？例如：emp 表起了别名 e，那么它的 id 列就同时拥有了无别名、emp.id 和 e.id 的访问资格。
+    final ImmutablePairList<ImmutableSet<String>, RelDataTypeField> fields;
 
     private Frame(RelNode rel,
         PairList<ImmutableSet<String>, RelDataTypeField> fields) {
@@ -4874,6 +5054,8 @@ public class RelBuilder {
      * {@link org.apache.calcite.adapter.enumerable.EnumerableCalc}, will often
      * gather common sub-expressions and compute them only once.
      */
+    // 表达式膨胀率阈值
+    // 控制当 RelBuilder 连续构建两个相邻的 Project（投影/控制列字段）时，是否允许将它们强行合并（Merge/Inline）成一个 Project。
     @Value.Default default int bloat() {
       return 100;
     }
@@ -4883,6 +5065,9 @@ public class RelBuilder {
 
     /** Whether {@link RelBuilder#aggregate} should eliminate duplicate
      * aggregate calls; default true. */
+    // 聚合函数调用去重
+    // 控制在构建 Aggregate（分组聚合）算子时，是否自动合并重复的聚合函数
+    // 示例：用户发送了 SELECT COUNT(sal), SUM(sal), COUNT(sal) FROM emp GROUP BY deptno。当该配置为 true 时，RelBuilder 在推导这一层时，会自动发现存在两个一模一样的 COUNT(sal)，最终在算子树底层只保留一个 COUNT(sal) 物理计算项，顶层再通过 Project 映射出两列，避免重复计算。
     @Value.Default default boolean dedupAggregateCalls() {
       return true;
     }
@@ -4892,6 +5077,9 @@ public class RelBuilder {
 
     /** Whether {@link RelBuilder#aggregate} should prune unused
      * input columns; default true. */
+    // 聚合输入列裁剪
+    // 控制是否自动剔除传递给聚合算子的“无用底层列”。
+    // 示例：底层表有 (deptno, sal, name, age) 四列。上层代码调用 builder.aggregate 算子时指定 GROUP BY deptno 且度量只有 SUM(sal)。此时 name 和 age 完全是累赘。如果为 true，RelBuilder 会自动在 Aggregate 下方贴一层 Project(deptno, sal)，把没用的列在输入阶段就拦腰斩断（Prune）。
     @Value.Default default boolean pruneInputOfAggregate() {
       return true;
     }
@@ -4901,6 +5089,9 @@ public class RelBuilder {
 
     /** Whether to ensure that relational operators always have at least one
      * column. */
+    // 阻止空字段列表
+    // 在关系代数中，理论上是允许存在“0 个字段/0 列”的算子的（例如 SELECT 1 FROM table，如果不需要返回任何原始表字段，底层可以为空）。但是很多底层的执行引擎（物理算子）对“0列”的物理数据结构会直接抛错。
+    // 该配置设为 true 可以强制确保任何衍生算子至少保留一列（哪怕是个无意义的 dummy 虚拟列），用来保障物理引擎兼容性。
     @Value.Default default boolean preventEmptyFieldList() {
       return true;
     }
@@ -4910,13 +5101,16 @@ public class RelBuilder {
 
     /** Whether to push down join conditions; default false (but
      * {@link SqlToRelConverter#config()} by default sets this to true). */
+    // 下推 Join 条件
+    // 默认值：false（但 SqlToRelConverter 的配置默认会把它覆盖成 true）
+    // 控制当你在 RelBuilder 中构建 Join 时，如果把过滤条件以参数传给了 join() 方法，Builder 是否自动把这层 Condition 尝试解耦并下推到对应的左/右子树中，变成底层的 Filter 算子。
     @Value.Default default boolean pushJoinCondition() {
       return false;
     }
 
     /** Sets {@link #pushJoinCondition()}. */
     Config withPushJoinCondition(boolean pushJoinCondition);
-    //是否要简化表达式
+    // 启用表达式简化
     /** Whether to simplify expressions; default true. */
     @Value.Default default boolean simplify() {
       return true;
@@ -4926,6 +5120,8 @@ public class RelBuilder {
     Config withSimplify(boolean simplify);
 
     /** Whether to simplify LIMIT 0 to an empty relation; default true. */
+    // 简化 LIMIT 0 行为
+    // 当你在流式 API 中调用 builder.limit(0) 时，如果此项为 true，Builder 会认为这一整棵树反正一条数据也吐不出来，它会直接把整棵底层树彻底废弃，当场替换为一个轻量级的 Values（空行集合）节点，直接斩断所有底层物理表的扫描 I/O。
     @Value.Default default boolean simplifyLimit() {
       return true;
     }
@@ -4935,6 +5131,8 @@ public class RelBuilder {
 
     /** Whether to simplify {@code Union(Values, Values)} or
      * {@code Union(Project(Values))} to {@code Values}; default true. */
+    // 静态值合并简化
+    // 如果上层算子在做类似 UNION 的操作，且参与 Union 的子节点全都是一堆静态内存常量数据（Values 算子），或者被简单 Project 包裹的 Values，如果为 true，RelBuilder 会在内存里直接把这些多层 Values 节点融合成单张大 Values 常量表。
     @Value.Default default boolean simplifyValues() {
       return true;
     }
@@ -4944,6 +5142,8 @@ public class RelBuilder {
 
     /** Whether to create an Aggregate even if we know that the input is
      * already unique; default false. */
+    // 唯一性输入下的聚合保留
+    // 果 RelBuilder 通过元数据分析，得知下层传入的数据流在 GROUP BY 的那几个 Key 上本来就是全局唯一的（Unique）（比如基于主键分组），那么这一层 GROUP BY 其实就是个摆设（因为每组都只有一条数据，不需要真正做聚合分桶）。
     @Value.Default default boolean aggregateUnique() {
       return false;
     }
@@ -4952,6 +5152,8 @@ public class RelBuilder {
     Config withAggregateUnique(boolean aggregateUnique);
 
     /** Whether to convert Correlate to Join if correlation variable is unused. */
+    // 关联查询转传统 Join
+    // 当构建 Correlate 算子（通常由 SQL 里的 LATERAL、带有相关子查询的 EXISTS 触发）时，如果系统检测到子查询内部其实压根没有使用外部传进来的关联变量（Correlation variable），说明它本质上就是一个独立的普通查询。如果此项为 true，Builder 会直接把这个昂贵、难以分布式并行化的 Correlate 算子退化并重构为高效率的普通 Join 算子。
     @Value.Default default boolean convertCorrelateToJoin() {
       return true;
     }
@@ -4961,6 +5163,8 @@ public class RelBuilder {
 
     /** Whether to remove the distinct that in aggregate if we know that the input is
      * already unique; default false. */
+    // 移除冗余的 Distinct 标记
+    // 在 Aggregate 算子里处理带去重的度量（如 SUM(DISTINCT sal)）时，如果系统通过唯一性约束已知输入的 sal 列本来就没有重复值，是否直接把 DISTINCT 标记删掉，退化成普通的 SUM(sal)。
     @Value.Default
     default boolean removeRedundantDistinct() {
       return false;

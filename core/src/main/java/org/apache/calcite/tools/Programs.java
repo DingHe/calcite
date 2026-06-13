@@ -377,6 +377,9 @@ public class Programs {
   }
 
   /** Program that trims fields. */
+  // 专门负责在优化阶段对关系代数树（RelNode）进行全局的“死字段/冗余列”裁剪（Field Trimming），以消除无用的 I/O 和计算开销。
+  // 在复杂的 SQL 查询中，尤其是经过多表 JOIN 或者嵌套了多层子查询（如大宽表视图）后，顶层的 SELECT 可能最终只需要其中极少量的几个字段。
+  // 核心价值：通过尽早裁剪掉不使用的字段，能极大地减轻后续优化阶段（如基于代价的 Volcano 优化器）的空间搜索负担，并在执行期大幅节省内存带宽和 CPU 消耗。
   private static class TrimFieldsProgram implements Program {
     @Override public RelNode run(RelOptPlanner planner, RelNode rel,
         RelTraitSet requiredOutputTraits,

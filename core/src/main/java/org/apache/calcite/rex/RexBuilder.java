@@ -578,6 +578,7 @@ public class RexBuilder {
    * @param type Type of variable
    * @return Correlation variable
    */
+  // 创建一个相关变量，需要id和类型
   public RexNode makeCorrel(
       RelDataType type,
       CorrelationId id) {

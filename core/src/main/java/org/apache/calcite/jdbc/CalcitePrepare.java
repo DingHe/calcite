@@ -76,6 +76,10 @@ import static java.util.Objects.requireNonNull;
 // 关系代数转换（SQL Convert）：将基于语法树的 SqlNode 降维转换为逻辑计划树 RelNode。
 // 物理规约与代码生成（Optimize & CodeGen）：调用 Planner（优化器）进行规则匹配，并利用 Linq4j 框架动态吐出 Java 物理字节码。
 // 签名包装（Signature Out）：将执行所需的元数据、列定义、绑定参数、以及能拉动数据流的 Bindable 句柄打包成一个 CalciteSignature 抛给上游 JDBC 驱动。
+// CalcitePrepare 是对外的“门面与执行接口”，而 Prepare 是内部的“流水线骨架与策略基类”。
+// CalcitePrepare 对外契约 (Interface)。定义了 Calcite 引擎如何与 Avatica / JDBC 连接层进行交互的顶级标准。 面向调用者。主要面向 JDBC 驱动（如 CalciteConnection）和 Avatica 远程组件。
+// Prepare 内部骨架 (Abstract Class)。实现了将 SQL 转换为可执行代码的核心编译流水线算法。 面向实现者。主要面向内核开发者，用来派生出特定后端（如 Java Enumerable、Bindable 或自定义执行引擎）的准备类。
+// 在整个 SQL 编译执行的生命周期中，它们两个是上下游的协作关系。CalcitePrepare 处于最外层，它收到请求后，内部会委派具体的 Prepare 实现类去干脏活累活。
 public interface CalcitePrepare {
   // 默认的反射工厂闭包。通过 CalcitePrepareImpl::new 提供默认实现类的无参实例化引用，供框架内部动态加载编译器实例时调用。
   Function0<CalcitePrepare> DEFAULT_FACTORY = CalcitePrepareImpl::new;

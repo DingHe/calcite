@@ -799,17 +799,25 @@ public abstract class Mappings {
   /**
    * Core interface of all mappings.
    */
+  // CoreMapping 的核心目的是定义一个统一的、可迭代的整数到整数（int -> int）的映射字典标准。
+  // 在关系代数优化中，无论是把 Filter 算子中的字段索引进行整体平移，还是在 Project 中把多列合并、调换顺序，底层都需要一个“映射表”。CoreMapping 提供了对这个映射表最抽象的宣告：
+  // 它说明了任何一个具体的映射结构，都可以被看作是一组 IntPair 的集合。
+  // 它强制要求所有映射必须声明自己的“数学约束边界”（即 MappingType），以便优化器内部进行合规性检查（例如：一个要求是 BIJECTION 的重写算法，如果拿到了一个 FUNCTION 类型的映射，就可以直接报错拦截）。
+
   public interface CoreMapping extends Iterable<IntPair> {
     /**
      * Returns the mapping type.
      *
      * @return Mapping type
      */
+    // 获取当前映射实例所严格遵守的数学映射类型与约束条件。
+    // 应用场景：优化器在拿到一个映射对象时，会先调用此方法。如果返回的是 BIJECTION，优化器就知道这个映射是可逆的（可以调用 inverse()），并且源和目标是一对一等长的，从而可以采用极高效率的数组直接寻址算法。
     MappingType getMappingType();
 
     /**
      * Returns the number of elements in the mapping.
      */
+    // 返回当前映射中所包含的有效映射对（Elements/Pairs）的数量。
     int size();
   }
 
@@ -821,10 +829,20 @@ public abstract class Mappings {
    * <li>May not be finite.
    * </ul>
    */
+  // 代表了一个标准的“全函数映射”（Total Function Mapping），即每一个源（Source）都必须有且仅有一个明确指向的目标（Target）。
+  // 每一个源都有目标（Every source has a target）：
+  // 对于定义域内的任意一个 source 索引，你都能通过它找到对应的 target。这就决定了它符合“函数（Function）”的定义。
+  // 目标不一定有源（A target may not have a source）：
+  // 允许值域（Target Domain）中的某些特定目标被留空。换句话说，它不一定是满射（Surjection）。在 SQL 场景中，这代表目标表（或上层算子）中多出来的列，在当前输入源中没有对应的数据来源。
+  // 可能是无限的（May not be finite）：
+  // 这个设计非常巧妙！这意味着 FunctionMapping 的底层实现不一定非要用一个固定大小的数组或集合把所有映射对死死存下来。它可以是一个基于公式计算的虚映射。例如：target = source + 2（字段整体平移偏移量），这种映射在数学上可以无限延伸。
   public interface FunctionMapping extends CoreMapping {
     /**
      * Returns the target that a source maps to, or -1 if it is not mapped.
      */
+    // 尝试获取指定 source 对应的 target 目标索引。这是一个安全/可选（Optional）的获取方法。
+    // 如果该 source 存在映射，返回对应的 target 整数值。
+    // 如果该 source 在当前映射的有效定义域之外（未映射），则固定返回 -1。
     int getTargetOpt(int source);
 
     /**
@@ -834,10 +852,13 @@ public abstract class Mappings {
      * @return target
      * @throws NoElementException if source is not mapped
      */
+    // 获取指定 source 严格对应的 target 目标索引。这是一个强约束的获取方法。
+    // 如果该 source 存在映射，返回对应的 target 整数值。
+    // 如果该 source 未映射，该方法会直接抛出 NoElementException 运行时异常。
     int getTarget(int source);
-
+    // 覆盖（Override）父接口 CoreMapping 的方法，用以返回当前函数映射的具体类型约束。
     @Override MappingType getMappingType();
-
+    // 返回当前映射中源定义域（Source Domain）的总元素数量。
     int getSourceCount();
   }
 
@@ -854,7 +875,14 @@ public abstract class Mappings {
    *
    * <p>TODO: figure out which interfaces this should extend
    */
+  // 专为数据源追踪与列溯源（Column Sourcing）设计的核心接口
+  // 在数学上，它对应的映射类型通常是单射（Injection）或部分单射（Partial Injection）。它最核心的表达视角是：以“目标”为基准，去寻找它唯一对应的“源头”。
+  // 当你在优化器中构建或重写一个算子（比如 Project 或 Join）时，上层算子产生的输出列（Target）到底来自底层数据源（Source）的哪一列？这种逆向追溯的需求就是 SourceMapping 的核心舞台。
+  // 有限性（Finite number of sources and targets）：与 FunctionMapping 可能无限延伸不同，SourceMapping 必须是有限的，因为数据库表的列数永远是有限的。
+  // 每个目标有且仅有一个源（Each target has exactly one source）：这是最关键的属性。上层输出的某一列，其物理数据的来源必须是明确且唯一的，绝对不允许一列数据同时来自底层的多列（这符合关系代数中列的确定性）。
+  // 每个源最多有一个目标（Each source has at most one target）：底层的某一列，在上层可以被保留（对应一个 Target），也可以被过滤掉（没有 Target）。
   public interface SourceMapping extends CoreMapping {
+    // 返回当前映射中源定义域（Source Domain）的总元素数量（即底层有多少个可选的原始列）。
     int getSourceCount();
 
     /**
@@ -864,24 +892,35 @@ public abstract class Mappings {
      * @return source
      * @throws NoElementException if target is not mapped
      */
+    // 根据给定的目标列索引 target，强约束地查找它对应的源列索引 source。
+    // 如果该 target 存在来源，返回对应的 source 整数值。
+    // 如果该 target 未映射（在当前契约下理论上不应发生，因为每个 target 都有 exactly one source），或者越界，则直接抛出 NoElementException 运行时异常。
     int getSource(int target);
 
     /**
      * Returns the source that a target maps to, or -1 if it is not mapped.
      */
+    // 根据给定的目标列索引 target，安全/可选（Optional）地查找它对应的源列索引 source。
+    // 找到则返回 source。
+    // 未找到或未映射时，固定返回 -1，绝不抛出异常。
     int getSourceOpt(int target);
-
+    // 返回当前映射中目标值域（Target Domain）的总元素数量（即上层算子最终输出了多少个列）。
     int getTargetCount();
 
     /**
      * Returns the target that a source maps to, or -1 if it is not mapped.
      */
+    // 反向探测。给定一个底层的源列索引 source，尝试获取它被映射到了上层的哪一个目标列 target。
+    // 如果这一列被上层保留了，返回对应的 target 索引。
+    // 如果这一列被上层过滤、裁剪掉了（由于是 at most one target，允许为 0 个），则固定返回 -1。
     int getTargetOpt(int source);
-
+    //明确宣告该映射的类型。由于具备“每个目标刚好一个源，每个源最多一个目标”的特性，其对应的具体类型通常是 MappingType.INVERSE_SURJECTION 或更严格的 BIJECTION。
     @Override MappingType getMappingType();
-
+    // 验该映射是否是一个恒等映射（Identity Mapping）。
+    // 如果返回 true，意味着映射没有发生任何位置错乱或裁剪，每一列都完美对应其自身（即 0->0, 1->1, 2->2 且 SourceCount == TargetCount）。优化器如果检测到 isIdentity() 为 true，通常可以做平移消除优化（直接丢弃该映射，不进行任何物理重排，从而提升性能）。
     boolean isIdentity();
-
+    // 获取当前源映射的逆映射（Inverse Mapping）对象。
+    // 既然 SourceMapping 是“从 Target 找 Source”的视角（单射），那么对它求逆（inverse()）后，就变成了“从 Source 找 Target”的视角（全函数，即前面介绍的 FunctionMapping 行为特征），从而实现了映射链条的完美调头。
     Mapping inverse();
   }
 
@@ -898,14 +937,24 @@ public abstract class Mappings {
    *
    * <p>TODO: figure out which interfaces this should extend
    */
+  // org.apache.calcite.util.mapping.TargetMapping 是与 SourceMapping 形成完美镜像的另一个核心接口。
+  // 代表了一个有限定义域内的“全函数映射”（通常表现为单射 Injection 或全函数 Function）。它的核心视角是：以“源”为基准，将数据或列确定地投射到“目标”中去。
+  // 在 SQL 编译优化时，当你需要把当前算子的输出列推流/写入到上层算子或目标表（Target）中时，你需要明确知道“我手里的每一列，应该放到目标的哪个位置”。这种正向投射的需求就是 TargetMapping 的核心舞台。
+  // 有限性（Finite number of sources and targets）：源列数和目标列数必须都是有限的。
+  // 每个目标最多有一个源（Each target has at most one source）：顶层目标表中的某一列，可能接收来自底层的一列数据，也可能没有被任何数据源映射（留空/变为 NULL）。但绝不允许一个目标坑位同时塞入底层两个不同的列。
+  // 每个源有且仅有一个目标（Each source has exactly one target）：当前手头的每一列数据，必须去往一个确定的目标坑位，不能凭空消失或去往多个地方（注意：如果某一列在业务上被过滤了，在 TargetMapping 的有限上下文中，它通常会被显式映射到一个代表丢弃的边界或者根本不包含在 SourceCount 的有效定义域内）。
   public interface TargetMapping extends FunctionMapping {
+    // 返回当前映射中源定义域（Source Domain）的总元素数量（即当前有多少个原始列等待被投射）。
     @Override int getSourceCount();
 
     /**
      * Returns the source that a target maps to, or -1 if it is not mapped.
      */
+    // 逆向安全探测。给定一个目标位置 target，尝试反查它是从哪一个源列 source 映射过来的。
+    // 如果该目标位有数据源入驻，返回对应的 source 编码。
+    // 如果该目标位是空闲的（因为每个目标最多有一个源，允许为 0 个），则固定返回 -1。
     int getSourceOpt(int target);
-
+    // 返回当前映射中目标值域（Target Domain）的总元素数量（即容纳投射结果的容器总共有多少个列坑位）。
     int getTargetCount();
 
     /**
@@ -915,15 +964,19 @@ public abstract class Mappings {
      * @return target
      * @throws NoElementException if source is not mapped
      */
+    // 正向强约束查找。给定一个源列索引 source，获取它被投射到的目标列 target。
     @Override int getTarget(int source);
 
     /**
      * Returns the target that a source maps to, or -1 if it is not mapped.
      */
+    // 覆盖父接口方法。正向安全可选查找。
     @Override int getTargetOpt(int source);
-
+    // 动态构建/修改映射关系（关键的可变性方法）
+    // 显式地在映射表中织入一条线：将 source 列的数据投射目的地指定为 target。
     void set(int source, int target);
-
+    // 获取当前目标映射的逆映射（Inverse Mapping）对象。
+    // 既然 TargetMapping 的视角是“从 Source 找 Target”（每个 Source 刚好一个 Target），那么对其求逆后，就变成了“从 Target 找 Source”（每个 Target 最多一个 Source）。这个逆矩阵完美符合 SourceMapping 的行为特征，实现了在优化器中正向与逆向追溯的无缝切换。
     Mapping inverse();
   }
 
