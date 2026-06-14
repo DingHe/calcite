@@ -120,8 +120,12 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
   //~ Static fields/initializers ---------------------------------------------
 
   //~ Instance fields --------------------------------------------------------
-
+  // 方法分发器（Dispatcher）。
+  // 这是反射访问者的核心纽带。在构造函数中通过 ReflectUtil.createMethodDispatcher 初始化。
+  // 它绑定了当前实例中的所有名字叫 "trimFields" 且参数契约相符的方法。运行时，调用它的 invoke 就能自动找到最精确匹配的具体算子重载方法。
   private final ReflectUtil.MethodDispatcher<TrimResult> trimFieldsDispatcher;
+  // Calcite 通用的关系代数构建器。在裁剪字段后，需要生成新的、瘦身后的 Project、Filter 等节点。
+  // 该类通过调用 relBuilder 来优雅、统一地创建这些新节点，并利用其自带的简化重写逻辑。
   private final RelBuilder relBuilder;
 
   //~ Constructors -----------------------------------------------------------
@@ -135,6 +139,7 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
     Util.discard(validator); // may be useful one day
     this.relBuilder = relBuilder;
     @SuppressWarnings("argument.type.incompatible")
+    // 利用反射工具组装出针对 trimFields(RelNode, ImmutableBitSet, Set) 的方法分发器，并将其缓存在 trimFieldsDispatcher 中，为后续的动态多态路由铺平道路。
     ReflectUtil.MethodDispatcher<TrimResult> dispatcher =
         ReflectUtil.createMethodDispatcher(
             TrimResult.class,
@@ -1406,6 +1411,10 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
    * <li>columnsUsed.getTargetOpt(0) returns -1
    * </ul>
    */
+  // 由于 RelFieldTrimmer 在裁剪字段时会自底向上重构整棵算子树，改变子节点的输出意味着父节点中所有对子节点的列索引引用（RexInputRef）都必须进行重置。
+  // TrimResult 就是用来完美记录“瘦身后的新算子”以及“新老列索引之间的映射关系”的。
+  // left (即 Pair.left)：保存裁剪优化后的新算子节点（RelNode）。
+  // right (即 Pair.right)：保存列索引映射矩阵（Mapping）。
   protected static class TrimResult extends Pair<RelNode, Mapping> {
     /**
      * Creates a TrimResult.
