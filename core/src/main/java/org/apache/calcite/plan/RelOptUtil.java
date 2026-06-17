@@ -280,6 +280,9 @@ public abstract class RelOptUtil {
    * <p>The item type is the same as
    * {@link org.apache.calcite.rex.RexCorrelVariable#id}.
    */
+  // 收集并返回一个关系代数节点（RelNode）及其整棵子树（所有后代节点）中所使用的全部相关变量 ID（CorrelationId）的集合。
+  // 入参 RelNode rel： 关系代数表达式树的任意一个目标节点（可以是整棵树的根节点，也可以是某个局部的子算子，比如一个 Project 或 Join）。
+  // 返回值 Set<CorrelationId>： 一个不可重复的集合，里面包含了传入的 rel 节点以及它下方所有子节点里所有被引用到的外层相关变量 ID（例如 $cor0, $cor1）。
   public static Set<CorrelationId> getVariablesUsed(RelNode rel) {
     CorrelationCollector visitor = new CorrelationCollector();
     rel.accept(visitor);
@@ -294,6 +297,8 @@ public abstract class RelOptUtil {
    *          The type of the [CorrelationId] parameter corresponds to
    *          {@link org.apache.calcite.rex.RexCorrelVariable#id}.
    */
+  // 批量扫描传入的子查询表达式列表，穿透每一个子查询内部的关系代数树，最终收集并返回所有被使用到的相关变量 ID（CorrelationId）的合集。
+  // List<RexSubQuery> subQueries： 一个包含了多个子查询表达式（RexSubQuery）的列表。
   public static Set<CorrelationId> getVariablesUsed(List<RexSubQuery> subQueries) {
     // Internally this function calls getVariablesUsed on a RelNode to get all the
     // correlated variables in that RelNode
@@ -4364,32 +4369,50 @@ public abstract class RelOptUtil {
   }
 
   /** Visitor that finds all variables used in an expression. */
+  // 专门用于搜寻和收集行表达式（RexNode）中使用的所有“相关变量”（Correlation Variables）及其引用的具体字段。
+  // VariableUsedVisitor 的核心作用是相关变量分析。
+  // 在 SQL 中，相关子查询（Correlated Subquery）会引用外层查询的列。例如：
+  // SELECT emp.name FROM emp
+  // WHERE emp.salary > (SELECT AVG(dept.min_sal) FROM dept WHERE dept.id = emp.dept_id)
+  // 在 Calcite 将其转化为关系代数树时，外层的 emp 表会被赋予一个 CorrelationId（例如 $cor0）。子查询内部的条件 dept.id = emp.dept_id 就会被表达为一个 RexFieldAccess（字段访问表达式），
+  // 它指向一个相关变量 RexCorrelVariable（即 $cor0），并指明访问的是该变量的第几列（dept_id 对应的索引）。
   public static class VariableUsedVisitor extends RexShuttle {
+    // 存储表达式中涉及到的所有相关变量 ID（CorrelationId）的集合
     public final Set<CorrelationId> variables = new LinkedHashSet<>();
+    // 存储相关变量与被引用字段索引（Field Index）之间的多值映射关系。
+    // 来自 Google Guava 的 Multimap（一键多值映射）。键（Key）是 CorrelationId，值（Value）是该变量被访问的列的索引。
+    // 例如 $cor0 的第 2 列和第 5 列被访问了，映射里就会存有 $cor0 -> 2 和 $cor0 -> 5。
     public final Multimap<CorrelationId, Integer> variableFields =
         LinkedHashMultimap.create();
+    // 关系代数节点（RelNode）的遍历器（可为空）
+    // 表达式内部可能嵌套有子查询（RexSubQuery）。
+    // 子查询的内部又是一棵由 RelNode 组成的算子树。为了能“穿透”子查询、扫描到子查询里面更深处隐式使用的外层变量，必须借助这个 relShuttle 潜入到子查询的内部树中。
     @NotOnlyInitialized
     private final @Nullable RelShuttle relShuttle;
 
     public VariableUsedVisitor(@UnknownInitialization @Nullable RelShuttle relShuttle) {
       this.relShuttle = relShuttle;
     }
-
+    // 当遍历到相关变量节点本身时触发（例如在表达式中直接引用了 $cor0 全体）
     @Override public RexNode visitCorrelVariable(RexCorrelVariable p) {
+      // 将该变量的 p.id（CorrelationId）加入到 variables 集合中。
       variables.add(p.id);
+      // 向 variableFields 账本中存入该 ID，并将列索引记录为 -1。在 Calcite 中，-1 通常用来占位，表示“引用了该变量整体，而不是它内部的某个具体特定列”。
       variableFields.put(p.id, -1);
       return p;
     }
-
+    // 当遍历到字段访问表达式时触发（形如 变量.某个字段）。
     @Override public RexNode visitFieldAccess(RexFieldAccess fieldAccess) {
+      // 检查当前字段访问的宿主对象（getReferenceExpr()）是不是一个相关变量（RexCorrelVariable）。
       if (fieldAccess.getReferenceExpr() instanceof RexCorrelVariable) {
+        // 如果是（说明正在访问外层表的某一列，如 $cor0.dept_id），则强转为 RexCorrelVariable。
         final RexCorrelVariable v =
             (RexCorrelVariable) fieldAccess.getReferenceExpr();
         variableFields.put(v.id, fieldAccess.getField().getIndex());
       }
       return super.visitFieldAccess(fieldAccess);
     }
-
+    // 当遍历到表达式里嵌套的子查询节点时触发（如 EXISTS (SELECT ...) 或 IN (SELECT ...)）。
     @Override public RexNode visitSubQuery(RexSubQuery subQuery) {
       if (relShuttle != null) {
         subQuery.rel.accept(relShuttle); // look inside sub-queries
@@ -4470,8 +4493,15 @@ public abstract class RelOptUtil {
   /**
    * Visitor which builds a bitmap of the inputs used by an expression.
    */
+  // 返回值指定为 Void，代表不需要在遍历中传递任何计算结果），专门用来搜集、提取标量表达式（RexNode）中究竟引用了底层输入流的哪些列（字段索引）。
+  // 在 SQL 优化器中，经常需要回答一个问题：“为了计算这个表达式（或这一层过滤条件/投影），我必须依赖上层算子传过来的哪几个字段？”
   public static class InputFinder extends RexVisitorImpl<Void> {
+    // 用于动态构建列索引位图的建造者（Builder）。
+    // 该类最核心的状态维护容器。遍历过程中，每当发现一个 RexInputRef（比如指向第 5 列），就会调用 bitBuilder.set(5) 将对应的位置为 true。最后通过它产出不可变的位图。
     private final ImmutableBitSet.Builder bitBuilder;
+    // 用于收集动态扩展/动态类型字段（Extra Fields）。
+    // 在某些高级场景中，SQL 表达式可能通过一些特种操作符（如 GET_OPERATOR，用于从结构体、JSON 或动态映射中提取字段）去访问元数据中原本不存在的动态列。
+    // 如果传入了此集合，InputFinder 会在遍历时顺手把这些动态衍生列的字段类型对象（RelDataTypeField）也一并搜集起来。
     private final @Nullable Set<RelDataTypeField> extraFields;
 
     private InputFinder(@Nullable Set<RelDataTypeField> extraFields,
@@ -4495,6 +4525,8 @@ public abstract class RelOptUtil {
     }
 
     /** Returns an input finder that has analyzed a given expression. */
+    // 传入单个表达式节点，对其进行全面透视分析，并返回这个 InputFinder 实例。
+    // 现场 new 一个干净的访问者，调用 node.accept(inputFinder) 让该表达式树接受扫描，最后把这个藏满了扫描状态的 inputFinder 返回。
     public static InputFinder analyze(RexNode node) {
       final InputFinder inputFinder = new InputFinder();
       node.accept(inputFinder);
@@ -4504,6 +4536,8 @@ public abstract class RelOptUtil {
     /**
      * Returns a bit set describing the inputs used by an expression.
      */
+    // 直接获取单个表达式所用到的列位图
+    // 调用上面的 analyze(node) 跑完扫描，紧接着立刻调用 .build() 吐出最终的位图。
     public static ImmutableBitSet bits(RexNode node) {
       return analyze(node).build();
     }
@@ -4512,6 +4546,8 @@ public abstract class RelOptUtil {
      * Returns a bit set describing the inputs used by a collection of
      * project expressions and an optional condition.
      */
+    // 高阶复合静态分析方法。同时批量分析一组投影表达式（List<RexNode>）加上一个可选的过滤条件表达式（RexNode）的总和输入依赖。
+    // 调用 Calcite 的工具方法 RexUtil.apply(inputFinder, exprs, expr)。这个方法会在底层用 for 循环让 exprs 里的每一个节点以及 expr 条件挨个去 accept 我们的 inputFinder。
     public static ImmutableBitSet bits(List<RexNode> exprs, @Nullable RexNode expr) {
       final InputFinder inputFinder = new InputFinder();
       RexUtil.apply(inputFinder, exprs, expr);
@@ -4522,22 +4558,28 @@ public abstract class RelOptUtil {
      *
      * <p>After calling this method, you cannot do any more visits or call this
      * method again. */
+    // 终结搜集工作，交付最终的不可变位图结果。
     public ImmutableBitSet build() {
       return bitBuilder.build();
     }
-
+    // 真正捕获列索引的发生点。
+    // 当表达式深度遍历遇到具体的列引用（RexInputRef）时，
+    // 这个方法被触发。它通过 inputRef.getIndex() 拿到这一列在底层关系代数流中的物理列索引（例如 3），然后原位调用 bitBuilder.set(3) 扔进位图。最后按照接口契约返回 null。
     @Override public Void visitInputRef(RexInputRef inputRef) {
       bitBuilder.set(inputRef.getIndex());
       return null;
     }
-
+    // 专门拦截并提取动态列的核心逻辑。
     @Override public Void visitCall(RexCall call) {
+      // 检查当前函数/操作符调用是不是特殊的 RexBuilder.GET_OPERATOR（代表从某种动态 Map/结构体里通过属性名取值，形如 item.GET('field_name')）
       if (call.getOperator() == RexBuilder.GET_OPERATOR) {
+        // 如果是，并且用户配了 extraFields 接收器，它会强行把第二个操作数（属性名）转成 RexLiteral（常量名字符串 value2）。
         RexLiteral literal = (RexLiteral) call.getOperands().get(1);
         if (extraFields != null) {
           requireNonNull(literal, () -> "first operand in " + call);
           String value2 = (String) literal.getValue2();
           requireNonNull(value2, () -> "value of the first operand in " + call);
+          // 在内存里現場捏造一个全新的、物理索引为 -1 的动态字段对象 RelDataTypeFieldImpl(value2, -1, call.getType())，并塞进 extraFields 集合中保存。
           extraFields.add(
               new RelDataTypeFieldImpl(
                   value2,
@@ -4696,16 +4738,29 @@ public abstract class RelOptUtil {
   /** Shuttle that finds correlation variables inside a given relational
    * expression, including those that are inside
    * {@link RexSubQuery sub-queries}. */
+  // 核心作用是：在给定的关系代数表达式（RelNode）树中，自顶向下搜寻并收集所有被使用的相关变量（Correlation Variables，即 CorrelationId）。
+  // 什么是相关变量（Correlation Variables）？
+  // 在 SQL 关联子查询中，子查询内部引用了外层主查询的表字段，这种被引用的外层字段在 Calcite 内部就被包装为相关变量。例如：
+  // 在转成 RelNode 树时，外层算子会通过 getVariablesSet() 声明它向下游暴露的 CorrelationId；而内层算子或表达式（如 RexFieldAccess）则会持有并“消费”这个 CorrelationId。
   private static class CorrelationCollector extends RelHomogeneousShuttle {
     @SuppressWarnings("assignment.type.incompatible")
+    // 行表达式级别的变量收集器。
+    // CorrelationCollector 负责在算子层级（RelNode）穿梭，而算子内部的过滤条件、投影映射等具体的行表达式层级（RexNode），则需要交给这个 vuv 访问者去遍历。
     private final VariableUsedVisitor vuv = new VariableUsedVisitor(this);
 
     @Override public RelNode visit(RelNode other) {
+      // 让当前算子节点（other）自查，并将其算子自身元数据中记录的、所依赖的 CorrelationId（相关变量 ID）全部提取出来。
+      // 这些找出来的变量会直接被 .add() 到内部表达式访问者 vuv 的 variables 结果集容器中。
       other.collectVariablesUsed(vuv.variables);
+      // 算子节点收到该指令后，会主动开放并允许 vuv 去遍历它内部挂载的所有行级别表达式（RexNode）。
+      // 举例：如果当前算子是 LogicalFilter，它会把自己的 WHERE 条件表达式（RexNode condition）交出来。vuv 会像探针一样钻进这个表达式。
+      // 如果表达式里包含了嵌套子查询（RexSubQuery），vuv 甚至能一路钻到子查询的最深处，把里面所有隐藏的 CorrelationId 全部挖出来并汇总到 vuv.variables 集合中。
       other.accept(vuv);
+      // 保持深度优先（DFS）的向下传播。
       RelNode result = super.visit(other);
       // Important! Remove stopped variables AFTER we visit
       // children. (which what super.visit() does)
+      // 清除在当前算子节点生命周期内已经被“消化”掉的临时变量，防止污染上层上下文
       vuv.variables.removeAll(other.getVariablesSet());
       return result;
     }

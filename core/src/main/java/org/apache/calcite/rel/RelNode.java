@@ -185,7 +185,8 @@ public interface RelNode extends RelOptNode, Cloneable {
    * @param variableSet receives variables used
    */
   // 深度收集当前节点以及它所有子孙后代节点共同消费（Used）的关联变量集合。
-  // 副作用收集方法。优化器在做“子查询拉平（Subquery Unnesting / Decorrelation）”时，需要精准调用此方法摸清底细：到底底层哪一个暗藏的 Filter 偷偷引用了外层的变量，从而决定如何将其重组为 Correlate 物理算子。
+  // 副作用收集方法。优化器在做“子查询拉平（Subquery Unnesting / Decorrelation）”时，需要精准调用此方法摸清底细：到底底层哪一个暗藏的 Filter 偷偷引用了外层的变量，
+  // 从而决定如何将其重组为 Correlate 物理算子。
   void collectVariablesUsed(Set<CorrelationId> variableSet);
 
   /**

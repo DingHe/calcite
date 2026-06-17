@@ -150,7 +150,8 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
             Set.class);
     this.trimFieldsDispatcher = dispatcher;
   }
-
+  // 接收各大算子的独立 Factory（如 ProjectFactory, FilterFactory 等）。
+  // 内部通过 RelBuilder.proto(...) 把这一大堆工厂糅合拼装成一个统一的 RelBuilder，然后将其转发给核心构造函数 1。该方法将在 Calcite 2.0 被彻底移除。
   @Deprecated // to be removed before 2.0
   public RelFieldTrimmer(@Nullable SqlValidator validator,
       RelOptCluster cluster,
@@ -177,12 +178,25 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
    * @param root Root node of relational expression
    * @return Trimmed relational expression
    */
+  // 当整个 SQL 转换完成后，外部调用者会把关系代数树的根节点传给这个方法，从而启动整棵树的自顶向下字段裁剪优化。
+  // 入参 RelNode root： 关系代数表达式树的根节点（通常是整条查询的最外层算子，比如最上层的 LogicalProject 或 LogicalSort）。
+  // 由于 root 是输出给最外层客户端（如 JDBC 结果集）的，Calcite 必须默认客户端需要根节点吐出来的所有列。因此，根节点本身的输出列是不能被裁剪的，裁剪只能发生在树的内部和下游
+  // 回一棵物理重构后的、瘦身成功的全新关系代数树的根节点。在这棵新树中，所有内部不必要的传输列、未被引用的表字段都已被剔除。
   public RelNode trim(RelNode root) {
+    // 获取当前根节点原始输出行类型（RowType）中的字段/列总数。
     final int fieldCount = root.getRowType().getFieldCount();
+    // 根节点的数据是直接交付给最外层用户的，所以每一列都算作“被使用”。这个位图代表告诉接下来的裁剪器：“根节点的所有列我全都要，一列都不能少！”。这为接下来的自顶向下遍历确立了初始边界条件
     final ImmutableBitSet fieldsUsed = ImmutableBitSet.range(fieldCount);
+    // 某些特殊的物理算子或关联查询在执行时，可能需要隐式地向下游索要一些额外的系统字段或行级元数据。
+    // 在根节点启动时，不存在任何额外的隐式字段索要诉求，因此初始化传入一个标准的空集合（Collections.emptySet()）。
     final Set<RelDataTypeField> extraFields = Collections.emptySet();
+    // 核心一步。
+    // 将根节点、全选位图、空扩展集传入 dispatchTrimFields 方法。
     final TrimResult trimResult =
         dispatchTrimFields(root, fieldsUsed, extraFields);
+    // 恒等映射 意味着：裁剪前是第 0 列，裁剪后还是第 0 列；裁剪前有 $N$ 列，裁剪后依然有 $N$ 列，没有发生任何位置偏移或列丢失。
+    // 核心逻辑：因为在步骤 2 中，我们已经明确下达了“根节点所有列全都要”的死命令，所以如果 dispatchTrimFields 执行完后，发现根节点的列居然变少了（isIdentity() 为 false），说明内部裁剪逻辑出现了严重 Bug，误杀了最外层用户需要的列。
+    // 此时程序直接果断抛出 IllegalArgumentException 异常，防止将错误的吐数结构交付给上层。
     if (!trimResult.right.isIdentity()) {
       throw new IllegalArgumentException();
     }
@@ -203,18 +217,28 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
    * @param fieldsUsed Bitmap of fields needed by the consumer
    * @return New relational expression and its field mapping
    */
+  // RelFieldTrimmer 中实现自顶向下（Top-Down）属性传递的关键纽带
+  // 主要职责是：在正式把裁剪请求发送给子节点（input）之前，对当前父节点向下层索要的列（fieldsUsed）进行最后的安全性盘点和兜底保护。
+  // 它会强行把“排序列”和“被其他关联算子引用的变量列”强行锁死在位图中，确保这些关键列不会被误杀。
   protected TrimResult trimChild(
+      // RelNode rel：当前正在处理的父算子节点。
       RelNode rel,
+      // RelNode input：当前父算子的下游子算子节点（即本次即将被裁剪的目标节点）。
       RelNode input,
+      // 父算子根据自身的标量表达式，初步计算出需要子节点提供哪些列的索引位图。
       final ImmutableBitSet fieldsUsed,
+      // 外部/隐式要求的扩展字段集合。
       Set<RelDataTypeField> extraFields) {
+    // 因为入参 fieldsUsed 是不可变的（ImmutableBitSet），所以通过 rebuild() 方法将其转换成一个可变的构建器（Builder），以便在接下来的防御检查中随时往里面追加（Set）不能被裁剪的列。
     final ImmutableBitSet.Builder fieldsUsedBuilder = fieldsUsed.rebuild();
 
     // Fields that define the collation cannot be discarded.
+    // 通过 RelMetadataQuery 元数据查询引擎，去试探下游子节点 input 是否拥有某些强烈的物理排序属性（比如底层是一个 LogicalSort，或者是一个本身就按主键有序的索引扫描 IndexScan）。
     final RelMetadataQuery mq = rel.getCluster().getMetadataQuery();
     final ImmutableList<RelCollation> collations = mq.collations(input);
     if (collations != null) {
       for (RelCollation collation : collations) {
+        // 通过 fieldCollation.getFieldIndex() 拿到这些排序列在子节点中的列索引，并无条件强行塞入 fieldsUsedBuilder。
         for (RelFieldCollation fieldCollation : collation.getFieldCollations()) {
           fieldsUsedBuilder.set(fieldCollation.getFieldIndex());
         }
@@ -223,12 +247,14 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
 
     // Correlating variables are a means for other relational expressions to use
     // fields.
+    // rel.getVariablesSet()代表当前父节点（比如一个 LogicalCorrelate 算子或带有 CorrelationId 的算子）自己是一个变量定义源，它向外暴露了某些变量让其他外部子查询来读取。
     for (final CorrelationId correlation : rel.getVariablesSet()) {
       rel.accept(
           new CorrelationReferenceFinder() {
             @Override protected RexNode handle(RexFieldAccess fieldAccess) {
               final RexCorrelVariable v =
                   (RexCorrelVariable) fieldAccess.getReferenceExpr();
+              // 如果子查询有引用到父节点的列，则需要保留
               if (v.id.equals(correlation)) {
                 fieldsUsedBuilder.set(fieldAccess.getField().getIndex());
               }
@@ -236,7 +262,7 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
             }
           });
     }
-
+    //递归
     return dispatchTrimFields(input, fieldsUsedBuilder.build(), extraFields);
   }
 
@@ -290,17 +316,30 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
    * @param fieldsUsed Bitmap of fields needed by the consumer
    * @return New relational expression and its field mapping
    */
+  // 至关重要的核心路由与校验中心
+  // 主要职责是通过反射将当前算子分发给具体的裁剪实现方法，并在分发返回后，对生成的新算子与映射关系进行极其严密的正确性断言（Assertion）校验。
   protected final TrimResult dispatchTrimFields(
+      // 当前正在处理的、裁剪前的关系代数节点（如 LogicalProject、LogicalFilter 等）。
       RelNode rel,
+      // 记录了当前算子的上层消费者（Parent）所需要保留的列索引集合。裁剪的核心依据就是看当前列是否在这个位图中。
       ImmutableBitSet fieldsUsed,
+      // 外部/隐式要求的扩展字段集合。
+      // 有些特定的查询关联或物理算子，需要向下游索要当前 RowType 里原本没有包含的隐式系统列或相关变量列。
       Set<RelDataTypeField> extraFields) {
+    // 动态反射分发
+    // 如果 rel 运行时实际类型是 LogicalProject，就会自动路由到 trimFields(Project, ...)；如果是 LogicalFilter，则路由到 trimFields(Filter, ...)。执行后返回包含新算子和映射关系的 TrimResult。
     final TrimResult trimResult =
         trimFieldsDispatcher.invoke(rel, fieldsUsed, extraFields);
     final RelNode newRel = trimResult.left;
     final Mapping mapping = trimResult.right;
+    // 校验映射矩阵的源（Source）数量。
+    // mapping.getSourceCount() 代表该映射期望的“输入端老列数”。
+    // 它必须严格等于裁剪前算子 rel 的真实列数 fieldCount。如果对不上，说明裁剪算法在构建映射时连老表的底细都没搞清楚，直接抛出断言错误。
     final int fieldCount = rel.getRowType().getFieldCount();
     assert mapping.getSourceCount() == fieldCount
         : "source: " + mapping.getSourceCount() + " != " + fieldCount;
+    // 校验映射矩阵的目标（Target）数量。
+    // 核心等式：$\text{映射保留的列数} + \text{额外扩展列数 (extraFields)} \equiv \text{新算子实际输出的列数 (newFieldCount)}$。
     final int newFieldCount = newRel.getRowType().getFieldCount();
     assert mapping.getTargetCount() + extraFields.size() == newFieldCount
         || Bug.TODO_FIXED
@@ -310,6 +349,8 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
     if (Bug.TODO_FIXED) {
       assert newFieldCount > 0 : "rel has no fields after trim: " + rel;
     }
+    // 如果在 trimFields 内部执行了一圈，发现由于列全部被使用了，导致生成的 newRel 和原先的 rel 完全长得一模一样（没有被瘦身），
+    // 为了避免破坏代数树原有的对象引用和 Hint 提示，直接调用 result(rel, mapping)，将最原始的 rel 对象搭配映射矩阵打包返回。
     if (newRel.equals(rel)) {
       return result(rel, mapping);
     }
@@ -484,15 +525,25 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
    * Variant of {@link #trimFields(RelNode, ImmutableBitSet, Set)} for
    * {@link org.apache.calcite.rel.logical.LogicalProject}.
    */
+  // 针对 Project（投影算子） 的具体裁剪实现方法
+  // Project 算子的裁剪逻辑非常具有代表性：它不仅要根据上层需要删掉自己内部多余的投影表达式，更核心的任务是分析留下来的表达式里，究竟引用了底层输入（input）的哪些列，从而把裁剪指令继续向更下层（如 TableScan）传递。
   public TrimResult trimFields(
+      // 当前正在处理的、裁剪前的原始 Project 算子节点（例如 SELECT a, b+c, d FROM table）。
       Project project,
+      // 上层消费者（Parent）指明当前 Project 最终必须保留的列索引集合。
       ImmutableBitSet fieldsUsed,
+      // 外部/隐式要求的扩展字段集合，会随着裁剪向底层继续透传。
       Set<RelDataTypeField> extraFields) {
+    // 阶段 1：元数据准备与输入依赖分析
+    // 获取当前 Project 节点的输出行类型、原始输出列数（fieldCount）以及它的下游输入算子（input）。
     final RelDataType rowType = project.getRowType();
     final int fieldCount = rowType.getFieldCount();
     final RelNode input = project.getInput();
 
     // Which fields are required from the input?
+    // 找出下游哪些列被真正使用了。
+    // 通过 Ord.zip 给投影表达式列表打上序号（ord.i 是列索引，ord.e 是对应的 RexNode 表达式）。
+    // 如果当前列是被上层需要的（fieldsUsed.get(ord.i) 为 true），就让 InputFinder 访问者去遍历这个表达式。
     final Set<RelDataTypeField> inputExtraFields =
         new LinkedHashSet<>(extraFields);
     RelOptUtil.InputFinder inputFinder =
@@ -504,16 +555,30 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
     }
 
     // Collect all the SubQueries in the projection list.
+    // 阶段 2：处理关联子查询（SubQuery）中的相关变量
+    // 收集相关子查询所依赖的外层依赖列。
+    // 如果 SELECT 列表中包含了类似于 (SELECT max(x) FROM t2 WHERE t2.id = project.y) 这样的相关子查询（Correlated SubQuery），
+    // 子查询内部会通过 CorrelationId 隐式引用当前 Project 的列。
+    // 代码会把这些隐藏的关联列（requiredColumns）找出来，确保它们不会被误杀。
     List<RexSubQuery> subQueries = RexUtil.SubQueryCollector.collect(project);
     // Get all the correlationIds present in the SubQueries
+    // 捞出子查询依赖的所有相关变量 ID
+    // 物理背景：比如 SQL 中有 SELECT emp.name, (SELECT dept.name FROM dept WHERE dept.id = emp.dept_id) FROM emp。
+    // 子查询里的 emp.dept_id 会被转换为对一个相关变量（如 $cor0）的引用。这行代码执行完后，correlationIds 就会塞入 [$cor0]。
     Set<CorrelationId> correlationIds = RelOptUtil.getVariablesUsed(subQueries);
     ImmutableBitSet requiredColumns = ImmutableBitSet.of();
     if (correlationIds.size() > 0) {
+      // 如果大于 0，说明当前 Project 里面确实嵌套了相关子查询（即子查询向外层“吸血”了），必须启动字段保护机制。
+      // 如果等于 0，则直接跳过，说明是普通查询或完全独立的非相关子查询，不需要特殊保护。
+      // 在 Calcite 标准的自顶向下/自底向上转换和去关联（Decorrelation）流水线中，为了保证关系的清晰度和重构的确定性，通常在同一个 Project 算子的标量表达式域内，同一时间只会为当前层次绑定或透传一个唯一的 CorrelationId。
+      // 如果出现多个，说明逻辑树发生了严重的混乱，断言会直接在测试阶段报错。
       assert correlationIds.size() == 1;
       // Correlation columns are also needed by SubQueries, so add them to inputFieldsUsed.
+      // 真正落实“哪些列被征用了”。
+      // 把这些表达式里访问的列索引全部收集起来。例如，如果子查询条件是 WHERE dept.id = emp.dept_id，而 dept_id 是外层 emp 表的第 5 列。
       requiredColumns = RelOptUtil.correlationColumns(correlationIds.iterator().next(), project);
     }
-
+    // 计算下游输入算子的总使用列集合。
     ImmutableBitSet finderFields = inputFinder.build();
 
     ImmutableBitSet inputFieldsUsed = ImmutableBitSet.builder()
@@ -522,6 +587,8 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
         .build();
 
     // Create input with trimmed columns.
+    // 递归裁剪子节点与边界状态拦截
+    // 带着刚刚算出来的列诉求位图，调用 trimChild 递归去裁剪洗涤下游子节点。返回加工后的新子节点 newInput 以及新旧索引转换账本 inputMapping。
     TrimResult trimResult =
         trimChild(project, input, inputFieldsUsed, inputExtraFields);
     RelNode newInput = trimResult.left;
@@ -529,6 +596,8 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
 
     // If the input is unchanged, and we need to project all columns,
     // there's nothing we can do.
+    // 边界优化拦截 1（无变化）
+    // 如果发现下游 input 裁剪完后根本没变（newInput == input），且上层把当前 Project 的列全部要了，说明从上到下没有任何一列可以被裁剪。直接返回原始的 project 对象搭配一个恒等映射（Identity Mapping）
     if (newInput == input
         && fieldsUsed.cardinality() == fieldCount) {
       return result(project, Mappings.createIdentity(fieldCount));
@@ -536,12 +605,17 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
 
     // Some parts of the system can't handle rows with zero fields, so
     // pretend that one field is used.
+    // 边界优化拦截 2（零列防御）。
+    // 如果上层居然一列都不要（比如只做 EXISTS 判断或 COUNT(*)），fieldsUsed.cardinality() == 0。为了防止生成没有列的空行导致下游崩溃，直接路由到 dummyProject 方法生成一个包含常量占位符列的傀儡 Project。
     if (fieldsUsed.cardinality() == 0) {
       return dummyProject(fieldCount, newInput, project);
     }
 
     // Build new project expressions, and populate the mapping.
+    // 阶段 4：洗牌并重构 Project 表达式与映射
     final List<RexNode> newProjects = new ArrayList<>();
+    // 核心工具 RexPermuteInputsShuttle：因为下游子节点刚刚被裁剪了，列变少了，原先表达式里的 RexInputRef 索引全错位了。
+    // 这个 Shuttle 就是用来根据 inputMapping 账本，把表达式里旧的列索引洗牌刷新为正确的新列索引。
     final RexVisitor<RexNode> shuttle =
         new RexPermuteInputsShuttle(
             inputMapping, newInput);
@@ -550,6 +624,7 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
             MappingType.INVERSE_SURJECTION,
             fieldCount,
             fieldsUsed.cardinality());
+    // 剔除废弃列，刷新保留列。
     for (Ord<RexNode> ord : Ord.zip(project.getProjects())) {
       if (fieldsUsed.get(ord.i)) {
         mapping.set(ord.i, newProjects.size());
@@ -557,14 +632,16 @@ public class RelFieldTrimmer implements ReflectiveVisitor {
         newProjects.add(newProjectExpr);
       }
     }
-
+    // 阶段 5：生成新节点并返回
+    // 根据刚刚沉淀下来的新账本 mapping，对原始的行类型 rowType 进行投影重组，计算出裁剪后该 Project 吐出的全新物理行类型 newRowType。
     final RelDataType newRowType =
         RelOptUtil.permute(project.getCluster().getTypeFactory(), rowType,
             mapping);
-
+    // 将瘦身后的下游输入 newInput 压入 relBuilder 栈。
     relBuilder.push(newInput);
     relBuilder.project(newProjects, newRowType.getFieldNames());
     final RelNode newProject = relBuilder.build();
+    // 调用 result(...) 方法将新节点、当前层映射账本打包成 TrimResult 交付给上层。
     return result(newProject, mapping, project);
   }
 

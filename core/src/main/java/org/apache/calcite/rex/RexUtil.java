@@ -2857,23 +2857,34 @@ public class RexUtil {
 
   /** Visitor that collects all the top level SubQueries {@link RexSubQuery}
    *  in a projection list of a given {@link Project}.*/
+  // 专门用来收集一个 Project（投影）算子的 SELECT 列表中，所包含的所有顶层子查询（SubQuery）表达式。
+  // 在 SQL 语句中，用户经常会在 SELECT 关键字后面直接嵌套子查询（也被称为标量子查询，Scalar Subquery）。例如：
+  // SELECT
+  //    id,
+  //    (SELECT max(salary) FROM emp WHERE emp.dept_id = dept.id) AS max_sal
+  //FROM dept;
+  // 当这段 SQL 被 Calcite 转化为关系代数树时，外层会生成一个 Project 算子。这个 Project 算子的投影表达式列表（List<RexNode>）中，普通的列（如 id）会对应 RexInputRef 表达式，而那个嵌套的子查询则会对应一个 RexSubQuery 表达式。
+  // SubQueryCollector 继承自 RexVisitorImpl<Void>（行表达式访问者基类）。它利用 Visitor 模式 遍历 Project 里的每一个表达式节点，一旦在树状结构中碰到了 RexSubQuery 类型的节点，就把它们像采摘果实一样全部收集起来，打包成一个列表返回给上层优化器（如先前看过的 RelFieldTrimmer 字段裁剪器），以便上层做进一步的关联分析或去关联（De-correlation）重写。
   public static class SubQueryCollector extends RexVisitorImpl<Void> {
+    // 专门用来存放搜集到的子查询表达式的结果集容器（通常初始化为 ArrayList）。
     private List<RexSubQuery> subQueries;
     private SubQueryCollector() {
       super(true);
       this.subQueries = new ArrayList<>();
     }
-
+    // 当遍历引擎在行表达式树中识别并触达到一个 RexSubQuery（子查询表达式）节点时，会自动触发并流转到这个方法里。
     @Override public Void visitSubQuery(RexSubQuery subQuery) {
       subQueries.add(subQuery);
       return null;
     }
-
+    // 对外的唯一公开静态工具接口。
+    // 外部类直接调用这个静态方法来获取某个 Project 算子里埋藏的全部子查询。
     public static List<RexSubQuery> collect(Project project) {
       SubQueryCollector subQueryCollector = new SubQueryCollector();
       for (RexNode node : project.getProjects()) {
         node.accept(subQueryCollector);
       }
+      // 当所有表达式全部洗礼、遍历完毕后，将成果列表（subQueries）递交给调用者，完成使命。
       return subQueryCollector.subQueries;
     }
   }
