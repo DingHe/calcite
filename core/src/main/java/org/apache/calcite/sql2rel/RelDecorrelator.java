@@ -144,20 +144,38 @@ import static java.util.Objects.requireNonNull;
  * <p>Note: make all the members protected scope so that they can be
  * accessed by the sub-class.
  */
+// 主要职责是对关系代数树进行“去关联化”（Decorrelation，即解关联/消除子查询）。
+// RelDecorrelator 的核心作用是：消除标量或集合子查询在转化为逻辑计划时引入的 Correlate 算子（类似于嵌套循环 Nested Loop），
+// 将相关变量（Correlation Variables）替换为普通的等值连接（Join）运算。
+// 什么是相关表达式（corExp）？
+// 在 SQL 中，当子查询引用了外层查询的字段时，就产生了相关性。例如：
+// SELECT e.name FROM emp e
+// WHERE e.salary > (SELECT AVG(d.min_sal) FROM dept d WHERE d.id = e.dept_id)
+// 早期解析出来的树会包含一个带有 CorrelationId（如 $cor0）的 LogicalCorrelate 节点。
+// 它代表一种极其低效的串行计算模型：外层 emp 表每吐出一条数据，内层子查询就要用 e.dept_id 作为参数去扫描一次 dept 表。
+// RelDecorrelator 通过重构代数树，利用值生成器（Value Generator）把内层子查询变成一个独立的数据流，提取出子查询所需的全部外层关联键组合并进行 DISTINCT 去重，
+// 然后将其与内层原表进行 Join 关联。最终，把外层的嵌套循环拉平为高效的、分布式引擎可并行的 Hash Join 或 Merge Join。
 public class RelDecorrelator implements ReflectiveVisitor {
   //~ Static fields/initializers ---------------------------------------------
-
+  // Calcite 全局的 SQL 到 Rel 转换专用的日志记录器（Logger），用于在 DEBUG 级别下打印去关联化前后的 Plan 树结构快照。
   private static final Logger SQL2REL_LOGGER =
       CalciteTrace.getSqlToRelTracer();
 
   //~ Instance fields --------------------------------------------------------
-
+  // 关系代数表达式构建器。
+  // 它是 Calcite 推荐的创建各种 RelNode（如 Project, Join, Aggregate）的统一流式 API 管道，确保生成的算子类型和节点配置完全正确。
   protected final RelBuilder relBuilder;
 
   // map built during translation
+  // 当前正在处理的计划树的相关性拓扑地图。
+  // 由于在去关联的不同阶段（例如提取 Project 表达式后），算子树的结构会发生自底向上的改变，因此这个属性会在运行期间被多次重构刷新。
   protected CorelMap cm;
 
   @SuppressWarnings("method.invocation.invalid")
+  // 反射方法分发器（Visitor 模式的多态替代品）
+  // Calcite 在这里没有使用传统的 RelVisitor 接口，而是利用 MethodDispatcher 实现了运行时基于动态多态类型的重载路由。
+  // 当调用 dispatcher.invoke(r, arg) 时，
+  // 它会在运行时自动寻找匹配 r 实际物理类型的 decorrelateRel(Xxx rel, boolean isCorVarDefined) 方法（例如 Sort、Aggregate、Project）
   protected final ReflectUtil.MethodDispatcher<@Nullable Frame> dispatcher =
       ReflectUtil.<RelNode, @Nullable Frame>createMethodDispatcher(
           Frame.class, getVisitor(), "decorrelateRel",
@@ -165,15 +183,20 @@ public class RelDecorrelator implements ReflectiveVisitor {
           boolean.class);
 
   // The rel which is being visited
+  // 指针，记录当前正在被 Shuttle 访问、扫描或重写的原始 RelNode 节点。通常在执行上下文切换时被用于追溯父节点。
   protected @Nullable RelNode currentRel;
-
+  // 优化器上下文（Context），用于传递全局配置、规划器（Planner）环境参数以及一些生命周期隔离的 Session 级对象。
   protected final Context context;
 
   /** Built during decorrelation, of rel to all the newly created correlated
    * variables in its output, and to map old input positions to new input
    * positions. This is from the view point of the parent rel of a new rel. */
+  // 核心核心映射表：【旧算子】 ──► 【新生成的 Frame】。
+  // 自底向上重写整个代数树时的“备忘录（Memo）”。
+  // 上层算子在改写自己时，必须通过这张表查到孩子节点重写后的新 Frame，从而知道孩子的列发生了什么洗牌，然后根据孩子的新列位置来调整自己的 RexInputRef 索引。
   protected final Map<RelNode, Frame> map = new HashMap<>();
-
+  // 记录在去关联重写期间，由 RelDecorrelator 内部规则自主动态生成的全新 Correlate 算子集合。
+  // 用于在多阶段重写中防止进入死循环或进行特殊的二次过滤。
   protected final HashSet<Correlate> generatedCorRels = new HashSet<>();
 
   //~ Constructors -----------------------------------------------------------
@@ -188,7 +211,7 @@ public class RelDecorrelator implements ReflectiveVisitor {
   }
 
   //~ Methods ----------------------------------------------------------------
-
+  // 旧版本的去关联主入口（即将移除）。内部通过默认的 LOGICAL_BUILDER 创建 RelBuilder，然后桥接到核心同名方法。
   @Deprecated // to be removed before 2.0
   public static RelNode decorrelateQuery(RelNode rootRel) {
     final RelBuilder relBuilder =
@@ -206,8 +229,10 @@ public class RelDecorrelator implements ReflectiveVisitor {
    * @return Equivalent query with all
    * {@link org.apache.calcite.rel.core.Correlate} instances removed
    */
+  // 整个类对外公开的、最高频的核心静态主入口。
   public static RelNode decorrelateQuery(RelNode rootRel,
       RelBuilder relBuilder) {
+    // 首先实例化 CorelMapBuilder 扫描 rootRel，生成最初的相关性地图。
     final CorelMap corelMap = new CorelMapBuilder().build(rootRel);
     if (!corelMap.hasCorrelation()) {
       return rootRel;
@@ -217,7 +242,8 @@ public class RelDecorrelator implements ReflectiveVisitor {
     final RelDecorrelator decorrelator =
         new RelDecorrelator(corelMap,
             cluster.getPlanner().getContext(), relBuilder);
-
+    // 步骤一：调用 removeCorrelationViaRule，
+    // 利用 Hep 优化器应用标量规则（如把标量子查询的 Filter/Aggregate 转化为 Join）。
     RelNode newRootRel = decorrelator.removeCorrelationViaRule(rootRel);
 
     if (SQL2REL_LOGGER.isDebugEnabled()) {
@@ -225,12 +251,13 @@ public class RelDecorrelator implements ReflectiveVisitor {
           RelOptUtil.dumpPlan("Plan after removing Correlator", newRootRel,
               SqlExplainFormat.TEXT, SqlExplainLevel.EXPPLAN_ATTRIBUTES));
     }
-
+    // 步骤二：如果发现依然残留有 Correlate 生产者节点，则创建 RelDecorrelator 实例，调用实例方法 decorrelate(newRootRel) 执行深度的自底向上代数打平。
     if (!decorrelator.cm.mapCorToCorRel.isEmpty()) {
       newRootRel = decorrelator.decorrelate(newRootRel);
     }
 
     // Re-propagate the hints.
+    // 步骤三：调用 RelOptUtil.propagateRelHints 重新在新生成的树中传播和恢复 SQL Hint 提示，最终返回彻底去关联后的干净树。
     newRootRel = RelOptUtil.propagateRelHints(newRootRel, true);
 
     return newRootRel;
@@ -361,19 +388,24 @@ public class RelDecorrelator implements ReflectiveVisitor {
         createCopyHook(),
         RelOptCostImpl.FACTORY);
   }
-
+  // 构建一个轻量级的基于规则的优化器（HepPlanner），专门加载几条特定的去关联化规则，对传入的关系代数树进行快速的等价结构重写，将其中的标量相关子查询等结构直接转化为普通的 Join 算子。
+  // RelNode root 输入的逻辑计划子树的根节点（通常这颗子树带有 Correlate 算子以及相关的子查询结构）。
   public RelNode removeCorrelationViaRule(RelNode root) {
     final RelBuilderFactory f = relBuilderFactory();
+    // 编排并构建 Hep 优化程序（HepProgram）
     HepProgram program = HepProgram.builder()
+        // 负责消除或简化不必要的单值聚合（Single Aggregate）节点，为后序规则扫清障碍。
         .addRuleInstance(RemoveSingleAggregateRule.config(f).toRule())
+        // 负责捕捉右侧为标量投影（Project）的 Correlate 拓扑，并将其重写为 Left Join。
         .addRuleInstance(
             RemoveCorrelationForScalarProjectRule.config(this, f).toRule())
+        // 负责捕捉右侧包含聚合（Aggregate）操作的相关子查询，并将其转换为常规的 Join 加上 Group By 分组。
         .addRuleInstance(
             RemoveCorrelationForScalarAggregateRule.config(this, f).toRule())
         .build();
-
+    // 实例化轻量优化器 HepPlanner
     HepPlanner planner = createPlanner(program);
-
+    // 绑定执行源并启动重写引擎
     planner.setRoot(root);
     return planner.findBestExp();
   }
@@ -1885,14 +1917,21 @@ public class RelDecorrelator implements ReflectiveVisitor {
    *         LogicalTableScan(table=[[TPCH_01, LINEITEM]])
    * }</pre>
    */
+  // 在 SQL 中，当你在 SELECT 列表或 WHERE 条件里写了一个标量子查询（即预期只返回一行一列的子查询，例如 SELECT (SELECT AVG(sal) FROM emp) FROM dual）时，Calcite 的 SqlToRelConverter 会在转换时将其翻译为两层聚合：
+  // 底层聚合：计算真正的业务聚合结果（如 AVG($0)）。由于没有 GROUP BY，它会在逻辑上产出一行。
+  // 顶层聚合：使用一个特殊的聚合函数 SINGLE_VALUE。它的目的是保证这个子查询有且仅有一行数据返回。如果在运行时发现有多于一行的数据，SINGLE_VALUE 就会抛出异常。
+  // 为什么需要这个规则？
+  // 在去关联化（Decorrelation）或子查询打平过程中，如果优化器可以在静态推导时断定底层的算子树必然只会吐出有且仅有一行数据（因为它本身就是不带 GROUP BY 的全局标量聚合），那么顶层的 SINGLE_VALUE 聚合就变成了完全多余的空中楼阁。
+  // RemoveSingleAggregateRule 的核心作用就是安全地将这层冗余的 SINGLE_VALUE 聚合算子“咔嚓”掉，直接把底层的 Project 表达式捞到上面来。这样能够精简关系代数树，从而为后续将子查询彻底打平成普通的 Join 扫清算子阻碍。
   public static final class RemoveSingleAggregateRule
       extends RelRule<RemoveSingleAggregateRule.RemoveSingleAggregateRuleConfig> {
+    // 构建并返回该规则的初始化配置实例
     static RemoveSingleAggregateRuleConfig config(RelBuilderFactory f) {
       return ImmutableRemoveSingleAggregateRuleConfig.builder().withRelBuilderFactory(f)
           .withOperandSupplier(b0 ->
-              b0.operand(Aggregate.class).oneInput(b1 ->
-                  b1.operand(Project.class).oneInput(b2 ->
-                      b2.operand(Aggregate.class).anyInputs())))
+              b0.operand(Aggregate.class).oneInput(b1 -> // 顶层：期望匹配到 SINGLE_VALUE
+                  b1.operand(Project.class).oneInput(b2 -> // 中层：单表达式投影
+                      b2.operand(Aggregate.class).anyInputs()))) // 底层：无 GROUP BY 的基础业务聚合
           .build();
     }
 
@@ -1902,34 +1941,45 @@ public class RelDecorrelator implements ReflectiveVisitor {
     }
 
     @Override public void onMatch(RelOptRuleCall call) {
-      final Aggregate singleAggregate = call.rel(0);
-      final Project project = call.rel(1);
-      final Aggregate aggregate = call.rel(2);
+      final Aggregate singleAggregate = call.rel(0); // 顶层
+      final Project project = call.rel(1); // 中层
+      final Aggregate aggregate = call.rel(2); // 底层
 
       // check the top aggregate is a single value agg function
-      if (!singleAggregate.getGroupSet().isEmpty()
-          || (singleAggregate.getAggCallList().size() != 1)
-          || !(singleAggregate.getAggCallList().get(0).getAggregation()
+      // 第一道防线：检查顶层是否是合法的 SINGLE_VALUE 聚合：
+      if (!singleAggregate.getGroupSet().isEmpty() // 必须不带任何 GROUP BY 键（getGroupSet().isEmpty()）。
+          || (singleAggregate.getAggCallList().size() != 1)  // 聚合函数有且只能有一个。
+          || !(singleAggregate.getAggCallList().get(0).getAggregation() // 唯一的聚合函数必须是 SqlSingleValueAggFunction。否则，拒绝优化（Eject）。
           instanceof SqlSingleValueAggFunction)) {
         return;
       }
 
       // check the project only projects one expression, i.e. scalar sub-queries.
+      // 第二道防线：检查中层 Project 是否是标准的单纯表达式标量投影：
       final List<RexNode> projExprs = project.getProjects();
+      // 投影吐出的字段数必须严格等于 1 列。若出现多列投影，说明不符合标量子查询语义，拒绝优化。
       if (projExprs.size() != 1) {
         return;
       }
 
       // check the input to project is an aggregate on the entire input
+      // 第三道防线：检查底层 Aggregate 是否绝对安全（单行保证）：
+      // 检查底层业务聚合是否带 GROUP BY。如果不带 GROUP BY，根据 SQL 标准，聚合函数（如 AVG, SUM）对全表进行全局聚合时，即使输入是空表，也必然会返回且仅返回 1 行（带空值的行）。
+      // 只要这一条锁死，顶层的 SINGLE_VALUE 检查就确认可以被安全替代。
       if (!aggregate.getGroupSet().isEmpty()) {
         return;
       }
 
       // ensure we keep the same type after removing the SINGLE_VALUE Aggregate
+      // 代数重构与类型对齐（关键改写）
       final RelBuilder relBuilder = call.builder();
+      // 先把底层业务聚合 aggregate 推进构建栈。
       relBuilder.push(aggregate)
+          // 把原来的中层 project 的表达式直接盖在它上面。
           .project(project.getAliasedProjects(relBuilder))
+          // 通过 convert 并在上层套一层隐式的 Cast 投影，确保重构后的新树吐出的 RowType 与原本老树的 RowType 在元数据层级完全对齐、绝对一致。
           .convert(singleAggregate.getRowType(), false);
+      // 调用 call.transformTo 通知优化器，用这棵精简后的新树彻底替换原来的三层旧树。
       call.transformTo(relBuilder.build());
     }
 
@@ -1943,9 +1993,19 @@ public class RelDecorrelator implements ReflectiveVisitor {
   }
 
   /** Planner rule that removes correlations for scalar projects. */
+  // 要职责是将带有相关子查询（Correlated Subquery）的标量投影转换为常规的、解耦的 Join 算子，从而为后续生成高效的物理执行计划创造条件。
+  // 在 SQL 中，标量相关子查询（Scalar Correlated Subquery）非常常见，例如：
+  // SELECT e.emp==no,
+  //       (SELECT d.dept_name FROM dept d WHERE d.dept_id = e.dept_id) -- 标量子查询
+  // FROM emp e
+  // 在未经优化的初始逻辑计划中，这会被表示为 Correlate（类似于嵌套循环嵌套，性能极差）。
+  // 本规则的目标就是捕捉一种特定的子查询模式：Correlate -> Left Input 加上一个右侧的 Aggregate(SINGLE_VALUE) -> Project -> Filter(带有相关变量) -> Input 结构。
+  // 通过本规则的改写，Calcite 可以将 Correlate 算子彻底抹去，替换为高效的 Left Join 物理结构。
   public static final class RemoveCorrelationForScalarProjectRule
       extends RelRule<RemoveCorrelationForScalarProjectRule
       .RemoveCorrelationForScalarProjectRuleConfig> {
+    // 去关联化的核心上下文与工具实例。它包含了整个关系代数树的去关联状态机、变量映射表（如 cm 变量包）以及用于辅助构建新算子的 RelBuilder。
+    // 本规则的大部分树改写动作都依赖它来桥接。
     private final RelDecorrelator d;
 
     static RemoveCorrelationForScalarProjectRuleConfig config(RelDecorrelator decorrelator,
@@ -1953,11 +2013,11 @@ public class RelDecorrelator implements ReflectiveVisitor {
       return ImmutableRemoveCorrelationForScalarProjectRuleConfig.builder()
           .withRelBuilderFactory(relBuilderFactory)
           .withOperandSupplier(b0 ->
-                  b0.operand(Correlate.class).inputs(
-                      b1 -> b1.operand(RelNode.class).anyInputs(),
-                      b2 -> b2.operand(Aggregate.class).oneInput(b3 ->
-                          b3.operand(Project.class).oneInput(b4 ->
-                              b4.operand(RelNode.class).anyInputs()))))
+                  b0.operand(Correlate.class).inputs( // 顶层必须是一个 Correlate 算子
+                      b1 -> b1.operand(RelNode.class).anyInputs(), // 该算子的左输入（Left）可以是任意关系表达式（RelNode）
+                      b2 -> b2.operand(Aggregate.class).oneInput(b3 -> // 该算子的右输入（Right）必须是一个聚合算子 Aggregate
+                          b3.operand(Project.class).oneInput(b4 -> // 该 Aggregate 的下方必须紧跟一个投影算子 Project
+                              b4.operand(RelNode.class).anyInputs())))) // 该 Project 的下方可以接任意输入节点（通常是一个 Filter 或者是叶子 RelNode）。
           .withDecorrelator(decorrelator)
           .build();
     }
@@ -2827,9 +2887,22 @@ public class RelDecorrelator implements ReflectiveVisitor {
    * updated.
    *
    * </ol> */
+  // CorelMap 是 RelDecorrelator 的导航仪与情报局。
+  // 如果说 Frame 记录的是去关联后新树的“局部生存报告”，那么 CorelMap 记录的就是整棵树在去关联前的全局相关性依赖拓扑图。
+  // 在启动去关联化之前，全局盘点哪些算子节点生产了相关变量，哪些算子节点消费了相关变量，以及每一个细节表达式究竟绑定了哪个具体的相关引用。
+  // 在打平子查询时，优化器不能瞎改。它必须知道每个变量的生命周期：
+  // 谁是生产者（Provider）？（即 Correlate 算子，负责定义 $cor0 并把左表的数据灌给右表循环）
+  // 谁是消费者（Consumer）？（即深层的 Filter 或 Project 算子，内部包含 $cor0.field_X 的表达式）
+  // 如果没有这三张全局地图，去关联化代码将寸步难行，因为每改动一个节点，都要全局全树递归去寻找谁引用了它。CorelMap 通过空间换时间，把这些依赖关系全部做成了索引。
   protected static class CorelMap {
+    // 【算子节点】 ──► 许多个【相关变量引用（CorRef）】
+    // 用来精准记录哪个算子是消费者。比如一个 LogicalFilter 算子内部的过滤条件既引用了 $cor0.dept_id 又引用了 $cor1.mgr_id，这张表就会把该 Filter 节点映射到这两个变量引用上。
     private final Multimap<RelNode, CorRef> mapRefRelToCorRef;
+    // 【相关变量 ID（CorrelationId）】 ──► 【提供它的 Correlate 算子节点】。
+    // 用来精准记录谁是生产者。当优化器在深层抓到 $cor0 时，它只要查一下这张表，就能瞬间溯源到究竟是外层哪个 Correlate 算子把这个变量孵化出来的。
     private final NavigableMap<CorrelationId, RelNode> mapCorToCorRel;
+    // 【行级字段访问表达式（RexFieldAccess）】 ──► 【高层包装的相关变量引用（CorRef）】。
+    // 微观表达式级的账本。当遇到表达式形如 $cor0.salary 时，这个表达式本身是个 RexFieldAccess。通过这个 Map，能直接换算出它对应的 CorRef 对象，从而方便在重写表达式（如通过 Shuttle）时进行快速替换。
     private final Map<RexFieldAccess, CorRef> mapFieldAccessToCorRef;
 
     // TODO: create immutable copies of all maps
@@ -2888,6 +2961,10 @@ public class RelDecorrelator implements ReflectiveVisitor {
   }
 
   /** Builds a {@link org.apache.calcite.sql2rel.RelDecorrelator.CorelMap}. */
+  // 通过全树扫描，将隐式隐藏在各种算子（如 Filter、Project）的行表达式（RexNode）内部的相关性变量引用抓取出来，并建立算子与变量之间的映射字典。
+  // 在遍历过程中，它使用了一个精妙的组合：
+  // 外层（Shuttle）：负责遍历关系代数树（RelNode 级别），定位哪些算子可能带有相关性条件。
+  // 内层（RexVisitor）：当外层碰到特定的算子时，内层启动，专门去解析这些算子内部的行级表达式（RexNode 级别），寻找形如 $cor0.field 的特定表达式（RexFieldAccess）。
   public static class CorelMapBuilder extends RelHomogeneousShuttle {
     final NavigableMap<CorrelationId, RelNode> mapCorToCorRel =
         new TreeMap<>();
@@ -2898,23 +2975,32 @@ public class RelDecorrelator implements ReflectiveVisitor {
             .build();
 
     final Map<RexFieldAccess, CorRef> mapFieldAccessToCorVar = new HashMap<>();
-
+    // 全局列偏移量指针
+    // 在 SQL 子查询中，内层表达式引用外层表的字段时，索引是以“当前的合并视图”来计算位置的。
+    // offset 负责在遍历到 Join 或 Correlate 的右子树时，实时记录并累加左子树的字段总数，从而帮助准确计算变量引用在复合上下文中的绝对坐标。
     final Holder<Integer> offset = Holder.of(0);
+    // 自增计数器。
+    // 每当在全树的表达式里抓到一个全新的相关变量引用（CorRef）时，为它分配一个全局唯一的内部自增 ID（corrId），用于后续在去关联过程中进行精细化去重与辨识。
     int corrIdGenerator = 0;
 
     /** Creates a CorelMap by iterating over a {@link RelNode} tree. */
+    // 启动全局扫描并产出最终地图。
+    // 遍历传入的根节点列表。
     public CorelMap build(RelNode... rels) {
       for (RelNode rel : rels) {
+        // 防御性去包装行为。因为在优化过程中，节点可能被 HepRelVertex 等外壳包装着，该方法将其剥离，还原出真实的 RelNode。
         stripHep(rel).accept(this);
       }
       return new CorelMap(mapRefRelToCorRef, mapCorToCorRel,
           mapFieldAccessToCorVar);
     }
-
+    // 专门拦截并刺探那些可能藏有相关性阴谋的重点算子
     @Override public RelNode visit(RelNode other) {
       if (other instanceof Join) {
         Join join = (Join) other;
         try {
+          // 把它压入上下文栈（stack），
+          // 然后强行把它内部的 Join 条件（getCondition()）送入内部的 rexVisitor 表达式访问者进行地毯式刺探，最后通过 visitJoin 递归处理子节点。
           stack.push(join);
           join.getCondition().accept(rexVisitor(join));
         } finally {
@@ -2922,10 +3008,14 @@ public class RelDecorrelator implements ReflectiveVisitor {
         }
         return visitJoin(join);
       } else if (other instanceof Correlate) {
+        // 当遇到 Correlate：这是个相关性生产者！立刻抓获它的 CorrelationId，将它和当前节点塞进生产者地图 mapCorToCorRel。
+        // 因为 Correlate 算子本身属于 BiRel（双输入算子），所以它紧接着重用了 visitJoin 逻辑去遍历左右子树。
         Correlate correlate = (Correlate) other;
         mapCorToCorRel.put(correlate.getCorrelationId(), correlate);
         return visitJoin(correlate);
       } else if (other instanceof Filter) {
+        // 当遇到 Filter / Project：这两个是经典的相关性消费者（可能在 WHERE 条件或 SELECT 列里引用外层变量）。
+        // 代码同样将它们压栈，并把它们的过滤条件（Condition）或投影列表（Projects）依次喂给 rexVisitor 刺探。
         Filter filter = (Filter) other;
         try {
           stack.push(filter);
@@ -2951,21 +3041,26 @@ public class RelDecorrelator implements ReflectiveVisitor {
         RelNode input) {
       return super.visitChild(parent, i, stripHep(input));
     }
-
+    // 专门负责计算带有左右两个孩子的算子（如 Join / Correlate）的字段偏移量。
     private RelNode visitJoin(BiRel join) {
+      // 先记录进入当前分支前的初始偏移量 x。
       final int x = offset.get();
+      // 递归遍历左孩子：visitChild(join, 0, join.getLeft())。此时左孩子的相对偏移量依然是以 x 为基准。
       visitChild(join, 0, join.getLeft());
+      // 位移累加（关键点）：准备遍历右孩子前，将 offset 设置为 x + 左孩子的总字段数。因为右孩子内部如果产生跨界引用，其引用的位置需要把左表的宽度全部跳过去。
       offset.set(x + join.getLeft().getRowType().getFieldCount());
       visitChild(join, 1, join.getRight());
       offset.set(x);
       return join;
     }
-
+    // 专门产出一个定制的行级表达式匿名访问器（RexVisitorImpl）。传入的 rel 代表当前正在被扫描的那个外层算子。
     private RexVisitorImpl<Void> rexVisitor(final RelNode rel) {
       return new RexVisitorImpl<Void>(true) {
+        // 当表达式在扫描时遇到了一个“字段访问表达式”（如 $cor0.dept_id），该方法被激活。
         @Override public Void visitFieldAccess(RexFieldAccess fieldAccess) {
           final RexNode ref = fieldAccess.getReferenceExpr();
           if (ref instanceof RexCorrelVariable) {
+            // 如果发现它确实是一个 RexCorrelVariable（相关性变量），说明正式抓到了消费现场。
             final RexCorrelVariable var = (RexCorrelVariable) ref;
             if (mapFieldAccessToCorVar.containsKey(fieldAccess)) {
               // for cases where different Rel nodes are referring to
@@ -2996,9 +3091,16 @@ public class RelDecorrelator implements ReflectiveVisitor {
   /** Frame describing the relational expression after decorrelation
    * and where to find the output fields and correlation variables
    * among its output fields. */
+  // 在去关联（Decorrelation）这种深度代数树重构的过程中，算子节点被替换、列被增加、索引被无情洗牌。
+  // Frame 的存在就是为了在战火纷飞的重构过程中，锁死每一个算子在新旧时空交替时的“列索引生存报告”。
   static class Frame {
+    // 记录去关联化（或局部重写）之后生成的全新关系代数算子节点。
+    // 例如原本是一个带有相关性变量的 LogicalFilter，经过重构后，可能变成了一个巨大的、由 LogicalJoin 和 LogicalAggregate 缝合出来的新算子。这个新算子的根节点就会被存在 r 中。
     final RelNode r;
+    // 记录该算子节点产生的相关性变量在新算子输出行（RowType）中的绝对列索引位置。
+    // CorDef 代表一个相关性变量的物理定义（包含 CorrelationId 和它对应的列）。
     final ImmutableSortedMap<CorDef, Integer> corDefOutputs;
+    // 记录【老算子的列索引】到【新算子的列索引】的完全映射。
     final ImmutableSortedMap<Integer, Integer> oldToNewOutputs;
 
     Frame(RelNode oldRel, RelNode r, NavigableMap<CorDef, Integer> corDefOutputs,
@@ -3006,10 +3108,16 @@ public class RelDecorrelator implements ReflectiveVisitor {
       this.r = requireNonNull(r, "r");
       this.corDefOutputs = ImmutableSortedMap.copyOf(corDefOutputs);
       this.oldToNewOutputs = ImmutableSortedMap.copyOf(oldToNewOutputs);
+      // corDefOutputs.values() 是所有变量在新算子里分配到的列索引。
+      // 断言这些列索引中的最大值，也必须严格小于新算子 r 自身输出行的总列数（FieldCount）。
       assert allLessThan(this.corDefOutputs.values(),
           r.getRowType().getFieldCount(), Litmus.THROW);
+      // oldToNewOutputs.keySet() 是映射关系的源头（即老算子的旧列索引）
+      // 断言账本里试图转换的所有旧列索引，必须严格小于原始老算子 oldRel 的总列数。
       assert allLessThan(this.oldToNewOutputs.keySet(),
           oldRel.getRowType().getFieldCount(), Litmus.THROW);
+      // oldToNewOutputs.values() 是映射关系的终点（即新算子的新列索引）
+      // 断言转换后的所有新列索引，必须严格小于新算子 r 的总列数。
       assert allLessThan(this.oldToNewOutputs.values(),
           r.getRowType().getFieldCount(), Litmus.THROW);
     }

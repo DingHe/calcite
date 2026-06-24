@@ -115,13 +115,24 @@ import java.util.function.Predicate;
  * @param <C> Configuration type
  */
 // RelRule 是 Apache Calcite 优化器框架中用于替代传统 RelOptRule 的现代化、参数化（Parameterized）规则基类。
-// 统的 RelOptRule 由于依赖大量且繁琐的构造方法重载、静态工厂方法（如 operand()、operandJ()）以及内部硬编码，导致规则定义臃肿、复用性差，并且难以进行灵活的属性微调。
+// 传统的 RelOptRule 由于依赖大量且繁琐的构造方法重载、静态工厂方法（如 operand()、operandJ()）以及内部硬编码，导致规则定义臃肿、复用性差，并且难以进行灵活的属性微调。
 // 为了解决这些痛点，Calcite 从 1.x 中后期引入了 RelRule，并在 2.0 时代将其完全确立为定义优化规则的核心底座。
 // 核心作用
 // 全面参数化与配置解耦（Configuration-Driven）：RelRule 将规则的拓扑匹配（Operand）和内部控制行为（如某些阈值或开关）统一抽离到内部 Config 接口中。规则子类不再通过构造函数死板地硬编码匹配逻辑，而是完全由外部注入的配置驱动。
 // 拥抱类型安全的声明式流式 DSL（Domain Specific Language）：提供了由 OperandTransform、OperandBuilder 和 OperandDetailBuilder 组成的现代化流式接口。开发者可以通过清晰的链式调用，声明式地组装出极具语义感的算子树匹配模式。
 // 消除编译期重载爆炸：淘汰了旧体系下各种参数交错的静态重载函数，将类型、特质、过滤谓词、子节点输入策略完全解耦到独立的流式组件方法中。
 // 基于第三方注解的不可变配置生成：全面依托 @Value.Immutable 自动代码生成技术（编译期注解处理器），使规则配置天然具备线程安全、流式构建（Builder Pattern）的现代化特性。
+// OperandTransform（定义变异转换）：这是一个顶层声明式接口（高阶函数），用来接收一个 Builder 并对它进行定制。
+// OperandBuilder（构建起始站）：当你想为某个算子（比如 LogicalFilter）指定它的下层子节点（Inputs）匹配规则时，你处于这个阶段。
+// OperandDetailBuilder（细节雕刻站）：当你想为当前算子指定自身细节特征（比如：谓词条件是什么、满足什么特征约束 Convention）时，你处于这个阶段。
+// 它们在代码中的流式运转轨迹通常如下：
+// // 以定义一个匹配 Filter 压入 Project 的规则为例：
+// OperandTransform transform = b0 ->
+//    b0.operand(LogicalFilter.class)          // 1. 进入 OperandBuilder 阶段
+//      .predicate(f -> f.containsSubquery())  // 2. 升级为 OperandDetailBuilder 阶段，雕刻 Filter 自身细节
+//      .oneInput(b1 ->                        // 3. 再次切回 OperandBuilder 阶段，去定义它的下层子节点输入
+//          b1.operand(LogicalProject.class).anyInputs()
+//      );
 public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
   // 当前规则实例持有的只读/不可变配置对象。
   // 它包含了该规则运行所需的一切元数据（包括操作数生成器、算子工厂、唯一描述信息以及子类自定义的各种微调参数）。
@@ -289,7 +300,8 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     }
 
     @Override public <R extends RelNode> OperandDetailBuilder<R> operand(Class<R> relClass) {
-      return new OperandDetailBuilderImpl<>(this, relClass);//这里的parent传入OperandBuilder本身，是为了让Detail更好操作operands属性，构建RelOptRuleOperand
+      //这里的parent传入OperandBuilder本身，是为了让Detail更好操作operands属性，构建RelOptRuleOperand
+      return new OperandDetailBuilderImpl<>(this, relClass);
     }
 
     @Override public Done exactly(RelOptRuleOperand operand) {
@@ -306,7 +318,7 @@ public abstract class RelRule<C extends RelRule.Config> extends RelOptRule {
     private final OperandBuilderImpl parent;
     //指定要构建的操作数的具体类型，确保其符合预期的关系表达式类型
     private final Class<R> relClass;
-    //用于构建该操作数的输入，支持复杂的关系表达式结构
+    // 用于构建该操作数的输入，支持复杂的关系表达式结构
     final OperandBuilderImpl inputBuilder = new OperandBuilderImpl();
     private @Nullable RelTrait trait;
     private Predicate<? super R> predicate = r -> true;

@@ -78,10 +78,12 @@ import static java.util.Objects.requireNonNull;
  */
 // 在关系代数和 SQL 树中，Aggregate 对应的是 分组聚合算子，即标准 SQL 中的 GROUP BY 语句以及伴随的聚合函数（如 COUNT、SUM、AVG、MAX、MIN）。
 // 核心职责是：
-// 数据降维与去重：它接收单股输入流（input），通过指定的分组键（groupSet）将多行数据合并、去重为更少的行。如果没有任何分组键（即 GROUP BY ()），则整张表的数据将被压缩聚合为单行（Grand Total）。
-// 多维分析（高级分组）：它不仅支持标准的分组，还天然支持数据仓库中的多维度分析算子——ROLLUP（上卷）、CUBE（多维立方体）和 GROUPING SETS（分组集）。它通过 groupSets 属性精妙地映射了这一多维流派。
-// 聚合指标映射：它持有一组 AggregateCall 列表，每一个 AggregateCall 代表一个具体的聚合计算任务，定义了函数类型、参数位置、以及可选的过滤条件（FILTER (WHERE ...)）。
-
+// 数据降维与去重：它接收单股输入流（input），通过指定的分组键（groupSet）将多行数据合并、去重为更少的行。
+// 如果没有任何分组键（即 GROUP BY ()），则整张表的数据将被压缩聚合为单行（Grand Total）。
+// 多维分析（高级分组）：它不仅支持标准的分组，还天然支持数据仓库中的多维度分析算子——ROLLUP（上卷）、CUBE（多维立方体）和 GROUPING SETS（分组集）。
+// 它通过 groupSets 属性精妙地映射了这一多维流派。
+// 聚合指标映射：它持有一组 AggregateCall 列表，
+// 每一个 AggregateCall 代表一个具体的聚合计算任务，定义了函数类型、参数位置、以及可选的过滤条件（FILTER (WHERE ...)）。
 
 public abstract class Aggregate extends SingleRel implements Hintable {
   // 当前聚合算子持有的 SQL 提示（Hints）列表，如 /*+ AGG_STRATEGY(HASH) */。

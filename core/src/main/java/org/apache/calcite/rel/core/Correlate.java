@@ -67,24 +67,26 @@ import static java.util.Objects.requireNonNull;
  *   <tr><td>HashJoinSemi</td><td>SemiJoin(A, B, semi)</td></tr>
  *   <tr><td>HashJoinAnti</td><td>SemiJoin(A, B, anti)</td></tr>
  * </table>
- * Correlate 运算符用来描述一个查询中的 关联子查询（correlated subquery）。关联子查询是指在查询的外部查询（父查询）中引用了内部查询（子查询）中的某些变量的子查询
- * SELECT A.id, A.name
- * FROM A
- * WHERE A.salary > (SELECT AVG(B.salary)
- *                   FROM B
- *                   WHERE A.department_id = B.department_id);
- *
- * 在这个查询中，A.salary 和 A.department_id 会在子查询中被引用。
- * 这个子查询就是一个 关联子查询，因为它依赖于外部查询 A 的列。
- * 它实现了一个 嵌套循环连接（nested-loop join）操作
  * @see CorrelationId
  */
+// Correlate 是一个抽象双输入（BiRel）逻辑/物理关系代数运算符。它专门用来建模和描述 SQL 中的关联子查询（Correlated Subquery）。
+// 行为本质：嵌套循环（Nested-Loop）
+// 虽然它看起来和 Join（连接）算子非常相似，都拥有左输入（Left Input）和右输入（Right Input），但其底层的执行语义截然不同：
+// 普通 Join：左右两侧是独立的数据流，通过某种算法（如 Hash Join）在连接条件上进行碰撞。
+// Correlate：扮演着驱动轮与从动轮的关系。它采取嵌套循环策略——外层（左输入）每吐出一行数据，
+// Correlate 就会将这行数据的相关字段设置为上下文变量环境（CorrelationId），然后强行宣告右输入（子查询）重置并重新执行一遍（Restart/Rescan）。
 public abstract class Correlate extends BiRel implements Hintable {
   //~ Instance fields --------------------------------------------------------
-
-  protected final CorrelationId correlationId; //表示外部查询中的变量名，代表了外部查询中的一行数据
-  protected final ImmutableBitSet requiredColumns; //表示需要在右输入（子查询）中使用的左输入（外部查询）的列
-  protected final JoinRelType joinType; //连接的类型
+  // 关联变量的唯一标识符（ID）
+  // 代表了外部查询（左输入）当前正在循环的“那一行数据”的变量名（例如 $cor0）。右输入算子树内部（如深层的 Filter）就是通过这个 ID 来引用外层数据的。
+  protected final CorrelationId correlationId;
+  // 左输入中被右输入依赖的列索引位图集合。
+  // 使用 ImmutableBitSet 标记哪些列是关联所必需的。例如左表有 5 列，但子查询内部只需要用到第 1 和第 3 列，则该位图会记录 {1, 3}。这为物理执行时只传递必要的字段提供了元数据支持。
+  protected final ImmutableBitSet requiredColumns;
+  // 连接的语义类型。
+  // 支持 INNER（内连接）、LEFT（左外连接）、SEMI（半连接，如 EXISTS）和 ANTI（反连接，如 NOT EXISTS）。它决定了嵌套循环在匹配成功或失败时如何输出最终行。
+  protected final JoinRelType joinType;
+  // SQL 方言或用户指定的优化器提示（Hints）列表。
   protected final ImmutableList<RelHint> hints;
 
   //~ Constructors -----------------------------------------------------------

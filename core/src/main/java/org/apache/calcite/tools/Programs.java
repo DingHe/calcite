@@ -332,7 +332,17 @@ public class Programs {
 
   /** Program that runs sub-programs, sending the output of the previous as
    * input to the next. */
+  // 主要用于将多个独立的优化阶段（Sub-programs）串联起来，形成一条高效的流水线（Pipeline）。
+  // SequenceProgram 的核心作用是阶段性优化流水线编排。
+  // 在复杂的数据库查询优化器中，把一棵原始的 AST（抽象语法树）转换成最终的高性能物理执行计划，往往不可能通过单一的规则或者一步优化就一蹴而就。优化过程通常被切分成多个职责单一的微型阶段（Phase）。
+  // 在实际的企业级大数据查询引擎中，一个由 SequenceProgram 串联起来的流水线通常长这样：
+  // 阶段一（Program 1）：执行去关联（DecorrelationProgram），把复杂的子查询打平。
+  // 阶段二（Program 2）：执行字段裁剪（FieldTrimmerProgram），把没用的列干掉，减轻网络 IO。
+  // 阶段三（Program 3）：基于规则的优化（HepProgram），执行常规的谓词下推、常量折叠。
+  // 阶段四（Program 4）：基于代价的并发火山模型优化（VolcanoProgram），选择最佳的物理算子（如 HashJoin 还是 MergeJoin）。
+ // SequenceProgram 就像是流水线上的传输带。它并不直接参与具体的代数树重构或代价计算，它的唯一使命就是把前一个优化阶段输出的中间形态 RelNode 算子树，无缝地喂给下一个优化阶段作为输入，直到所有注册的 Program 全部跑完。
   private static class SequenceProgram implements Program {
+    // 顺序存储所有需要依次执行的子优化程序（Sub-programs）列表。
     private final ImmutableList<Program> programs;
 
     SequenceProgram(ImmutableList<Program> programs) {
@@ -359,6 +369,16 @@ public class Programs {
    * Decorrelator gets field offsets confused if fields have been trimmed</a>,
    * disable field-trimming in {@link SqlToRelConverter}, and run
    * {@link TrimFieldsProgram} after this program. */
+  // DecorrelateProgram 是 Apache Calcite 中负责子查询去关联化（Decorrelation，也称解关联）的阶段性程序。
+  // 它同样实现了 Program 接口，是构建企业级查询优化器流水线时必不可少的一环。
+  // DecorrelateProgram 的核心使命是：将“相关子查询”转换为高效的、可并行的“等值连接（Join）”或“窗口函数”结构。
+  // 为什么要“去关联化”？
+  // 在未优化的代数树中，相关子查询（如前面的 WHERE emp.dept_id = dept.id）在逻辑上表现为 嵌套循环（Nested Loop/Correlate 算子）。
+  // 这意味着外层表有一万条数据，内层的子查询可能就要硬生生重复执行一万次（即 $O(N \times M)$ 的笛卡尔积级延迟），在大数据分布式引擎下简直是性能灾难。
+  // 去关联化程序会利用数学代数等价变换，把这种嵌套循环结构打平（Flatten）。
+  // 官方推荐的正确姿势：在初始化 SqlToRelConverter 时先禁用其自带的早期字段裁剪。
+  // 在优化流水线中，必须保证 DecorrelateProgram（去关联）先执行，等它成功把子查询打平、关联列确定后，
+  // 再紧随其后运行 TrimFieldsProgram 进行瘦身。这完美解释了为什么我们在研究 RelFieldTrimmer 的同时，必须深刻理解 DecorrelateProgram。
   private static class DecorrelateProgram implements Program {
     @Override public RelNode run(RelOptPlanner planner, RelNode rel,
         RelTraitSet requiredOutputTraits,
@@ -367,6 +387,7 @@ public class Programs {
       final CalciteConnectionConfig config =
           planner.getContext().maybeUnwrap(CalciteConnectionConfig.class)
               .orElse(CalciteConnectionConfig.DEFAULT);
+      // 判断是否开启了“强制去关联”优化。
       if (config.forceDecorrelate()) {
         final RelBuilder relBuilder =
             RelFactories.LOGICAL_BUILDER.create(rel.getCluster(), null);

@@ -277,9 +277,12 @@ public abstract class RelOptRuleCall {
    */
   // transformTo 是整个 Apache Calcite 优化器框架中最核心、最具威力的接口。
   // 当我们在自定义规则（RelOptRule）的 onMatch(RelOptRuleCall call) 方法中完成了逻辑推导，并创造出了一个性能更好、等价的新算子树时，我们并不能直接替换原有算子，而是必须通过调用该方法，将新算子树的根节点 rel 正式移交给优化器引擎。
-  // 该方法显式承诺：任何在新算子 rel.getTraits() 中没有被明确指定的特征，底层的优化器引擎都会雷打不动地从老算子的根节点（this.rels[0].getTraitSet()）中强行拷贝一份丢给新算子和它那些尚未注册的子节点。 这保证了逻辑转换不会导致物理计划的特征丢失。
+  // 该方法显式承诺：任何在新算子 rel.getTraits() 中没有被明确指定的特征，
+  // 底层的优化器引擎都会雷打不动地从老算子的根节点（this.rels[0].getTraitSet()）中强行拷贝一份丢给新算子和它那些尚未注册的子节点。
+  // 这保证了逻辑转换不会导致物理计划的特征丢失。
   // 等价关系注册与代价空间开辟 (Memo Registration)
-  // 这是 Volcano 优化器的核心逻辑。调用该方法后，优化器会将新树 rel 塞进核心的 Memo（备忘录群组） 中，将其与老算子 this.rels[0] 归为同一个 等价集合（Equivalence Set / RelSet）。
+  // 这是 Volcano 优化器的核心逻辑。调用该方法后，优化器会将新树 rel 塞进核心的 Memo（备忘录群组） 中，
+  // 将其与老算子 this.rels[0] 归为同一个 等价集合（Equivalence Set / RelSet）。
   // 随后，优化器会立刻对新算子树展开递归的代价（Cost）计算。如果新树的整体 CPU/IO 代价低于老树，在最终生成物理执行计划时，老树对应的分支就会被无情抛弃，新树成功上位。
   // 在 HepPlanner（启发式优化器）的实现中：它的 transformTo 非常直接，发现等价新树后，会直接在原有的算子树拓扑结构上执行“伤筋动骨”的就地无条件替换。
   // 在 VolcanoPlanner（代价模型优化器）的实现中：它的 transformTo 绝不会破坏老树。

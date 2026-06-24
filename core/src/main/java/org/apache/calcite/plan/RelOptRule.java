@@ -89,7 +89,8 @@ public abstract class RelOptRule {
    *
    * @param operand root operand, must not be null
    */
-  // 最简构造器。仅传入根操作数，默认绑定逻辑算子构建工厂 RelFactories.LOGICAL_BUILDER，其规则描述由系统自动推测
+  // 最简构造器。
+  // 仅传入根操作数，默认绑定逻辑算子构建工厂 RelFactories.LOGICAL_BUILDER，其规则描述由系统自动推测
   protected RelOptRule(RelOptRuleOperand operand) {
     this(operand, RelFactories.LOGICAL_BUILDER, null);
   }

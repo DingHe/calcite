@@ -46,6 +46,11 @@ import static java.util.Objects.requireNonNull;
  *
  * @see org.apache.calcite.rel.core.CorrelationId
  */
+// LogicalCorrelate 是关联子查询在逻辑计划阶段（Logical Plan）的具象化节点。它处于 Convention.NONE（无物理约定）的时空中，专门用于在逻辑层面上对算子树进行打平、重写与去关联化。
+// LogicalCorrelate 的核心作用是在逻辑优化阶段作为关联子查询的“标准容器”。
+// 逻辑阶段的代言人：与基类 Correlate 的抽象性不同，LogicalCorrelate 拥有明确的逻辑物理属性。它的 TraitSet 携带的是 Convention.NONE。这代表它是一个纯逻辑概念，无法直接在任何底层引擎（如 Flink、Spark 或 JDBC）上被物理执行。
+// 承上启下的转换桥梁：如果去关联化成功，它会被替换为普通的 LogicalJoin；如果优化器保留了它，它最终会通过物理转换规则（如 EnumerableCorrelateRule），被翻译为具有具体执行代码的物理算子（如 EnumerableCorrelate）。
+//
 public final class LogicalCorrelate extends Correlate {
   //~ Instance fields --------------------------------------------------------
 

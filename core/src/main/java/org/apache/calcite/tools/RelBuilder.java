@@ -2137,12 +2137,22 @@ public class RelBuilder {
    * @param hints Hints
    * @param force create project even if it is identity
    */
+  // 负责实例化 Project 节点，还承担了投影消除、投影合并（Project Merge）、表达式化简（Simplify）、别名自动推导、以及列名唯一性去重（Unique Suffix）等极其关键的引擎级优化。
+  //
   private RelBuilder project_(
+      // 投影表达式列表（行级表达式）
+      // 定义了最终 SELECT 出来的具体列计算逻辑，例如 [$0, +($1, 10)]（表示保留第一列，并将第二列加 10）。
       Iterable<? extends RexNode> nodes,
+      // 调用方建议/期望的列别名列表。
+      // 如果用户显式指定了别名，则尽可能使用；列表中允许包含 null，表示该列需要由 Calcite 引擎自动推导或生成默认列名。
       Iterable<? extends @Nullable String> fieldNames,
+      // 将用户在 SQL 中书写的 Hint 提示（如 /*+ HINT_NAME */）绑定到新生成的 Project 算子上，向下游物理层传递。
       Iterable<RelHint> hints,
+      // 若为 false，当检测到当前投影是“恒等投影”（Identity Project，即没有任何计算、没有改变任何列名和排序，只是原样透传数据）时，引擎会实施优化，直接跳过不创建该 Project；若为 true，则不论如何都必须生成一个物理物理节点。
       boolean force,
+      // 用于相关子查询。若当前投影算子内部定义或透传了某些关联变量（如 $cor0），需要通过该参数显式注册。
       Iterable<CorrelationId> variablesSet) {
+    // peek_() 从 RelBuilder 的核心算子栈（Stack）中弹出当前栈顶的 Frame，作为当前 Project 的输入孩子节点（Input）
     final Frame frame = requireNonNull(peek_(), "frame stack is empty");
     final RelDataType inputRowType = frame.rel.getRowType();
     final List<RexNode> nodeList = Lists.newArrayList(nodes);
@@ -2150,17 +2160,20 @@ public class RelBuilder {
 
     // Perform a quick check for identity. We'll do a deeper check
     // later when we've derived column names.
+    // 快速恒等投影检查（第一轮）
     if (!force && Iterables.isEmpty(fieldNames)
         && RexUtil.isIdentity(nodeList, inputRowType)) {
       return this;
     }
-
+    // 列名容器对齐
     final List<@Nullable String> fieldNameList = Lists.newArrayList(fieldNames);
     while (fieldNameList.size() < nodeList.size()) {
       fieldNameList.add(null);
     }
 
     // Do not merge projection when top projection has correlation variables
+    // 如果当前 Project 的下方紧挨着的也是一个 Project（即出现了 Project(Project(X)) 的“套娃”结构），
+    // 在满足膨胀阈值约束且没有复杂的关联变量时，尝试将其合并为一个单层的 Project。
     bloat:
     if (frame.rel instanceof Project
         && config.bloat() >= 0
@@ -2171,6 +2184,7 @@ public class RelBuilder {
       for (int i = 0; i < fieldNameList.size(); i++) {
         if (fieldNameList.get(i) == null) {
           final RexNode node = nodeList.get(i);
+          // 如果上层列没有起别名，且它只是简单引用了下层 Project 的某个字段（RexInputRef），则直接抓取并继承下层 Project 对应字段的名字。
           if (node instanceof RexInputRef) {
             final RexInputRef ref = (RexInputRef) node;
             fieldNameList.set(i,
@@ -2178,6 +2192,7 @@ public class RelBuilder {
           }
         }
       }
+      // 调用底层工具方法将上层的表达式和下层的表达式进行代数复合（Inline）。如果复合后导致表达式过于臃肿，超出了 config.bloat() 设定的阈值，则放弃合并。
       final List<RexNode> newNodes =
           RelOptUtil.pushPastProjectUnlessBloat(nodeList, project,
               config.bloat());
@@ -2189,6 +2204,9 @@ public class RelBuilder {
 
       // Carefully build a list of fields, so that table aliases from the input
       // can be seen for fields that are based on a RexInputRef.
+      // 维护表别名（Table Alias）并递归
+      // 合并成功后，需要小心地将原下层栈帧的表别名、表空间信息无缝传递给最底层的 Input。
+      // 随后把合并出来的 newNodes、合并后的 Hint 集合连同底层 Project 自身的变量集，反手重新触发一次 project_ 方法，实现多层 Project 的连环合并
       final Frame frame1 = stack.pop();
       final PairList<ImmutableSet<String>, RelDataTypeField> fields =
           PairList.of();
@@ -2210,22 +2228,28 @@ public class RelBuilder {
       mergedHints.addAll(project.getHints());
       mergedHints.addAll(hints);
       // Keep bottom projection's variablesSet.
+      // 核心：把融合后的 newNodes 递归再次调用 project_ 方法
       return project_(newNodes, fieldNameList, mergedHints.build(), force,
           ImmutableSet.copyOf(project.getVariablesSet()));
     }
 
     // Simplify expressions.
+    // 表达式简化
     if (config.simplify()) {
       nodeList.replaceAll(e -> simplifier.simplifyPreservingType(e));
     }
 
     // Replace null names with generated aliases.
+    // 默认别名推导（Infer Alias）
+    // 对于那些用户没有提供别名（仍为 null）的列，调用 inferAlias 方法根据表达式的特征去智能推导。如果是字段引用就推导为原字段名，如果是函数调用（如 COUNT(*)）则生成系统内部的默认别名（如 EXPR$i）。
     for (int i = 0; i < fieldNameList.size(); i++) {
       if (fieldNameList.get(i) == null) {
         fieldNameList.set(i, inferAlias(nodeList, nodeList.get(i), i));
       }
     }
-
+    // 最终列名唯一性去重（Unique Suffix 后缀处理）与字段生成
+    // 引擎在此处通过 uniqueNameList 判定当前列名是否碰撞。如果发生了重名，则调用系统的 F_SUGGESTER 建议器自动为其追加数字后缀（例如将第二个 id 改为 id0、id1），
+    // 确保所有最终输出列名绝不冲突。根据系统配置，该过程会自动适配大小写敏感度。
     final PairList<ImmutableSet<String>, RelDataTypeField> fields =
         PairList.of();
     final Set<String> uniqueNameList =
@@ -2247,6 +2271,9 @@ public class RelBuilder {
         } while (uniqueNameList.contains(name));
         fieldNameList.set(i, name);
       }
+      // 表别名与数据类型装配
+      // 为每一列实例化物理列类型 RelDataTypeFieldImpl。如果是纯粹的字段透传（INPUT_REF），
+      // 则将下层对应的表、空间等别名集合（leftList）无缝地复制绑定给新列，保证后序的 RexInputRef 依然能找得到其所属的表别名源头。
       RelDataTypeField fieldType =
           new RelDataTypeFieldImpl(name, i, node.getType());
       switch (node.getKind()) {
@@ -2261,12 +2288,15 @@ public class RelBuilder {
       }
       uniqueNameList.add(name);
     }
+    // 恒等投影消除（第二轮深层判定）
     if (!force && RexUtil.isIdentity(nodeList, inputRowType)) {
+      //  列名和计算全一致，不创建物理节点
       if (fieldNameList.equals(inputRowType.getFieldNames())) {
         // Do not create an identity project if it does not rename any fields
         return this;
       } else {
         // create "virtual" row type for project only rename fields
+        // 仅仅改了列名：不创建物理 Project，而是用改名后的 fields 替换原栈顶 Frame
         stack.pop();
         // Ignore the hints.
         stack.push(new Frame(frame.rel, fields));
@@ -2277,7 +2307,12 @@ public class RelBuilder {
     // If the expressions are all literals, and the input is a Values with N
     // rows (or an Aggregate with 1 row), replace with a Values with same tuple
     // N times.
+    // 极限特殊优化：向 Values 算子退化
     final int rowCount;
+    // 如果当前投影里所有的表达式全是纯粹的常量字面量（RexLiteral，例如 SELECT 1, 'apple', true FROM t）。
+    // 且此时孩子节点吐出的行数是固定、可预知的（fixedRowCount >= 0，比如孩子是一个 Values 算子或者只有一条输出的 Aggregate 算子）。
+    // 此时，直接把整个子树连根拔起（build() 抛弃原输入），直接将当前算子重构、退化为一个纯静态的 Values 静态常量表算子，
+    // 里面存放 rowCount 个完全一样的常数元组。这样彻底免去了未来扫描真实物理表的庞大开销。
     if (config.simplifyValues()
         && nodeList.stream().allMatch(e -> e instanceof RexLiteral)
         && (rowCount = fixedRowCount(frame)) >= 0) {
@@ -2290,7 +2325,10 @@ public class RelBuilder {
       return values(Collections.nCopies(rowCount, tuple),
           typeBuilder.build());
     }
-
+    // 物理建树与入栈
+    // 调用底层的物理工厂 projectFactory.createProject 创建真正的 Project 算子节点。
+    // 将栈顶的老孩子节点弹出（stack.pop()）。
+    // 将新生成的 project 节点连同加工好的别名元数据 fields 组装成一个全新的 Frame，强行压入 RelBuilder 的核心算子栈顶，并返回 this 流式管道，宣告本轮投影构建圆满结束。
     final RelNode project =
         struct.projectFactory.createProject(frame.rel,
             ImmutableList.copyOf(hints),

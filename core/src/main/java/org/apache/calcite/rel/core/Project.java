@@ -239,9 +239,16 @@ public abstract class Project extends SingleRel implements Hintable {
    */
   // TODO: move to RelBuilder?
   // TODO: replace calls to getNamedProjects
+  // 获取当前投影（Project）算子中的所有表达式列表，并对那些“其字段名与默认推导出的字段名不一致”的表达式，自动在外层包裹一个 AS（别名）操作。
+  // 参数类型：org.apache.calcite.tools.RelBuilder  关系代数表达式构建器（Calcite 核心工具类）。
+  // 为什么需要它：该函数内部需要调用 b.alias(e, f.getName()) 来判断并生成带有别名包装的表达式。RelBuilder 内部持有 RexBuilder 及其上下文环境，能够优雅地判定当前列名是否需要显式地通过 AS 运算符进行重命名。
   public final List<RexNode> getAliasedProjects(RelBuilder b) {
     final ImmutableList.Builder<RexNode> builder = ImmutableList.builder();
+    // (e, f)：拉链遍历的局部变量对。其中 e 代表当前循环到的微观行表达式（RexNode），f 代表该表达式对应的期望字段元数据（RelDataTypeField）。
     Pair.forEach(exps, getRowType().getFieldList(), (e, f) -> {
+      // b.alias(e, f.getName()) 内部运作机制：
+      // 会去比对：表达式 e 自己默认推导出来的列名（比如 $0 默认叫 EXPR$0 或对应的输入列名），与期望的列名 f.getName()（比如 id）是否一致。
+      // 如果不一致：RelBuilder 会自动在这个表达式外层加套一个 SqlStdOperatorTable.AS 的 RexCall（行级函数调用），即将其包装为 AS(e, 'f.getName()')。
       builder.add(b.alias(e, f.getName()));
     });
     return builder.build();
