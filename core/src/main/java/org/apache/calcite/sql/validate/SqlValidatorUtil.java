@@ -113,27 +113,47 @@ public class SqlValidatorUtil {
    * @param usedDataset   Output parameter which is set to true if a sample
    *                      dataset is found; may be null
    */
+  // 试图将一个抽象的元数据命名空间（SqlValidatorNamespace）转换并解构为优化器可以直接使用的表元数据对象（RelOptTable）
+  // 该方法通过经典的 Wrapper（包装器）设计模式（即 isWrapperFor 和 unwrap），针对不同类型的 Namespace 派生类做分类解壳处理。
   public static @Nullable RelOptTable getRelOptTable(
+      // 校验层的一个命名空间。
+      // 在 Calcite 中，SQL 树中的每个关系表达式（如一张表、一个子查询或一个视图）都被抽象为一个 Namespace，它维护着该表达式输出的类型（RowType）等信息。
       SqlValidatorNamespace namespace,
+      // 元数据目录读取器（Catalog Reader）。
+      // 用于在系统的元数据层中真正检索物理表或视图。
       Prepare.@Nullable CatalogReader catalogReader,
+      // 样本数据集（Sample Dataset）的名称。
+      // 如果 SQL 中指定了要读取某个抽样数据集，该参数会提供数据集名称以替换常规表；如果按常规方式读表，则传入 null。
       @Nullable String datasetName,
+      // 输出型传递参数（利用数组实现传引用的效果）
+      // 当该参数不为 null 且系统成功匹配并使用了指定的样本数据集时，该方法内部会将 usedDataset[0] 设置为 true，以通知调用方。
       boolean @Nullable [] usedDataset) {
+    // 分支一：处理标准物理表命名空间（TableNamespace）
     if (namespace.isWrapperFor(TableNamespace.class)) {
+      // 检查当前的命名空间是否是一个标准物理表（或者能被解包成 TableNamespace）。如果是，说明这是一个直接引用了数据库物理表的普通 SELECT 节点。
       final TableNamespace tableNamespace =
           namespace.unwrap(TableNamespace.class);
       return getRelOptTable(tableNamespace,
           requireNonNull(catalogReader, "catalogReader"), datasetName, usedDataset,
           tableNamespace.extendedFields);
     } else if (namespace.isWrapperFor(SqlValidatorImpl.DmlNamespace.class)) {
+      // 分支二：处理数据操纵语言命名空间（DmlNamespace）
+      // 如果上面的分支没进，说明它不是普通的查询，而是一个 DML 语句（例如 INSERT、UPDATE、DELETE 或 MERGE）的目标表空间。
       final SqlValidatorImpl.DmlNamespace dmlNamespace =
           namespace.unwrap(SqlValidatorImpl.DmlNamespace.class);
+      // DML 语句会作用于某个底层实体。
+      // 此处调用 resolve() 方法，去解开外层的 DML 壳，拿到它真正指向和操纵的那个底层被解析的 resolvedNamespace。
       final SqlValidatorNamespace resolvedNamespace = dmlNamespace.resolve();
+      // 检查 DML 锁定的底层真实空间是不是一张表。
+      // 如果是，继续解包出其底层的 TableNamespace，并通过 tableNamespace.getTable() 拿到校验层的原始表定义对象 SqlValidatorTable。
       if (resolvedNamespace.isWrapperFor(TableNamespace.class)) {
         final TableNamespace tableNamespace = resolvedNamespace.unwrap(TableNamespace.class);
         final SqlValidatorTable validatorTable = tableNamespace.getTable();
+        // DML 语句常伴随着列扩展语法（例如在某些 SQL 方言中在 DML 目标表后面通过 EXTEND 语法动态追加临时声明列）
         final List<RelDataTypeField> extendedFields = dmlNamespace.extendList == null
             ? ImmutableList.of()
             : getExtendedColumns(namespace.getValidator(), validatorTable, dmlNamespace.extendList);
+        // 将解包出来的底层 tableNamespace、必不可少的 catalogReader，以及刚才特殊计算出来的 extendedFields 再次打包，统一调用底层的重载方法，重构并返回最终的 RelOptTable。
         return getRelOptTable(
             tableNamespace, requireNonNull(catalogReader, "catalogReader"),
             datasetName, usedDataset, extendedFields);
@@ -141,21 +161,33 @@ public class SqlValidatorUtil {
     }
     return null;
   }
-
+  // 真正去执行元数据查找和最终对象拼装的底层落地逻辑。
+  // 职责非常纯粹：通过完整的表名路径去元数据目录中检索 RelOptTable，并动态叠加可能存在的扩展字段。
   private static @Nullable RelOptTable getRelOptTable(
+      // 已经过上层剥壳确认的、代表物理表的命名空间对象。
       TableNamespace tableNamespace,
+      // 元数据目录管理器，用于真正执行表对象的检索。
       Prepare.CatalogReader catalogReader,
+      // 样本数据集（Sample Dataset）的名称，用于支持数据集替换（抽样读表）。
       @Nullable String datasetName,
+      // 输出型标记数组。如果启用了样本数据集且替换成功，会将 usedDataset[0] 设为 true。
       boolean @Nullable [] usedDataset,
+      // 由上层（如 DML 的 EXTEND 语法）解析并传递过来的动态扩展字段/列集合。
       List<RelDataTypeField> extendedFields) {
+    // 从小黑板或校验器缓存的表元数据中，获取该表的全限定名（Fully Qualified Name）。
+    // 字符串列表（List<String>），例如 SQL 中的 sales.public.emp 会被解析为 ["sales", "public", "emp"]。这是在元数据目录中唯一定位一张表所需的完整路径。
     final List<String> names = tableNamespace.getTable().getQualifiedName();
     RelOptTable table;
+    // 判断是否满足样本数据集替换的条件。
+    // 当前传入的 catalogReader 必须实现了 RelOptSchemaWithSampling 接口（代表该数据源支持抽样数据替换）。
     if (datasetName != null
         && catalogReader instanceof RelOptSchemaWithSampling) {
       final RelOptSchemaWithSampling reader =
           (RelOptSchemaWithSampling) catalogReader;
       table = reader.getTableForMember(names, datasetName, usedDataset);
     } else {
+      // 如果不指定样本数据集，或者底层元数据器不支持抽样（未实现该接口），则直接忽略 datasetName，
+      // 调用标准接口 catalogReader.getTableForMember(names)，通过表的全限定路径捞出标准的物理表元数据对象。
       // Schema does not support substitution. Ignore the data set, if any.
       table = catalogReader.getTableForMember(names);
     }

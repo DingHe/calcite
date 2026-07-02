@@ -219,7 +219,8 @@ public abstract class Prepare {
 
     return root.withRel(rootRel4);
   }
-
+  // 准备执行 SQL 查询（即编译、优化阶段）时，用于获取当前所使用的优化程序流水线（Program）
+  // 在通常情况下返回 Calcite 的标准黄金优化流水线，同时提供一个强大的钩子（Hook）机制，允许测试用例或外部组件在运行时动态覆盖（Override）默认的优化行为。
   protected Program getProgram() {
     // Allow a test to override the default program.
     final Holder<@Nullable Program> holder = Holder.empty();
@@ -228,7 +229,7 @@ public abstract class Prepare {
     if (holderValue != null) {
       return holderValue;
     }
-
+    // 生产线保底，返回标杆级标准流水线 —— 这是绝大多数生产环境和常规运行时的最终归宿。
     return Programs.standard();
   }
 

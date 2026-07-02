@@ -240,6 +240,14 @@ import static java.util.Objects.requireNonNull;
  * <p>The public entry points are: {@link #convertQuery},
  * {@link #convertExpression(SqlNode)}.
  */
+// 在 Calcite 中，一条 SQL 语句在经过 SqlParser 解析后会生成一棵由抽象语法树构成的 SqlNode 树（代表具体的 SQL 语法结构），再经过 SqlValidator 进行元数据绑定和语义校验。
+// SqlToRelConverter 的核心使命就是：将经过校验的、面向语法的 SqlNode 树，彻底翻译转换成面向代数优化的、解耦的 RelNode（关系代数逻辑算子树）。
+// 输入：SqlNode（代表：SELECT, JOIN, WHERE 等语法节点）。
+// 输出：RelNode / RelRoot（代表：LogicalProject, LogicalJoin, LogicalFilter 等逻辑算子节点）。
+// 在转换过程中，它不仅仅做简单的节点映射，还要处理极其复杂的底层逻辑，
+// 包括：相关子查询的重写与解关联、字段裁剪瘦身、IN/EXISTS 集合算子向 Semi-Join（半连接）的展平转换、以及物化视图和 Lattice 结构的初步对接。
+// 它是将“文本化的 SQL 语法”送入“CBO 动态规划优化器”之前必须通过的工业级翻译发动机。
+// 核心主入口：转换查询 convertQuery
 @SuppressWarnings("UnstableApiUsage")
 @Value.Enclosing
 public class SqlToRelConverter {
@@ -291,6 +299,14 @@ public class SqlToRelConverter {
    * Stack of names of datasets requested by the <code>
    * TABLE(SAMPLE(&lt;datasetName&gt;, &lt;query&gt;))</code> construct.
    */
+  // 这个变量专门用于在解析特定的扩展采样语法 TABLE(SAMPLE(<datasetName>, <query>)) 时，
+  // 跨方法、跨层级传递“数据集名称（datasetName）”这一上下文状态。
+  // FROM TABLE(SAMPLE('my_mock_dataset', SELECT * FROM emp))
+  // 外层算子首先识别出这是一个采样结构，并且它能拿到采样名字 'my_mock_dataset'。
+  // 但是，真正需要知道这个采样名字的，其实是内层递归里负责解析 FROM emp 的叶子节点转换方法。
+  // 或者是某些自定义的 CatalogReader，它们需要根据这个 datasetName 去决定是去读真实的物理表 emp，还是去读一个专门为测试准备的、名为 'my_mock_dataset' 的 Mock 数据集。
+  // 由于转换方法是层层递归调用的，如果不想在每个方法（如 convertFrom, convertJoin, convertIdentifier 等）的入参中都冗余地加上一个 String datasetName 参数，
+  // 最优雅的架构设计就是引入一个双端队列（Deque）作为全局/实例级的状态栈。
   private final Deque<String> datasetStack = new ArrayDeque<>();
 
   /** Stack that contains the SqlInsert operator that is currently being
@@ -606,26 +622,40 @@ public class SqlToRelConverter {
    *                        will become a JDBC result set; <code>false</code> if
    *                        the query will be part of a view.
    */
+  // 主要职责是将一棵 SQL 语法树（SqlNode）转换为一棵关系代数表达式树（RelNode），并最终将其包装RelRoot 返回。
   public RelRoot convertQuery(
+      // 输入的 SQL 解析树（Parse Tree / AST）。它可以是未经验证的原始语法树，也可以是已经通过 SqlValidator 验证过的语法树。
       SqlNode query,
+      // 是否需要对输入的 query 进行语义验证（Validate）
+      // 如果传入 true，方法内部会先调用验证器检查表名、列名、类型等是否正确；如果传入 false，则表明调用方已经在外部完成了验证工作。
       final boolean needsValidation,
+      // 当前查询是否为最顶层（Top-level）查询
+      // 用于判断该查询的结果是否会直接作为最终的输出（例如 JDBC 的结果集）。如果是视图（View）内部的子查询或嵌入式查询，则该值为 false。某些流处理算子（如 Delta）只会在 top=true 时触发。
       final boolean top) {
+    // 如果 needsValidation 为真，则调用 Calcite 的 SqlValidator 对原始语法树进行语义检查（如权限、元数据匹配、隐式类型转换等）。
     if (needsValidation) {
       query = validator().validate(query);
     }
-
+    // 调用内部的递归方法 convertQueryRecursive，将 SqlNode（如 SqlSelect, SqlJoin）逐层翻译为对应的 RelNode（如 LogicalProject, LogicalJoin）
+    // .rel 表示提取出转换后生成的 RelNode 根节点，赋值给 result。
     RelNode result = convertQueryRecursive(query, top, null).rel;
+    // 如果是最外层查询（top == true），且该查询是一个流式查询（例如使用了 STREAM 关键字或操作流数据）。
+    // 会在当前的 result 节点之上包裹一层 LogicalDelta 算子。Delta 算子在 Calcite 中用于捕获关系表达式随时间变化的数据增量（Delta），是流处理的核心算子。
     if (top) {
       if (isStream(query)) {
         result = new LogicalDelta(cluster, result.getTraitSet(), result);
       }
     }
     RelCollation collation = RelCollations.EMPTY;
+    // 首先判断，如果不是 DML 语句（即不是 INSERT/UPDATE/DELETE 等不需要排序的语句）。
     if (!query.isA(SqlKind.DML)) {
+      // 接着判断 isOrdered(query)，即 SQL 语句中是否包含 ORDER BY 子句。
       if (isOrdered(query)) {
+        // 如果包含排序，则通过 requiredCollation(result) 从当前的 result 关系表达式中提取出具体的排序字段和方向，将其赋值给 collation，用于后续放入 RelRoot。
         collation = requiredCollation(result);
       }
     }
+    // 安全检查。确保转换出来的 RelNode 树的行类型（Row Type）与前面通过验证器得到的 SqlNode 的行类型在语义上是兼容和一致的
     checkConvertedType(query, result);
 
     if (SQL2REL_LOGGER.isDebugEnabled()) {
@@ -634,22 +664,27 @@ public class SqlToRelConverter {
               result, SqlExplainFormat.TEXT,
               SqlExplainLevel.EXPPLAN_ATTRIBUTES));
     }
-
+    // 从验证器中直接获取该 SQL 节点经校验后的标准输出行类型
     final RelDataType validatedRowType = validator().getValidatedNodeType(query);
     List<RelHint> hints = new ArrayList<>();
+    // 如果当前查询是 SELECT 语句，并且用户在 SQL 中写了 Hint（如 /*+ BROADCAST(t1) */），则通过 SqlUtil.getRelHint 将这些 SQL 层的 Hint 转换为关系代数层的 RelHint 对象列表。
     if (query.getKind() == SqlKind.SELECT) {
       final SqlSelect select = (SqlSelect) query;
       if (select.hasHints()) {
         hints = SqlUtil.getRelHint(hintStrategies, select.getHints());
       }
     }
-
+    // 如果用户在配置（config）中开启了 JSON 类型操作符的启用开关。
+    // 利用访问者模式（Visitor），让 result 树接受 NestedJsonFunctionRelRewriter 的访问，对树中涉及嵌套 JSON 处理的函数进行特定的转换或包装。
     if (config.isAddJsonTypeOperatorEnabled()) {
       result = result.accept(new NestedJsonFunctionRelRewriter());
     }
 
     // propagate the hints.
+    // 将刚才收集到的 Hint 顺着 RelNode 树向下传播给合适的子节点，确保底层算子在优化时能感知到这些提示。
     result = RelOptUtil.propagateRelHints(result, false);
+    // 使用标准静态工厂方法将 result（关系代数根）、validatedRowType（验证类型）以及 query.getKind()（SQL类型）组装成一个 RelRoot 对象，
+    // 并通过 Wither 模式将前面计算出的 collation（排序）和 hints（提示）绑定上去，最终返回给调用者。
     return RelRoot.of(result, validatedRowType, query.getKind())
         .withCollation(collation)
         .withHints(hints);
@@ -691,9 +726,19 @@ public class SqlToRelConverter {
   /**
    * Converts a SELECT statement's parse tree into a relational expression.
    */
-  public RelNode convertSelect(SqlSelect select, boolean top) {
+  // 将一个标准 SELECT 查询语法树转换为关系代数表达式（RelNode）的核心入口函数
+  public RelNode convertSelect(
+      // 代表一个已经通过语义验证的 SELECT 语法树节点。
+      // 包含了 SQL SELECT 语句的所有核心组件，如 selectList（查询列）、from（数据源）、where（过滤条件）、groupBy（分组）、having（分组后过滤）等。
+      SqlSelect select,
+      // 标记当前 SELECT 语句是否为整个查询的最外层（顶级）查询。
+      boolean top) {
+    // 从验证器（Validator）中获取当前 SELECT 语句在解析 WHERE 子句时所使用的作用域（Scope）。
     final SqlValidatorScope selectScope = validator().getWhereScope(select);
+    // 构建一个名为 Blackboard（小黑板） 的内部上下文对象。
+    // Blackboard 是 SqlToRelConverter 中一个极其重要的内部类。它就像一块临时的黑板，用来记录和追踪转换过程中的中间状态。
     final Blackboard bb = createBlackboard(selectScope, null, top);
+    // 调用真正负责执行转换的内部私有方法 convertSelectImpl
     convertSelectImpl(bb, select);
     return castNonNull(bb.root);
   }
@@ -710,9 +755,16 @@ public class SqlToRelConverter {
    * Implementation of {@link #convertSelect(SqlSelect, boolean)};
    * derived class may override.
    */
+  // convertSelectImpl 是 SqlToRelConverter 中最核心、最经典的方法之一。
+  // 严格按照标准 SQL 的逻辑执行顺序（Logical Query Processing Order），自底向上、层层嵌套地将一棵 SqlSelect 语法树节点，像搭积木一样组装成由 RelNode 构成的关系代数逻辑算子树。
   protected void convertSelectImpl(
+      // 贯穿整个转换生命周期的环境状态容器。它内部维护了当前 Scope 作用域（如当前 Select 块能看到哪些表、哪些列）、当前的代数树根节点（bb.root）、标量表达式到别名的映射等。
+      // 所有的子转换方法都会不断修改或读取这个 bb 里面的状态。
       final Blackboard bb,
+      // 目标语法树节点。代表当前正在被翻译的、经过语义校验后的标准 SELECT 语法块对象。它包含了 FROM、WHERE、GROUP BY、HAVING、SELECT LIST、DISTINCT、ORDER BY、LIMIT、HINTS 等全部组件。
       SqlSelect select) {
+    // 第 1 步：解析 FROM 子句。
+    // SQL 执行的第一步。它去翻译 FROM 后面的表、视图、多表连接（JOIN）或是子查询。执行完毕后，底层会生成最初的扫描算子（如 LogicalTableScan 或 LogicalJoin），并将其暂存为当前黑板的根节点（更新 bb.root）。
     convertFrom(
         bb,
         select.getFrom());
@@ -737,58 +789,75 @@ public class SqlToRelConverter {
     //   CREATE VIEW v2 AS SELECT * FROM t ORDER BY x LIMIT 10
     // we would never remove the ORDER BY, because "ORDER BY ... LIMIT" is about
     // semantics. It is not a 'pure order'.
+    // 第 2 步：冗余排序裁剪优化（针对视图或子查询）。
+    // 如果当前 FROM 展开的是一个视图或子查询，且这个子查询里带有了 ORDER BY（即 bb.root 此时是一个 Sort 算子，且是 isPureOrder 纯排序，没有带 LIMIT）。
     if (RelOptUtil.isPureOrder(castNonNull(bb.root))
         && config.isRemoveSortInSubQuery()) {
       // Remove the Sort if the view is at the top level. Also remove the Sort
       // if there are other nodes, which will cause the view to be in the
       // sub-query.
+      // 如果当前查询不是最外层查询（!bb.top），
+      // 或者上层有聚合、DISTINCT、或者上层自己又指定了 ORDER BY、FETCH/OFFSET。因为在这些情况下，内层子查询的纯排序对最终结果的顺序毫无贡献，纯属浪费性能。
       if (!bb.top
           || validator().isAggregate(select)
           || select.isDistinct()
           || select.hasOrderBy()
           || select.getFetch() != null
           || select.getOffset() != null) {
+        // 调用 bb.setRoot(..., true) 将根节点替换为 bb.root.getInput(0)，直接把内层的 Sort 算子从算子树里剥离、丢弃。
         bb.setRoot(castNonNull(bb.root).getInput(0), true);
       }
     }
-
+    // 第 3 步：解析 WHERE 子句。
+    // 把 WHERE 条件表达式转换为关系代数表达式 RexNode。然后，在当前 bb.root 的算子树最外层，包裹上一层 LogicalFilter 算子，并将过滤条件挂载上去。
     convertWhere(
         bb,
         select.getWhere());
-
+    // 第 4 步：预收集 ORDER BY 表达式。
+    // 为什么在处理 SELECT 投影之前要先收集 ORDER BY？因为在 SQL 标准中，ORDER BY 允许引用 SELECT 列表中没有显式输出的列。
     final List<SqlNode> orderExprList = new ArrayList<>();
     final List<RelFieldCollation> collationList = new ArrayList<>();
+    // gatherOrderExprs 会扫描 ORDER BY 列表，把这些排序列记录到 orderExprList（语法节点列表）中，并将它们的升降序、Null 排序特征转化为物理排序格（RelFieldCollation）并存入 collationList。
     gatherOrderExprs(
         bb,
         select,
         select.getOrderList(),
         orderExprList,
         collationList);
+    // 作用：第 5 步：生成标准物理排序特征（Collation Trait）。
     final RelCollation collation =
         cluster.traitSet().canonize(RelCollations.of(collationList));
-
+    // 第 6 步：核心投影/聚合分支路由。
     if (validator().isAggregate(select)) {
+      // 如果是聚合查询：调用 convertAgg。该方法内部会处理 GROUP BY 字段，并将普通的过滤节点重构转换为 LogicalAggregate 算子，同时把 HAVING 子句转换为紧随其后的 LogicalFilter
       convertAgg(
           bb,
           select,
           orderExprList);
     } else {
+      // 如果不是聚合查询：调用 convertSelectList。将 SELECT 处的列和表达式（以及刚才搜集到的 orderExprList 里的隐藏排序列）转化为 RexNode，并在算子树顶层套上一个 LogicalProject 算子。
       convertSelectList(
           bb,
           select,
           orderExprList);
     }
-
+    // 解析 QUALIFY 子句。
+    // QUALIFY 是针对窗口函数（Window Functions）结果进行过滤的高级语法（类似于 WHERE 针对普通列，HAVING 针对聚合列）。该方法会在这里对窗口过滤进行捕获和算子转换。
     convertQualify(bb, select.getQualify());
-
+    // 作用：第 8 步：去重处理（SELECT DISTINCT）。
+    // 如果用户指定了 DISTINCT，则调用 distinctify 方法。该方法会在当前的算子树最外层，强行追加一个去重专用的 LogicalAggregate 算子（以所有 SELECT 列作为 Group Key 进行分组），实现全局去重语义。
     if (select.isDistinct()) {
       distinctify(bb, true);
     }
-
+    // 第 9 步：解析排序与分页（ORDER BY / LIMIT / OFFSET）。
+    // 将前面第 5 步生成的 collation（排序规则），以及 LIMIT（在 Calcite 中称为 Fetch）、OFFSET 表达式组装起来。在整棵算子树的最外层套上一个 LogicalSort 算子。到这一步为止，整棵标准树的核心拓扑就完全建好了。
     convertOrder(
         select, bb, collation, orderExprList, select.getOffset(),
         select.getFetch());
-
+    // 第 10 步：挂载 SQL Hint（提示词）并最终确立根节点。
+    // 如果带有 Hint（如 /*+ BROADCAST(t1) */）：首先通过工具类将语法层的 Hint 解析为关系代数层的 RelHint 列表。接着，
+    // 利用一个匿名内部类 RelShuttleImpl（基于访问者模式的算子树遍历器）自顶向下扫描整棵树。当找到第一个支持接收 Hint 的算子（实现 Hintable 接口的算子，通常就是最外层的 Project 或 Sort）时，
+    // 将 attached 设为 true，并调用 attachHints(hints) 把提示词缝合进该算子中。随后将全新的树封为最终根节点。
     if (select.hasHints()) {
       final List<RelHint> hints = SqlUtil.getRelHint(hintStrategies, select.getHints());
       // Attach the hints to the first Hintable node we found from the root node.
@@ -982,13 +1051,21 @@ public class SqlToRelConverter {
    * @param sqlNode the root node from which to look for NOT operators
    * @return the transformed SqlNode representation with NOT pushed down.
    */
+  // 核心职责是：在语法树阶段（SqlNode）应用德·摩根定律（De Morgan's laws）等逻辑等价变形，将 NOT 逻辑运算符尽可能地“下推”到 IN 或 NOT IN 运算符内部。
+  // 为什么需要这个方法？因为形式如 NOT (x IN (1, 2)) 的语法，在后续转换为关系代数（如子查询变连接）时极其别扭且难以优化。
+  // 若能提前转换为 x NOT IN (1, 2)，或者运用德·摩根定律消除大范围的 NOT，会让生成的 RelNode 结构更加清晰，更易被优化器识别。
+  // SqlValidatorScope scope 义校验器的作用域。当在方法中动态创建出新的 SqlNode 表达式节点时，必须将其重新注册到该 scope 中，以保证系统能够正确识别这些新节点的输出类型和语义特征。
+  // SqlNode sqlNode 输入的语法树节点。代表当前正在被检查或下推处理的 SQL 表达式根节点。
   private static SqlNode pushDownNotForIn(SqlValidatorScope scope,
       SqlNode sqlNode) {
+    // 如果当前节点不是一个运算符调用（SqlCall，如普通的常数、列标识符），
+    // 或者通过辅助方法 containsIn(sqlNode) 检查发现其子树中根本不包含任何 IN 或 NOT IN 语法，说明该分支不需要做任何优化，直接原样返回
     if (!(sqlNode instanceof SqlCall) || !containsIn(sqlNode)) {
       return sqlNode;
     }
     final SqlCall sqlCall = (SqlCall) sqlNode;
     switch (sqlCall.getKind()) {
+    // 对 AND/OR 的各子项进行深度优先遍历递归。
     case AND:
     case OR:
       final List<SqlNode> operands = new ArrayList<>();
@@ -998,13 +1075,19 @@ public class SqlToRelConverter {
       final SqlCall newCall =
           sqlCall.getOperator().createCall(sqlCall.getParserPosition(),
               operands);
+      // 通过 reg(scope, ...) 注册到校验作用域中返回。
       return reg(scope, newCall);
-
+    // 第二层分发：核心，处理顶层的 NOT
+    // 意味着当前遇到了类似 NOT (xxx) 的结构。代码取出 NOT 内部紧包裹的操作数 call，并针对 call 的类型（call.getKind()）展开嵌套的 switch-case 变形：
     case NOT:
       assert sqlCall.operand(0) instanceof SqlCall;
       final SqlCall call = sqlCall.operand(0);
       switch (sqlCall.operand(0).getKind()) {
+      // 分支 A：NOT (CASE ... END) 变形
       case CASE:
+        // 将 NOT 塞进 CASE WHEN 的结果分支（THEN）中
+        // 等价变形原理：NOT (CASE WHEN a THEN b ELSE c END) 相当于 CASE WHEN a THEN NOT(b) ELSE NOT(c) END。
+        // 遍历原本 CASE 的每一个 THEN 分支，动态创建一个 NOT(thenOperand) 节点，并将其递归送入 pushDownNotForIn 继续深度下推。
         final SqlCase caseNode = (SqlCase) call;
         final SqlNodeList thenOperands = new SqlNodeList(SqlParserPos.ZERO);
 
@@ -1014,6 +1097,7 @@ public class SqlToRelConverter {
                   thenOperand);
           thenOperands.add(pushDownNotForIn(scope, reg(scope, not)));
         }
+        // 下推 NOT 到 ELSE 分支
         SqlNode elseOperand =
             requireNonNull(caseNode.getElseOperand(),
                 "getElseOperand for " + caseNode);
@@ -1024,15 +1108,17 @@ public class SqlToRelConverter {
                   elseOperand);
           elseOperand = pushDownNotForIn(scope, reg(scope, not));
         }
-
+        // 重新将改造后的条件、THEN 列表、ELSE 项缝合成一个全新的 CASE 表达式节点并返回。
         return reg(scope,
             SqlStdOperatorTable.CASE.createCall(SqlParserPos.ZERO,
                 caseNode.getValueOperand(),
                 caseNode.getWhenOperands(),
                 thenOperands,
                 elseOperand));
-
+      // 分支 B & C：德·摩根定律转换（NOT(AND) 与 NOT(OR)）
       case AND:
+        // 应用德·摩根定律：NOT (A AND B) -> (NOT A) OR (NOT B)。
+        // 面对 NOT(AND)，代码将原本 AND 里的每一个操作数都套上一个 NOT 运算符，然后再把这群新子项丢给 pushDownNotForIn 递归向下推。最终将这群节点用一个大 OR 运算符焊接起来。
         final List<SqlNode> orOperands = new ArrayList<>();
         for (SqlNode operand : call.getOperandList()) {
           orOperands.add(
@@ -1046,6 +1132,7 @@ public class SqlToRelConverter {
                 orOperands));
 
       case OR:
+        // 同上理，面对 NOT(OR)，将内部各节点套上 NOT 递归下推，最后用 AND 运算符将其连接。
         final List<SqlNode> andOperands = new ArrayList<>();
         for (SqlNode operand : call.getOperandList()) {
           andOperands.add(
@@ -1057,17 +1144,19 @@ public class SqlToRelConverter {
         return reg(scope,
             SqlStdOperatorTable.AND.createCall(SqlParserPos.ZERO,
                 andOperands));
-
+      // 分支 D：负负得正（双重否定消除）
       case NOT:
         assert call.operandCount() == 1;
         return pushDownNotForIn(scope, call.operand(0));
-
+      // 分支 E & F：最终目的地（下推至 IN / NOT IN）
       case NOT_IN:
+        // 将 NOT (x NOT IN (...)) 直接转换为 x IN (...)。
         return reg(scope,
            SqlStdOperatorTable.IN.createCall(SqlParserPos.ZERO,
                call.getOperandList()));
 
       case IN:
+        // 将 NOT (x IN (...)) 直接转换为 x NOT IN (...)。
         return reg(scope,
             SqlStdOperatorTable.NOT_IN.createCall(SqlParserPos.ZERO,
                 call.getOperandList()));
@@ -1094,27 +1183,50 @@ public class SqlToRelConverter {
    * @param bb    Blackboard
    * @param where WHERE clause, may be null
    */
+  // 解析、改写 SQL 中的 WHERE 子句（SqlNode），将其转换为行表达式（RexNode），并在小黑板（Blackboard）当前的根节点上方叠加一层过滤算子（LogicalFilter）。
   private void convertWhere(
+      // 小黑板对象。
+      // 维护了当前查询块转换的上下文状态（例如当前的 root 算子、当前所处的名空间作用域 scope 等），是整个转换过程的工作台。
       final Blackboard bb,
+      // 代表 SQL WHERE 子句的抽象语法树节点。允许为 null（即 SQL 中没有 WHERE 条件）。
       final @Nullable SqlNode where) {
+    // 边界情况：无 WHERE 条件
     if (where == null) {
       return;
     }
+    // 下推 NOT 操作符以优化 IN 子查询。
+    // 例如，当 SQL 中出现类似 NOT (x IN (SELECT ...)) 这样的表达式时，该方法会尝试将 NOT 操作符下推，将其改写或打标记为 NOT_IN 节点。
     SqlNode newWhere = pushDownNotForIn(bb.scope, where);
+    // 拉平并替换 WHERE 条件中嵌套的子查询（Sub-queries）。
+    // 如果 WHERE 条件里包含 IN、EXISTS 或标量子查询（例如 WHERE age > (SELECT avg(age) FROM ...)），此方法会率先介入。
+    // 它会递归地将这些子查询转换成关系算子（如 Join），并注册（register）到小黑板的 root 上。
     replaceSubQueries(bb, newWhere, RelOptUtil.Logic.UNKNOWN_AS_FALSE);
+    // 调用小黑板的表达式转换总入口（convertExpression），正式将 AST 树节点 SqlNode 翻译转换为行表达式 RexNode
     final RexNode convertedWhere = bb.convertExpression(newWhere);
+    // 剥离无意义的类型强转（CAST）
+    // 在校验阶段，为了保证表达式两侧类型完全一致，Calcite 有时会隐式补充诸如 CAST(expr AS Nullable(BOOLEAN)) 的节点。
+    // 这一步通过 removeNullabilityCast 把包装在最外层、仅仅用来改变“可空性（Nullability）”的 CAST 剥除，露出纯粹的过滤条件表达式（如直接拿到里面的 RexCall），避免生成冗余的代码。
     final RexNode convertedWhere2 =
         RexUtil.removeNullabilityCast(typeFactory, convertedWhere);
 
     // only allocate filter if the condition is not TRUE
+    // 过滤条件恒真（Always True）优化
     if (convertedWhere2.isAlwaysTrue()) {
       return;
     }
-
+    // 利用 Calcite 默认的过滤算子工厂 DEFAULT_FILTER_FACTORY，创建一个逻辑过滤算子 filter（通常是 LogicalFilter）。
     final RelFactories.FilterFactory filterFactory =
         RelFactories.DEFAULT_FILTER_FACTORY;
+
     final RelNode filter =
         filterFactory.createFilter(bb.root(), convertedWhere2, ImmutableSet.of());
+    // 处理关联子查询引发的关联变量（Correlation Variable）收集与重构。
+    // getCorrelationUse(bb, filter) 会深入扫描刚刚生成的 filter 算子，
+    // 检查其中是否引用了外层查询块传进来的关联变量（例如相关子查询中引用了父查询表的列：WHERE t2.id = t1.id 中的 t1.id）。
+    // 如果发现了关联变量的使用（p != null），说明当前 Filter 依赖某些外界传入的变量。
+    // 代码会断言确认该节点是一个 Filter，并调用 LogicalFilter.create 方法重新创建一个带有相关性变量 ID 签名（ImmutableSet.of(p.id)）的新 LogicalFilter 算子 r。
+    // 这样可以确保后续的优化器（如 RelDecorrelator）能够精确识别并解开这个关联关系。
+    // 如果没有关联变量（p == null），则保持原来的 filter 算子不变。
     final RelNode r;
     final CorrelationUse p = getCorrelationUse(bb, filter);
     if (p != null) {
@@ -1126,7 +1238,7 @@ public class SqlToRelConverter {
     } else {
       r = filter;
     }
-
+    // 调用我们之前解读过的 setRoot 最底层方法，把新鲜出炉、已经绑定好过滤条件的关系算子 r 强制塞回小黑板作为最新的根节点 root。
     bb.setRoot(r, false);
   }
 
@@ -1136,7 +1248,7 @@ public class SqlToRelConverter {
       RelOptUtil.Logic logic) {
     replaceSubQueries(bb, expr, logic, null);
   }
-
+  // 先找出当前 SQL 表达式中所有的子查询，然后将这些子查询替换（转换）为等价的关系代数（RelNode）结构。
   private void replaceSubQueries(
       final Blackboard bb,
       final SqlNode expr,
@@ -1147,9 +1259,17 @@ public class SqlToRelConverter {
       substituteSubQuery(bb, node);
     }
   }
-
-  private void substituteSubQuery(Blackboard bb, SubQuery subQuery) {
+  // 实现子查询去关联化（Decorrelation）和关系代数拉升（Pull-up/Expansion）的核心方法。
+  // 根据子查询的不同类型（如 IN, EXISTS, SCALAR_QUERY 等），将黑板（Blackboard）中收集到的 SqlNode 语法节点转换为等价的关系代数节点（RelNode），
+  // 通常将它们转换为与主查询的 Join（如 Semi-Join, Left-Join）或 Correlate 结构，并将生成的关系表达式引用赋值给 subQuery.expr。
+  private void substituteSubQuery(Blackboard bb,
+      // 一个封装了待转换子查询的数据对象。
+      // subQuery.node：保存了原本的 SQL 语法树节点（SqlNode）
+      // subQuery.logic：保存了该子查询所处的布尔逻辑上下文策略（如 UNKNOWN_AS_FALSE）。
+      // subQuery.expr：输出参数。转换成功后，该字段会被赋予对应的行表达式（RexNode，通常是 Join 之后指向右表关联字段的 RexInputRef），以此来取代原 SQL 中子查询所在的位置。
+      SubQuery subQuery) {
     final RexNode expr = subQuery.expr;
+    // 如果 subQuery.expr 已经有值，说明该子查询在之前的递归或依赖处理中已经被转换过了，直接返回，避免重复转换。
     if (expr != null) {
       // Already done.
       return;
@@ -1167,28 +1287,34 @@ public class SqlToRelConverter {
     case ARRAY_QUERY_CONSTRUCTOR:
     case MAP_QUERY_CONSTRUCTOR:
     case MULTISET_QUERY_CONSTRUCTOR:
-      if (!config.isExpand()) {
+      if (!config.isExpand()) {// 如果配置关闭了子查询展开，则直接返回不予处理
         return;
       }
       // fall through
     case MULTISET_VALUE_CONSTRUCTOR:
+      // 将集合构造器转换为关系代数节点
       rel = convertMultisets(ImmutableList.of(subQuery.node), bb);
+      // 将生成的 rel 以 INNER JOIN 形式注册到黑板，并将产生的 RexNode 赋给 subQuery.expr
       subQuery.expr = bb.register(rel, JoinRelType.INNER);
       return;
-
+    // 集合成员资格分支（IN, NOT IN, SOME, ALL）— 核心难点
     case IN:
     case NOT_IN:
     case SOME:
     case ALL:
+      // 转换为普通调用对象（如 a IN (SELECT ...)）
       call = (SqlBasicCall) subQuery.node;
       query = call.operand(1);
+      // 如果未开启展开，且右边不是固定值列表（而是一条 SELECT 语句），则不在此处展开
       if (!config.isExpand() && !(query instanceof SqlNodeList)) {
         return;
       }
+      // 获取左操作数（如 emp.deptno）
       final SqlNode leftKeyNode = call.operand(0);
 
       final List<SqlNode> leftSqlKeys;
       switch (leftKeyNode.getKind()) {
+      // 处理左侧的 key。如果左侧是多列（ROW 类型，如 (a, b) IN (...)），进行拆解
       case ROW:
         leftSqlKeys = new ArrayList<>();
         for (SqlNode sqlExpr : ((SqlBasicCall) leftKeyNode).getOperandList()) {
@@ -1196,14 +1322,17 @@ public class SqlToRelConverter {
         }
         break;
       default:
+        // 单列情况
         leftSqlKeys = ImmutableList.of(leftKeyNode);
       }
-
+      // 固定值列表优化（如 IN (1, 2, 3)）
       if (query instanceof SqlNodeList) {
         SqlNodeList valueList = (SqlNodeList) query;
         // When the list size under the threshold or the list references columns, we convert to OR.
+        // 如果值列表的大小小于设定的阈值，或者列表中引用了列（非纯常量）
         if (valueList.size() < config.getInSubQueryThreshold()
             || valueList.accept(new SqlIdentifierFinder())) {
+          // 优化：直接将 IN 列表重写为一连串的 OR 表达式（如 a=1 OR a=2 OR a=3）
           subQuery.expr =
               convertInToOr(
                   bb,
@@ -1216,8 +1345,10 @@ public class SqlToRelConverter {
         // Otherwise, let convertExists translate
         // values list into an inline table for the
         // reference to Q below.
+        // 如果超出了阈值，则不转为 OR，代码将继续向下，把这个值列表转化为一个内联表（Inline Table/Values）
       }
-
+      // 转换为关系代数计划
+      // // 将左侧的 SqlNode 键值对转换成关系表达式中的 RexNode
       final List<RexNode> leftKeys = leftSqlKeys.stream()
           .map(bb::convertExpression)
           .collect(toImmutableList());
@@ -1252,13 +1383,17 @@ public class SqlToRelConverter {
       //
       // In such case, when converting SqlUpdate#condition, bb.root is null
       // and it makes no sense to do the sub-query substitution.
+      // 边界防御：如果当前黑板没有根节点（例如在非法的 UPDATE 条件中），无法做 Join 替换，直接返回
       if (bb.root == null) {
         return;
       }
+      // 获取左侧 Key 的行类型
       final RelDataType targetRowType =
           SqlTypeUtil.promoteToRowType(typeFactory,
               validator().getValidatedNodeType(leftKeyNode), null);
+      // 标记是否为 NOT IN
       final boolean notIn = call.getOperator().kind == SqlKind.NOT_IN;
+      // 核心转换核心：调用 convertExists 将右侧的子查询 Q 包装、转换为一个含有 Exists/Join 语义的逻辑计划
       converted =
           convertExists(query, RelOptUtil.SubQueryType.IN, subQuery.logic,
               notIn, targetRowType);
@@ -2016,14 +2151,22 @@ public class SqlToRelConverter {
    *                                     sub-query
    * @param clause A clause inside which sub-query is searched
    */
+  // 主要职责是：深度优先遍历 SQL 语法树（SqlNode），找出所有嵌套的子查询（如 IN、EXISTS、标量子查询等），并将它们注册到黑板（Blackboard）中。
+  // 最难、最精妙的地方在于，它在遍历的同时，会严格推导三值逻辑（TRUE, FALSE, UNKNOWN）在算子嵌套过程中的变化，
+  // 以此决定后续将子查询消除（或转换为连接）时，是用半连接（Semi-Join）、反连接（Anti-Join）还是普通连接。
+  // SqlNode node  当前正在扫描、遍历的语法树节点。
+  // RelOptUtil.Logic logic 逻辑上下文类型（三值逻辑指示器）。它是一个枚举，表明当前节点所处的逻辑环境（例如是在 WHERE、SELECT、还是被 NOT 包裹）。它直接决定了子查询是否需要区分 UNKNOWN（Null 值带来的未知状态）。
   private void findSubQueries(
       Blackboard bb,
       SqlNode node,
       RelOptUtil.Logic logic,
+      // 控制开关：是否仅注册标量子查询。如果为 true，遇到非标量子查询（如集合类型的子查询）时将不予注册。
       boolean registerOnlyScalarSubQueries,
+      // 子查询所在的 SQL 子句标记（如 WHERE、HAVING、SELECT）。它用来辅助追踪子查询在物理 SQL 中所处的位置。
       SqlImplementor.@Nullable Clause clause) {
     final SqlKind kind = node.getKind();
     switch (kind) {
+    //  1. 如果这些类型本身就是某种子查询（EXISTS, SELECT, 标量子查询, 或者是数组/集合构造器等）
     case EXISTS:
     case UNIQUE:
     case SELECT:
@@ -2034,15 +2177,20 @@ public class SqlToRelConverter {
     case CURSOR:
     case SET_SEMANTICS_TABLE:
     case SCALAR_QUERY:
+      // 如果当前不限制“只注册标量子查询”，或者当前节点本身就是一个合法的标量子查询（SCALAR_QUERY）
       if (!registerOnlyScalarSubQueries
           || (kind == SqlKind.SCALAR_QUERY)) {
+        // 核心操作：直接将该子查询节点注册到黑板 bb 中，默认使用 TRUE_FALSE 逻辑
         bb.registerSubQuery(node, RelOptUtil.Logic.TRUE_FALSE, clause);
       }
       return;
+    // IN 节点需要留到方法最后阶段做特殊处理，这里先跳过
     case IN:
       break;
     case NOT_IN:
     case NOT:
+    //  2. 如果遇到取反操作（NOT 或 NOT IN），当前的逻辑策略（logic）需要发生反转
+    // 例如 UNKNOWN_AS_FALSE 变成 UNKNOWN_AS_TRUE
       logic = logic.negate();
       break;
     default:
@@ -2053,26 +2201,38 @@ public class SqlToRelConverter {
       // Do no change logic for AND, IN and NOT IN expressions;
       // but do change logic for OR, NOT and others;
       // EXISTS was handled already.
+      // 对于 AND, IN, NOT IN，它们在传递逻辑时不需要强行重置为三值逻辑；
+      // 但对于 OR, NOT 以及其他操作，由于可能打乱三值逻辑的假设，需要安全地退化为最严格的三值逻辑。
       case AND:
       case IN:
       case NOT_IN:
         break;
       default:
+        // /其他所有调用（如 OR 或者是普通函数），强制将逻辑上下文退化为标准三值逻辑，即保留 UNKNOWN
         logic = RelOptUtil.Logic.TRUE_FALSE_UNKNOWN;
         break;
       }
+      // 此阶段的目的是先于当前节点找出并注册子树里所有的标量子查询。
+      // // 遍历当前 SqlCall（函数/操作符调用）的所有操作数（Operands）
       for (SqlNode operand : ((SqlCall) node).getOperandList()) {
         if (operand != null) {
           // In the case of an IN expression, locate scalar
           // sub-queries so we can convert them to constants
           findSubQueries(bb, operand, logic,
+              // 注意第四个参数（registerOnlyScalarSubQueries）：
+              // 如果当前节点是 IN, NOT_IN, SOME(ANY), ALL 或者是上一层传下来的要求，
+              // 说明我们正在探测这些集合表达式的内部，此时将其设为 true，代表在操作数内部“只寻找标量子查询”
+              // 比如：WHERE a IN (SELECT x FROM t WHERE y = (SELECT max(z) FROM m))
+              // 这里要先找出里面的 (SELECT max(z) ...)，把它转成常量
               kind == SqlKind.IN || kind == SqlKind.NOT_IN
                   || kind == SqlKind.SOME || kind == SqlKind.ALL
                   || registerOnlyScalarSubQueries, clause);
         }
       }
+      // 如果当前节点是一个节点列表（比如 Select 的字段列表，或者 Group By 的列表）
     } else if (node instanceof SqlNodeList) {
       for (SqlNode child : (SqlNodeList) node) {
+        // 同样递归遍历列表中的每一个子节点
         findSubQueries(bb, child, logic,
             kind == SqlKind.IN || kind == SqlKind.NOT_IN
                 || kind == SqlKind.SOME || kind == SqlKind.ALL
@@ -2084,15 +2244,20 @@ public class SqlToRelConverter {
     // expression, register the IN expression itself.  We need to
     // register the scalar sub-queries first so they can be converted
     // before the IN expression is converted.
+    // 处理并注册集合类子查询
     switch (kind) {
+    // 代码注释说明：现在我们已经定位并处理完了 IN 表达式内部的所有标量子查询，
+    // 接下来开始注册这个 IN 表达式本身。必须先注册内部的标量子查询，才能保证正确的转换顺序。
     case IN:
     case NOT_IN:
     case SOME:
     case ALL:
       switch (logic) {
+      // 如果是严格的三值逻辑，尝试去校验器中获取该节点的类型
       case TRUE_FALSE_UNKNOWN:
         RelDataType type = validator().getValidatedNodeTypeIfKnown(node);
         if (type == null) {
+          // 如果当前节点还没被成功校验（类型未知），则直接返回，暂时不处理
           // The node might not be validated if we still don't know type of the node.
           // Therefore return directly.
           return;
@@ -2100,22 +2265,29 @@ public class SqlToRelConverter {
           break;
         }
       case UNKNOWN_AS_FALSE:
+        // 如果上下文允许将 UNKNOWN 视为 FALSE，Calcite 会将策略升级为 Logic.TRUE
+        // 这意味着只有返回 TRUE 的行才有效，后续可以安全地将其转换为高效的 Semi-Join（半连接）
         logic = RelOptUtil.Logic.TRUE;
         break;
       default:
         break;
       }
+      // 特殊条件检查：如果该节点是量化运算符（如类似 SOME/ANY 的特殊集合操作）
+      // 且能够推导导出集合的类型
       if (node instanceof SqlBasicCall
           && ((SqlCall) node).getOperator() instanceof SqlQuantifyOperator
           && ((SqlQuantifyOperator) ((SqlCall) node).getOperator())
               .tryDeriveTypeForCollection(bb.getValidator(), bb.scope,
                   (SqlCall) node) != null) {
+        // 分别递归处理该量化运算符的左操作数和右操作数
         findSubQueries(bb, ((SqlCall) node).operand(0), logic, registerOnlyScalarSubQueries,
             clause);
         findSubQueries(bb, ((SqlCall) node).operand(1), logic, registerOnlyScalarSubQueries,
             clause);
         break;
       }
+      // 核心操作：正式将这个 IN / NOT IN / SOME / ALL 表达式节点作为子查询注册到黑板 bb 中
+      // 后续优化器看到黑板上的这个记录，就会把它拉升重写为 Join 树。
       bb.registerSubQuery(node, logic, clause);
       break;
     default:
@@ -2343,10 +2515,21 @@ public class SqlToRelConverter {
    *
    * @param fieldNames Field aliases, usually come from AS clause, or null
    */
+  // 主要职责是解析 SQL 的 FROM 子句。由于 FROM 子句的形式极其多样（可以是一张普通表、一个别名块、一个子查询、一个复杂的 ANSI JOIN 树，或是 UNNEST 集合等），
+  // 该方法通过一个庞大的 switch-case 语法树分类器，将不同的语法节点分发给对应的专用子转换方法
   protected void convertFrom(
+      // 小黑板上下文。
+      // 用于承载和记录当前 FROM 子句解析出来的算子树节点。
+      // 各个 case 分支在解析完成后，都会将生成的 RelNode 节点通过 bb.setRoot(...) 挂载到这个黑板上，作为后续处理（如 WHERE 过滤）的底层数据源。
       Blackboard bb,
+      // FROM 子句的语法树节点。代表当前需要解析的表达式实体。
       @Nullable SqlNode from,
+      // 字段别名列表。
+      // 通常来自于 AS 子句显式指定的列重命名（例如 FROM t AS my_table(col1, col2) 中的 col1, col2），用于在底层算子构建完成后强制对其字段名进行刷新重命名
       @Nullable List<String> fieldNames) {
+
+    // 当 SQL 没有 FROM 子句时（例如：SELECT 1 + 1;），from 节点传入为 null。
+    // 此时，Calcite 会在黑板上生成一个仅包含单行单列虚数据的虚拟节点（LogicalValues.createOneRow），以此驱动上层的表达式计算。
     if (from == null) {
       bb.setRoot(LogicalValues.createOneRow(cluster), false);
       return;
@@ -2354,6 +2537,9 @@ public class SqlToRelConverter {
 
     final SqlCall call;
     switch (from.getKind()) {
+    // 处理 AS（表别名/列别名）语法。
+    // 例如 FROM emp AS e(c1, c2)。第一个操作数 operand(0) 是真正的表或子查询 emp。如果操作数数量大于 2，说明后面还附带了列别名 (c1, c2)，
+    // 通过 Util.skip 剥离前两个参数后转化为简易名称列表 fieldNameList。接着递归调用 convertFrom，把剥离出来的别名信息向下传递。
     case AS:
       call = (SqlCall) from;
       SqlNode firstOperand = call.operand(0);
@@ -2362,7 +2548,7 @@ public class SqlToRelConverter {
           : null;
       convertFrom(bb, firstOperand, fieldNameList);
       return;
-
+    // 遇到 SQL 里的复杂分析子句（如复杂事件模式匹配 MATCH_RECOGNIZE、行转列 PIVOT、列转行 UNPIVOT）时，直接委托给对应的专用转换方法。
     case MATCH_RECOGNIZE:
       convertMatchRecognize(bb, (SqlMatchRecognize) from);
       return;
@@ -2374,7 +2560,8 @@ public class SqlToRelConverter {
     case UNPIVOT:
       convertUnpivot(bb, (SqlUnpivot) from);
       return;
-
+    // CTE（通用的表达式/字面量）分支
+    // 处理 CTE（WITH 临时表定义）。穿透包装，将其内部真正的 query 或者是 body 主体部分提取出来，继续递归调用 convertFrom 转化为物理算子。
     case WITH_ITEM:
       convertFrom(bb, ((SqlWithItem) from).query);
       return;
@@ -2382,7 +2569,12 @@ public class SqlToRelConverter {
     case WITH:
       convertFrom(bb, ((SqlWith) from).body);
       return;
-
+    // 数据采样分支
+    // 提取 TABLESAMPLE（样本抽样）属性。获取抽样规范（如伯努利抽样或系统抽样参数）。
+    // FROM TABLE(SAMPLE('my_mock_dataset', SELECT * FROM emp))
+    // 外层算子首先识别出这是一个采样结构，并且它能拿到采样名字 'my_mock_dataset'
+    // 但是，真正需要知道这个采样名字的，其实是内层递归里负责解析 FROM emp 的叶子节点转换方法（即刚才分析过的 convertIdentifier）。
+    // 或者是某些自定义的 CatalogReader，它们需要根据这个 datasetName 去决定是去读真实的物理表 emp，还是去读一个专门为测试准备的、名为 'my_mock_dataset' 的 Mock 数据集。
     case TABLESAMPLE:
       final List<SqlNode> operands = ((SqlCall) from).getOperandList();
       SqlSampleSpec sampleSpec =
@@ -2392,8 +2584,11 @@ public class SqlToRelConverter {
         String sampleName =
             ((SqlSampleSpec.SqlSubstitutionSampleSpec) sampleSpec)
                 .getName();
+        // 1. 将数据集名字 'my_mock_dataset' 压入栈顶
         datasetStack.push(sampleName);
+        // 2. 递归去解析内层的查询（如 SELECT * FROM emp）
         convertFrom(bb, operands.get(0));
+        // 3. 内层解析完毕后，及时将该名字弹栈，防止污染其他并列的查询块
         datasetStack.pop();
       } else if (sampleSpec instanceof SqlSampleSpec.SqlTableSampleSpec) {
         SqlSampleSpec.SqlTableSampleSpec tableSampleSpec =
@@ -2413,21 +2608,27 @@ public class SqlToRelConverter {
         throw new AssertionError("unknown TABLESAMPLE type: " + sampleSpec);
       }
       return;
-
+    // 转换最基础的数据库表扫描（TableScan）
+    // 如果是带特定提示或包装的引用则是 TABLE_REF。
+    // 这里统一调用核心方法 convertIdentifier。它会去元数据中查找这张表，并最终创建出最底层的 LogicalTableScan 逻辑算子节点。
     case TABLE_REF:
       call = (SqlCall) from;
       convertIdentifier(bb, call.operand(0), null, call.operand(1));
       return;
 
+    // 当 FROM 后面跟着的就是一张纯表名（如 FROM emp）时，它的类型就是 IDENTIFIER。
     case IDENTIFIER:
       convertIdentifier(bb, (SqlIdentifier) from, null, null);
       return;
-
+    // 转换 CTE 临时表的引用扫描。
+    // 当 FROM 引用的是之前在 WITH 块里定义好的临时表名时，调用 convertTransientScan 生成一个临时的虚拟扫描节点，而不会去扫真实的物理磁盘数据库。
     case WITH_ITEM_TABLE_REF:
       SqlWithItemTableRef withItemTableRef = (SqlWithItemTableRef) from;
       convertTransientScan(bb, withItemTableRef.getWithItem());
       return;
-
+    // 处理 EXTEND 动态列扩充语法。
+    // 例如在流处理或特定非关系型数据库中，在查询期临时为某张表追加声明几个动态字段。
+    // 提取表名 id 和扩充的列定义列表 extendedColumns，一并打包送给 convertIdentifier 进行宽表算子转换。
     case EXTEND:
       call = (SqlCall) from;
       final SqlNode operand0 = call.getOperandList().get(0);
@@ -2437,15 +2638,21 @@ public class SqlToRelConverter {
       SqlNodeList extendedColumns = (SqlNodeList) call.getOperandList().get(1);
       convertIdentifier(bb, id, extendedColumns, null);
       return;
-
+    // 处理时态表快照（FOR SYSTEM_TIME AS OF）。
+    // 用于基于时间戳的历史版本回溯查询，调用专用的时态表转换器。
     case SNAPSHOT:
       convertTemporalTable(bb, (SqlCall) from);
       return;
-
+    // 处理各种多表连接（JOIN）。
+    // 一旦发现 FROM 里包含 JOIN 结构，立即分发给 convertJoin 方法。
+    // 该方法会根据 LEFT/RIGHT/INNER 以及 ON 条件，拼装出极其关键的 LogicalJoin 算子树。
     case JOIN:
       convertJoin(bb, (SqlJoin) from);
       return;
-
+    // 子查询与集合分支
+    // 处理嵌套子查询或集合操作。
+    // 如果 FROM 后面括号里包着一个内层 SELECT 或是由 UNION/EXCEPT 连起来的子查询块，
+    // 这里直接调用高阶的 convertQueryRecursive 将该子查询块彻底拉平转换成一棵独立的算子树 rel，然后将该树挂载为当前黑板的主体数据源。
     case SELECT:
     case INTERSECT:
     case EXCEPT:
@@ -2453,18 +2660,24 @@ public class SqlToRelConverter {
       final RelNode rel = convertQueryRecursive(from, false, null).project();
       bb.setRoot(rel, true);
       return;
-
+    // 虚拟行与集合打平分支
+    // 处理字面量结果集（VALUES 表达式）。
+    // 例如 FROM (VALUES (1, 'a'), (2, 'b'))。调用 convertValuesImpl 生成常数数据集节点 LogicalValues。
+    // 如果外层附带了重命名别名（fieldNames != null），则利用 relBuilder.rename 强行覆盖其默认列名。
     case VALUES:
       convertValuesImpl(bb, (SqlCall) from, null);
       if (fieldNames != null) {
         bb.setRoot(relBuilder.push(bb.root()).rename(fieldNames).build(), true);
       }
       return;
-
+    // 处理 UNNEST（嵌套集合打平算子）。
+    // 用于将一行内部的数组（Array）或映射（Map）数据行，纵向展开打平为多行独立的数据记录。
     case UNNEST:
       convertUnnest(bb, (SqlCall) from, fieldNames);
       return;
-
+    // 处理表函数调用（TABLE(...) 语法）。
+    // 剥离外层的 TABLE() 语法糖外壳，取出内部真正的自定义函数调用节点 call2，
+    // 调用 convertCollectionTable 生成用于承载表函数的专用关系代数节点（如 LogicalTableFunctionScan）。
     case COLLECTION_TABLE:
       call = (SqlCall) from;
 
@@ -2811,21 +3024,47 @@ public class SqlToRelConverter {
         true);
   }
 
-  private void convertIdentifier(Blackboard bb, SqlIdentifier id,
-      @Nullable SqlNodeList extendedColumns, @Nullable SqlNodeList tableHints) {
+  // 负责将一个 SQL 标识符（通常是普通的表名或视图名）真正翻译为底层关系代数叶子节点（如 TableScan）。
+  // 当 FROM 子句中出现了一个明确的表名（如 FROM emp），经过分类分发后就会进入此方法。
+  // 它负责连接 Calcite 的语义校验层（SqlValidator）、元数据层（CatalogReader）以及物理算子构建层。
+  private void convertIdentifier(
+      // 小黑板上下文。用于暂存和管理当前转换阶段生成的逻辑算子树。该方法最终生成的表扫描节点会回填到 bb.setRoot(...) 中。
+      Blackboard bb,
+      // 目标表/视图的语法标识符。比如 SALES.EMP，它包含了该实体的多级名称路径。
+      SqlIdentifier id,
+      // 动态扩充列列表。对应 SQL 的 EXTEND 语法。如果非空，说明用户在查询期临时为这张表追加声明了几个动态字段。
+      @Nullable SqlNodeList extendedColumns,
+      // 表级 Hint（提示词）列表。
+      // 例如特定数据库中针对单表指定的物理索引提示或并发提示。
+      @Nullable SqlNodeList tableHints) {
+    // 获取并解析标识符对应的元数据命名空间
+    // 通过 getNamespace(id) 向校验器索取该标识符在校验期注册的元数据命名空间，并调用 .resolve() 将其平铺、解析为最终的实体命名空间（SqlValidatorNamespace）。
     final SqlValidatorNamespace fromNamespace = getNamespace(id).resolve();
     if (fromNamespace.getNode() != null) {
+      // 如果 fromNamespace.getNode() != null，说明当前这个标识符不是一张物理表，而是一个虚拟视图（View）或公共表表达式（CTE）。
+      // getNode() 取出来的将是这个视图背后的子查询 SqlNode。此时，代码不再创建物理表扫描，而是直接把子查询重新丢回 convertFrom 方法去递归展开，
+      // 将其平铺进当前的算子树中。
+      // 然后直接 return 结束当前流程。
       convertFrom(bb, fromNamespace.getNode());
       return;
     }
+    // 准备抽样数据集上下文。
+    // 检查之前的 TABLESAMPLE 环境栈（datasetStack）中是否积压了指定的数据集名称。
     final String datasetName =
         datasetStack.isEmpty() ? null : datasetStack.peek();
     final boolean[] usedDataset = {false};
+    // 从元数据目录中提取核心表对象（RelOptTable）
+    // 利用工具类，结合当前命名空间和元数据读取器（catalogReader），正式从底层的元数据仓储中把物理表实体（RelOptTable）搬运到内存中。
+    // 紧接着用一条断言，确保表对象绝对存在。
     RelOptTable table =
         SqlValidatorUtil.getRelOptTable(fromNamespace, catalogReader,
             datasetName, usedDataset);
     assert table != null : "getRelOptTable returned null for " + fromNamespace;
+    // 动态注入 EXTEND 扩充列。
     if (extendedColumns != null && extendedColumns.size() > 0) {
+      // 如果传入的动态列不为空，先将底层表对象解包为 SqlValidatorTable。
+      // 接着，把语法层的动态列声明转化为优化器底层的字段强类型（RelDataTypeField），
+      // 最后调用 table.extend(extendedFields) 原地重构、生成一张带有这些新动态字段的拓扑新表对象。
       final SqlValidatorTable validatorTable =
           table.unwrapOrThrow(SqlValidatorTable.class);
       final List<RelDataTypeField> extendedFields =
@@ -2835,17 +3074,28 @@ public class SqlToRelConverter {
     }
     // Review Danny 2020-01-13: hacky to construct a new table scan
     // in order to apply the hint strategies.
+    // 预过滤并应用表级 Hint 策略。
+    // 正如源码中 Danny 的注释所言，这里略显 Hack（投机）。
+    // 为了能够让配置好的 Hint 策略表（hintStrategies）对传入的 tableHints 进行合法性过滤和合并，
+    // 这里先通过 LogicalTableScan.create 虚构构建了一个临时的 TableScan 节点。将其作为上下文，计算出最终应该在该表上生效的 RelHint 集合。
     final List<RelHint> hints =
         hintStrategies.apply(SqlUtil.getRelHint(hintStrategies, tableHints),
             LogicalTableScan.create(cluster, table, ImmutableList.of()));
+
+    // 孵化真正的逻辑表扫描算子（TableScan）并挂载到黑板。
+    // 在绝大多数默认实现中，它会真正产出一个包装了物理元数据和 Hint 的 LogicalTableScan 节点（它是代数树上最基层的叶子节点）。
+    // 随后调用 bb.setRoot 将其封为当前黑板的核心根节点。
     final RelNode tableRel = toRel(table, hints);
     bb.setRoot(tableRel, true);
-
+    // 二级冗余排序安全裁剪。
+    // 在少数极端元数据重载情况下，toRel 可能会直接吐出一个带有排序特征的子代数树。
+    // 这里做一层防御性检测：如果生成的根节点包含了无上限限制的纯排序（isPureOrder），
+    // 且当前环境触发了子查询排序消除策略（removeSortInSubQuery），则同样强制将其 getInput(0) 提堂，把无意义的排序算子当场裁剪剥离。
     if (RelOptUtil.isPureOrder(castNonNull(bb.root))
         && removeSortInSubQuery(bb.top)) {
       bb.setRoot(castNonNull(bb.root).getInput(0), true);
     }
-
+    // 同步黑板的数据集状态。
     if (usedDataset[0]) {
       bb.setDataset(datasetName);
     }
@@ -3796,26 +4046,43 @@ public class SqlToRelConverter {
    * @param targetRowType Target row type, or null
    * @return Relational expression
    */
-  protected RelRoot convertQueryRecursive(SqlNode query, boolean top,
+  // 将 AST（抽象语法树 SqlNode）转换为关系代数树（RelNode）的核心路由分发方法。
+  // 通过一种典型的“工厂/策略模式”，根据不同类型的 SQL 节点，调用对应的专用转换函数进行递归处理。
+  protected RelRoot convertQueryRecursive(
+      // 当前需要被转换的 SQL 节点。
+      // 随着递归的深入，它不仅可以是顶层的整个查询，也可以是子查询、WITH 表达式中的片段或集合操作（如 UNION）的一侧分支。
+      SqlNode query,
+      // 标记当前处理的 query 是否为最顶层（顶级）的 SQL 语句。
+      boolean top,
+      // 期望的预期目标行类型（允许为 null）。
       @Nullable RelDataType targetRowType) {
     final SqlKind kind = query.getKind();
     switch (kind) {
+    // 处理 SELECT 查询
     case SELECT:
       return RelRoot.of(convertSelect((SqlSelect) query, top), kind);
+    // 处理 INSERT 语句
     case INSERT:
       return RelRoot.of(convertInsert((SqlInsert) query), kind);
+    // 处理 DELETE 语句
     case DELETE:
       return RelRoot.of(convertDelete((SqlDelete) query), kind);
+    // 处理 UPDATE 语句
     case UPDATE:
       return RelRoot.of(convertUpdate((SqlUpdate) query), kind);
+    // 处理 MERGE 语句
     case MERGE:
       return RelRoot.of(convertMerge((SqlMerge) query), kind);
+    // 处理集合操作 (UNION, INTERSECT, EXCEPT)
+    // 这三种操作都属于集合操作，它们在 AST 中都是 SqlCall。统一路由到 convertSetOp 方法，在内部会分别转换为 LogicalUnion、LogicalIntersect 或 LogicalMinus 算子。
     case UNION:
     case INTERSECT:
     case EXCEPT:
       return RelRoot.of(convertSetOp((SqlCall) query), kind);
+    // 处理 CTE (WITH 表达式)
     case WITH:
       return convertWith((SqlWith) query, top);
+    // 处理 VALUES 表达式
     case VALUES:
       return RelRoot.of(convertValues((SqlCall) query, targetRowType), kind);
     default:
@@ -3974,39 +4241,60 @@ public class SqlToRelConverter {
     return ViewExpanders.toRelContext(viewExpander, cluster, hints);
   }
 
-  public RelNode toRel(final RelOptTable table, final List<RelHint> hints) {
-    final RelNode scan = table.toRel(createToRelContext(hints));
 
+  // 将优化器层面的物理表元数据对象（RelOptTable）正式实例化转换为一个关系代数节点（RelNode，通常是 TableScan 算子），
+  // 并专门处理表中可能包含的“虚拟生成列（Virtual Generated Columns）”或默认值扩展。
+  public RelNode toRel(
+      // 待转换的优化器表元数据对象。它封装了该物理表的 Schema、列类型、全限定名以及将其转换为关系算子的底层实现。
+      final RelOptTable table,
+      // 从 SQL 中解析出来的 SQL 提示（Hints） 列表（例如 /*+ BROADCAST(t1) */ 或特定的索引提示）。这些提示会在建表扫描时被向下传递，指导算子生成。
+      final List<RelHint> hints) {
+    // 调用 RelOptTable 自身的 toRel 接口，把元数据表真正具象化为一个底层的扫描算子 scan（通常是 LogicalTableScan 或绑定了特定存储引擎的 Scan 算子）
+    final RelNode scan = table.toRel(createToRelContext(hints));
+    // 尝试从 table 对象中解包获取 InitializerExpressionFactory（初始化表达式工厂）。
     final InitializerExpressionFactory ief =
         table.maybeUnwrap(InitializerExpressionFactory.class)
             .orElse(NullInitializerExpressionFactory.INSTANCE);
-
+    // 检测是否存在虚拟生成列（Virtual Fields）
+    // 遍历这张表的所有字段，通过工厂检查是否存在任何一列的生成策略为 ColumnStrategy.VIRTUAL。
+    // 什么是虚拟列？：类似于 MySQL 或 Oracle 中的 GENERATED ALWAYS AS (c1 + c2) VIRTUAL。
+    // 这类列不在底层存储中实际存在，必须在每次读取该表时，在引擎上方通过表达式动态计算出来。
     boolean hasVirtualFields = table.getRowType()
         .getFieldList().stream()
         .anyMatch(f -> ief.generationStrategy(table, f.getIndex()) == ColumnStrategy.VIRTUAL);
-
+    // 核心分支：当表中包含虚拟列时（执行 Project 补齐与展开）
     if (hasVirtualFields) {
       final RexNode sourceRef = rexBuilder.makeRangeReference(scan);
+      // 为虚拟列的计算环境构建一个专用的小黑板（Blackboard）
       final Blackboard bb =
           createInsertBlackboard(table, sourceRef,
               table.getRowType().getFieldNames());
+      // 初始化一个空的行表达式列表 list，准备构建上方 Project 算子的输出投影列。
+      // 然后开始循环处理表中的每一个字段 f，获取其列策略 strategy。
       final List<RexNode> list = new ArrayList<>();
       for (RelDataTypeField f : table.getRowType().getFieldList()) {
         final ColumnStrategy strategy =
             ief.generationStrategy(table, f.getIndex());
+        // 如果当前列是虚拟列，调用工厂的 newColumnDefaultValue 方法。
+        // 它会读取建表时指定的虚拟列算式（例如 c1 + c2），并借助刚才创建的小黑板 bb，将其转化为优化器可识别的行表达式（RexCall 等），追加到列表中
         switch (strategy) {
         case VIRTUAL:
           list.add(ief.newColumnDefaultValue(table, f.getIndex(), bb));
           break;
+        // 如果是普通物理列，不需要计算，直接调用 rexBuilder.makeInputRef 创建一个指向下方 scan 对应物理列的指针引用（RexInputRef）。
         default:
           list.add(
               rexBuilder.makeInputRef(scan,
                   RelOptTableImpl.realOrdinal(table, f.getIndex())));
         }
       }
+      // 利用关系表达式建造器 relBuilder，将底层的 scan 算子压栈，然后在其上方叠加刚刚拼装好、包含了虚拟列计算公式的 project(list) 投影算子，
+      // 最后 build() 实例化出来这棵包含 Project -> TableScan 的局部新树。
       relBuilder.push(scan);
       relBuilder.project(list);
       final RelNode project = relBuilder.build();
+      // 检查初始化工厂是否注册了后置拦截挂钩。如果存在（postConversionHook != null），则把当前组装好的 project 算子和上下文交给钩子做最后的加工修饰并返回；
+      // 否则，直接返回组装好虚拟列表达式的 project 算子。
       BiFunction<InitializerContext, RelNode, RelNode> postConversionHook =
           ief.postExpressionConversionHook();
       if (postConversionHook != null) {
@@ -4983,39 +5271,54 @@ public class SqlToRelConverter {
   /**
    * Workspace for translating an individual SELECT statement (or sub-SELECT).
    */
+  // Blackboard（小黑板）的定位是 单一 SELECT 语句（或子查询）在转换为关系代数时的“临时工作台/状态机”。
+  // 在将一个复杂的 SELECT 语法树（SqlNode）翻译为关系算子（RelNode）以及行表达式（RexNode）的过程中，Calcite 需要在一个统一的地方记录当前的转换进度和环境上下文。Blackboard 主要承担以下职责：
+  // 持有当前关系表达式树的根节点（root）：随着 FROM、WHERE、SELECT 等子句的逐个解析，小黑板上的 root 节点会被不断地叠加、重构。
+  // 管理作用域（scope）与名称解析：在遇到 SqlIdentifier（如列名 emp.deptno）时，负责在当前 SELECT 语句的可见范围内找到对应的物理列索引。
+  // 追踪子查询与聚合状态：临时存放 IN、EXISTS 子查询列表，以及在处理 GROUP BY 时跟踪聚合算子和分组表达式。
   protected class Blackboard implements SqlRexContext, SqlVisitor<RexNode>,
       InitializerContext {
     /**
      * Collection of {@link RelNode} objects which correspond to a SELECT
      * statement.
      */
+    // 当前 SELECT 语句的命名空间作用域。用于在转换标量表达式时解析表名和列名。
     public final SqlValidatorScope scope;
+    // 名字到行表达式的映射表。主要用于在特定场景下（如表达式展开）将某个参数名称直接替换为指定的 RexNode。
     private final @Nullable Map<String, RexNode> nameToNodeMap;
+    // 当前正在构建的关系代数表达式树的根节点。随着转换进行，它会从最开始的 LogicalTableScan 逐步演变为包裹了 Filter、Project 后的复杂树。
     public @Nullable RelNode root;
+    // 当前作用域下的输入源集合。通常是当前 FROM 子句中各个表或连接产生的关系算子列表。
     private @Nullable List<RelNode> inputs;
+    // 存放关联变量 ID（CorrelationId）到行表达式字段访问（RexFieldAccess）的映射，用于处理关联子查询（Correlated Subquery）。
     private final Map<CorrelationId, RexFieldAccess> mapCorrelateToRex =
         new HashMap<>();
+    // 记录通过 register 方法注册进来的关系表达式及其参数。在某些子查询重写时需要利用此列表进行重新注册。
     private List<RegisterArgs> registered = new ArrayList<>();
-
+    // 标记当前是否正在引用 MATCH_RECOGNIZE（复杂事件处理）中的模式变量。
     private boolean isPatternVarRef = false;
-
+    // 存放当前查询中涉及的游标（Cursor）表达式对应的关系节点。
     final List<RelNode> cursors = new ArrayList<>();
 
     /**
      * List of <code>IN</code> and <code>EXISTS</code> nodes inside this
      * <code>SELECT</code> statement (but not inside sub-queries).
      */
+    // 收集当前 SELECT 语句内部（不包括更深层子查询）出现的所有 IN 和 EXISTS 子查询表达式。
     private final List<SubQuery> subQueryList = new ArrayList<>();
 
     /**
      * Workspace for building aggregates.
      */
+    // 聚合转换器。
+    // 当查询进入聚合模式（有 GROUP BY 或聚合函数）时，该对象不为空，专门用于追踪和映射分组列及聚合函数调用。
     @Nullable AggConverter agg;
 
     /**
      * When converting window aggregate, we need to know if the window is
      * guaranteed to be non-empty.
      */
+    // 窗口函数对象。转换窗口聚合时使用，用来判断当前窗口是否保证非空。
     @Nullable SqlWindow window;
 
     /**
@@ -5023,15 +5326,17 @@ public class SqlToRelConverter {
      * Sub-queries can reference group by expressions projected from the
      * "right" to the sub-query.
      */
+    // 维护关系算子根节点到字段投影的映射，专门用于解决子查询引用右侧 GROUP BY 表达式时的字段偏移问题。
     private final Map<RelNode, Map<Integer, Integer>> mapRootRelToFieldProjection =
         new HashMap<>();
-
+    // 记录当前各个输出列的单调性（如递增、递减、常数等），用于流式查询或特定优化。
     private final List<SqlMonotonicity> columnMonotonicities =
         new ArrayList<>();
-
+    // 存储当前关联算子中附带的系统字段列表。
     private final List<RelDataTypeField> systemFieldList = new ArrayList<>();
+    // 标记该小黑板对应的 SELECT 语句是否是整个 SQL 的最外层查询。
     final boolean top;
-
+    // 初始化表达式工厂，默认使用不提供默认值的空工厂实现。
     private final InitializerExpressionFactory initializerExpressionFactory =
         new NullInitializerExpressionFactory();
 
@@ -5082,45 +5387,66 @@ public class SqlToRelConverter {
      * @return Expression with which to refer to the row (or partial row)
      * coming from this relational expression's side of the join
      */
+    // 主要用于在当前逻辑树的工作台中，将一个新生成的逻辑算子（rel）合并、注册到当前已有的关系代数树（root）上，并返回能够准确引用新算子字段输出的表达式（RexRangeRef）。
+    // 返回值 RexNode（实际为 RexRangeRef）：返回一个范围引用表达式，用于告诉外界：“刚才新加进来的那个 rel 算子，现在它的字段在新合并出来的大树的哪个偏移量（Offset）开始，可以用它直接访问新加的那部分列”。
     public RexNode register(
+        // 当前待注册（新入场）的关系表达式节点（例如 FROM 子句中新遇到的一张表，或者一条被展开的 IN / EXISTS 子查询子树）。
         RelNode rel,
+        // 新入场的 rel 应该以何种连接方式与当前的 root 进行合并（如 INNER, LEFT, FULL 等）。
         JoinRelType joinType,
+        // 主要用于处理 IN 子查询被展开为半连接或外连接（Semi-Join / Left-Join） 时的左侧关联键（Left-Hand Side Keys）。
+        // 如果是普通无条件连接（如平铺非关联的 Cross Join）或转换第一张表，则该参数为 null。
         @Nullable List<RexNode> leftKeys) {
       requireNonNull(joinType, "joinType");
+      // 将本次注册的参数打包存储到 registered 列表中。
+      // 这就像是一个“备忘录”，如果后续发生子查询重写或者需要把这棵树强行重构时，可以通过读取这个备忘录实现重新注册（reRegister）。
       registered.add(new RegisterArgs(rel, joinType, leftKeys));
+      // 边界情况：当 Blackboard 的当前树（root）还是空的时候
       if (root == null) {
         assert leftKeys == null : "leftKeys must be null";
+        // 直接将这个新入场的 rel 算子指定为小黑板当前查询的根节点 root。
         setRoot(rel, false);
+        // 返回一个 RexRangeRef。因为当前树只有这一个算子，所以它的字段在大树中的起始偏移量（offset）是 0。
         return rexBuilder.makeRangeReference(
             root().getRowType(),
             0,
             false);
       }
-
+      // 连接条件与左侧键值对齐处理（核心逻辑 1）
+      // 如果 root 已经有值了，说明现在要把新来的 rel 通过 joinType 连接到已有的 root 上。
       final RexNode joinCond;
+      // 记录已有旧 root 在执行这次连接前的列总数。
       final int origLeftInputCount = root.getRowType().getFieldCount();
+      // 如果携带了左侧关联键（常发生于 IN 子查询展开改写为连接时），说明两边需要建立基于键的等值连接（Equi-Join）。
       if (leftKeys != null) {
         List<RexNode> newLeftInputExprs = new ArrayList<>();
         for (int i = 0; i < origLeftInputCount; i++) {
+          // 做投影重构（Project Alignment）。
+          // 先将原 root 的所有列引用（RexInputRef）依次捞出来放入 newLeftInputExprs 投影列表中，保证旧字段数据不丢失。
           newLeftInputExprs.add(rexBuilder.makeInputRef(root(), i));
         }
 
         final List<Integer> leftJoinKeys = new ArrayList<>();
+        // 检查 IN 左边的关联表达式 leftKey 是否在当前的投影列表里。
         for (RexNode leftKey : leftKeys) {
           int index = newLeftInputExprs.indexOf(leftKey);
+          // 如果当前投影里找不到（index < 0），或者由于是 LEFT JOIN 需要严格隔离字段，就把该 leftKey 作为一个全新生成的计算列追加到 newLeftInputExprs 的末尾。
           if (index < 0 || joinType == JoinRelType.LEFT) {
             index = newLeftInputExprs.size();
             newLeftInputExprs.add(leftKey);
           }
+          // 最终记录下左侧用于连接的键在最新投影中的数字索引（index），存入 leftJoinKeys。
           leftJoinKeys.add(index);
         }
-
+        // 用 RelBuilder 在原 root 上方追加一层 LogicalProject。
+        // 这个新的左侧输入树 newLeftInput 现在不仅包含了原来的旧字段，还在尾部对齐、补齐了用于做等值连接的 leftKeys。
         RelNode newLeftInput =
             relBuilder.push(root())
                 .project(newLeftInputExprs)
                 .build();
 
         // maintain the group by mapping in the new LogicalProject
+        // 如果在聚合或特定的 GROUP BY 环境下，将原 root 的字段映射元数据信息平移到新生成的 newLeftInput 节点上，防止后续上下文丢失。
         Map<Integer, Integer> currentProjection = mapRootRelToFieldProjection.get(root());
         if (currentProjection != null) {
           mapRootRelToFieldProjection.put(
@@ -5133,19 +5459,22 @@ public class SqlToRelConverter {
         setRoot(newLeftInput, leaves.remove(root()) != null);
 
         // right fields appear after the LHS fields.
+        // 由于连接后右侧输入 rel 的字段会被拼在新 root 字段的后面，通过计算偏移量算出来右侧表对应的等值连接键的绝对索引位置。
         final int rightOffset = root().getRowType().getFieldCount()
             - newLeftInput.getRowType().getFieldCount();
         final List<Integer> rightKeys =
             Util.range(rightOffset, rightOffset + leftKeys.size());
-
+        // 生成等值连接的条件表达式（例如 newLeftInput.field_X = rel.field_Y）。
         joinCond =
             RelOptUtil.createEquiJoinCondition(newLeftInput, leftJoinKeys,
                 rel, rightKeys, rexBuilder);
       } else {
+        // 如果没有提供 leftKeys，说明是一个普通交叉连接（Cross Join / ON TRUE）。
         joinCond = rexBuilder.makeLiteral(true);
       }
-
+      // 记录此时最新左侧大树（root）的总列数。新来的 rel 拼上去之后，其字段的起始索引就是 leftFieldCount。
       int leftFieldCount = root().getRowType().getFieldCount();
+      // 调用外层核心方法，在当前的 root() 和传入的 rel 之间真正创建出一个 LogicalJoin 算子，并将上面推导出的 joinCond（连接条件）和 joinType 灌进去。
       final RelNode join =
           createJoin(
               this,
@@ -5155,7 +5484,7 @@ public class SqlToRelConverter {
               joinType);
 
       setRoot(join, false);
-
+      // 计算并返回字段映射范围引用 (返回值处理)
       if (leftKeys != null
           && joinType == JoinRelType.LEFT) {
         final int leftKeyCount = leftKeys.size();
@@ -5188,17 +5517,30 @@ public class SqlToRelConverter {
      *
      * @return new root after the registration
      */
+    // 核心应用场景：
+    // 通常在子查询展开（Sub-query Unnesting / Decorrelation）或标量子查询（Scalar Subquery）转换阶段被调用。
+    // 当 Calcite 发现一个原本作为标量的子查询可能会返回多行数据、从而违反 SQL 规范时，需要通过引入 SINGLE_VALUE 聚合函数来强行保证数据的标量特性，并将之前所有的注册逻辑在一个新的 root 算子基础之上“重放”一遍。
+    // RelNode root：传入的新根节点（通常是由主查询转换出来的基础关系算子树）。该方法会以此节点作为最新的左侧输入基底，重新在其上方拼接之前登记过的其他算子。
+    // 返回值 RelNode：返回重新装配完成后的最终大树的根节点。该节点会被作为当前小黑板的最新 root。
     public RelNode reRegister(RelNode root) {
+      // 将小黑板当前的根节点强制重置为传入的新 root 节点。
       setRoot(root, false);
+      // 把之前通过 register 方法记录下来的所有连接/子查询注册历史（registered 备忘录）备份到 registerCopy 中。
+      // 然后把小黑板上的 registered 列表初始化为空，准备接收接下来的“重新注册”。
       List<RegisterArgs> registerCopy = registered;
       registered = new ArrayList<>();
       for (RegisterArgs reg : registerCopy) {
+        // 将当前循环处理的这个待合并算子 relNode 压入 Calcite 的关系表达式建造器 relBuilder 的栈顶，准备对其进行加工。
         RelNode relNode = reg.rel;
         relBuilder.push(relNode);
+        // 利用元数据查询（Metadata Query）框架，检查当前算子输出的行数是否天生唯一。
         final RelMetadataQuery mq = relBuilder.getCluster().getMetadataQuery();
         final Boolean unique =
             mq.areColumnsUnique(relBuilder.peek(), ImmutableBitSet.of());
+        // 如果无法确定结果集唯一，或者明确知道结果集可能返回多行（!unique），则触发内部的防御保护。
         if (unique == null || !unique) {
+          // 强行套上一层 SINGLE_VALUE 聚合算子
+          // SqlStdOperatorTable.SINGLE_VALUE 是 Calcite 内置的特殊聚合函数。它的行为是：如果输入只有 1 行，则返回该行数据；如果输入为空，返回 NULL；如果输入超过 1 行，在运行时直接抛出异常。
           relBuilder.aggregate(relBuilder.groupKey(),
               relBuilder.aggregateCall(SqlStdOperatorTable.SINGLE_VALUE,
                   relBuilder.field(0)));
@@ -5230,8 +5572,14 @@ public class SqlToRelConverter {
     }
 
     private void setRoot(
+        // 当前查询块（Query Block）所依赖的输入源（关系表达式算子）列表。
+        // 通常代表当前 FROM 子句中各个表或子查询转换后的算子集合。
+        // 当我们在表达式中通过别名引用某张表（例如 SELECT emp.empno FROM emp）时，小黑板需要通过这个 inputs 列表来做反向追溯，确定该表在当前环境中的物理位置。
         List<RelNode> inputs,
+        // 当前整个小黑板逻辑树的最新根节点算子。
+        // 随着转换的深入（如串联 Filter、Project），这个 root 会不断指向最新的、包裹了更多层级的外层算子。允许为 null（例如在刚初始化、还没有构建出完整逻辑树的中间状态）。
         @Nullable RelNode root,
+        // 指示当前新构建的算子树中是否包含系统级字段（System Fields，如某些数据库中隐式的行号 ROWID 或隐藏的事务元数据列）。
         boolean hasSystemFields) {
       this.inputs = inputs;
       this.root = root;
@@ -5434,17 +5782,25 @@ public class SqlToRelConverter {
         cursors.clear();
       }
     }
-
+    // SQL 抽象语法树节点（SqlNode，代表表达式/子查询等）向行表达式节点（RexNode，包含算子字段引用、函数调用、子查询节点等）转换的核心总入口。
+    // SqlNode expr：输入的 SQL 语法树表达式节点（例如普通的列名 id、常量 10、复杂的函数调用 A + B，或者嵌套的标量子查询 (SELECT max(x) FROM t)）。
+    // 返回值 RexNode：转换后对应的行表达式。它已经绑定了关系代数树中的物理位置、底层列索引或标准函数操作符。
     @Override public RexNode convertExpression(SqlNode expr) {
       // If we're in aggregation mode and this is an expression in the
       // GROUP BY clause, return a reference to the field.
+      // 阶段 1：聚合（Aggregation）环境下的分组列/聚合函数匹配
       AggConverter agg = this.agg;
+      // 判断当前转换上下文是否处于 GROUP BY / 聚合阶段（如正在转换 SELECT 列表或 HAVING 子句）。
       if (agg != null) {
+        // 利用 Validator 对当前表达式进行别名或隐式转换的展开，统一格式（确保能与 GROUP BY 里的原始表达式对齐）
         final SqlNode expandedGroupExpr = validator().expand(expr, scope);
+        // 在 GROUP BY 的字段列表里查找该表达式。如果能找到（返回索引 ref >= 0），说明该表达式正是分组键之一。
         final int ref = agg.lookupGroupExpr(expandedGroupExpr);
+        // 既然是分组键，就不必在当前层重新计算整个表达式，直接返回对底层 Aggregate 算子输出的分组列的引用（RexInputRef）。
         if (ref >= 0) {
           return rexBuilder.makeInputRef(root(), ref);
         }
+        // 如果是函数调用（SqlCall），去已收集的聚合函数（如 SUM, COUNT）中匹配。如果命中，直接返回该聚合函数在结果集中的引用。
         if (expr instanceof SqlCall) {
           final RexNode rex = agg.lookupAggregates((SqlCall) expr);
           if (rex != null) {
@@ -5455,6 +5811,7 @@ public class SqlToRelConverter {
 
       // Allow the derived class chance to override the standard
       // behavior for special kinds of expressions.
+      // 阶段 2：留给子类的扩展接口（Hook）
       RexNode rex = convertExtendedExpression(expr, this);
       if (rex != null) {
         return rex;
@@ -5462,6 +5819,8 @@ public class SqlToRelConverter {
 
       // Sub-queries and OVER expressions are not like ordinary
       // expressions.
+      // 阶段 3：当配置为“不展开（expand = false）”时，直接构建 RexSubQuery
+      // 当系统配置中明确禁止在这一步将子查询展开为 Join 算子时（保留原汁原味的子查询形式），会进入以下逻辑，将其转化为特殊的 RexSubQuery 表达式节点：
       final SqlKind kind = expr.getKind();
       final SubQuery subQuery;
       if (!config.isExpand()) {
@@ -5474,12 +5833,16 @@ public class SqlToRelConverter {
         case SOME:
         case ALL:
           call = (SqlCall) expr;
+          // 获取右侧的子查询树
           query = call.operand(1);
-          if (!(query instanceof SqlNodeList)) {
+          if (!(query instanceof SqlNodeList)) { // 排除 IN (1, 2, 3) 这种普通的列表常量，只处理嵌套查询
+            // 递归将子查询的 SqlNode 转换为 RelNode 逻辑树
             root = convertQueryRecursive(query, false, null);
+            // 获取左侧的表达式（如 id IN (...) 中的 id）
             final SqlNode operand = call.operand(0);
             List<SqlNode> nodes;
             switch (operand.getKind()) {
+            // 处理多列 IN 语法，如 (a, b) IN (SELECT x, y FROM ...)
             case ROW:
               nodes = ((SqlCall) operand).getOperandList();
               break;
@@ -5488,21 +5851,23 @@ public class SqlToRelConverter {
             }
             final ImmutableList.Builder<RexNode> builder =
                 ImmutableList.builder();
+            // 递归转换左侧的每一列表达式
             for (SqlNode node : nodes) {
               builder.add(convertExpression(node));
             }
             final ImmutableList<RexNode> list = builder.build();
             RelNode rel = root.rel;
             // Fix the correlation namespaces and de-duplicate the correlation variables.
+            // 修正关联子查询的 Namespace 并去重关联变量
             CorrelationUse correlationUse = getCorrelationUse(this, root.rel);
             if (correlationUse != null) {
               rel = correlationUse.r;
             }
-
+            // 根据不同的 SQL 类型，打包成对应的 RexSubQuery 表达式
             switch (kind) {
             case IN:
               return RexSubQuery.in(rel, list);
-            case NOT_IN:
+            case NOT_IN: // NOT_IN 转为 NOT (RexSubQuery.in)
               return rexBuilder.makeCall(SqlStdOperatorTable.NOT,
                   RexSubQuery.in(rel, list));
             case SOME:
@@ -5528,21 +5893,22 @@ public class SqlToRelConverter {
           if (correlationUse != null) {
             rel = correlationUse.r;
           }
-
+          // 裁剪无意义的外层算子：如果 EXISTS 内部带有没有 limit/offset 的 Project 或 Sort，直接脱壳取其 Input
           while (rel instanceof Project
               || rel instanceof Sort
               && ((Sort) rel).fetch == null
               && ((Sort) rel).offset == null) {
             rel = ((SingleRel) rel).getInput();
           }
+          // 返回 EXISTS 类型的 RexSubQuery
           return RexSubQuery.exists(rel);
-
+        // 类似地，将 UNIQUE 子查询转换为 RexSubQuery.unique
         case UNIQUE:
           call = (SqlCall) expr;
           query = Iterables.getOnlyElement(call.getOperandList());
           root = convertQueryRecursive(query, false, null);
           return RexSubQuery.unique(root.rel);
-
+        // 标量子查询，形如 (SELECT price FROM t LIMIT 1)
         case SCALAR_QUERY:
           call = (SqlCall) expr;
           query = Iterables.getOnlyElement(call.getOperandList());
@@ -5553,13 +5919,15 @@ public class SqlToRelConverter {
           if (correlationUse != null) {
             rel = correlationUse.r;
           }
+          // 返回标量形式的 RexSubQuery
           return RexSubQuery.scalar(rel);
-
+        // 处理复杂的数据集合构造器查询（ARRAY, MAP, MULTISET）
         case ARRAY_QUERY_CONSTRUCTOR:
           call = (SqlCall) expr;
           query = Iterables.getOnlyElement(call.getOperandList());
           // let top=true to make the query be top-level query,
           // then ORDER BY will be reserved.
+          // top=true 保证作为顶层查询转换，从而保留其内部的 ORDER BY 语义
           root = convertQueryRecursive(query, true, null);
           return RexSubQuery.array(root.rel);
 
@@ -5579,12 +5947,13 @@ public class SqlToRelConverter {
           break;
         }
       }
-
+      // 阶段 4：当配置为“要展开（expand = true）”时，利用先前拉平的 Join 数据构建指针
       switch (kind) {
       case SOME:
       case ALL:
       case UNIQUE:
         if (config.isExpand()) {
+          // 抛出异常：表明某些复杂的修饰词子查询在当前展开模式下还未被支持
           throw new RuntimeException(kind
               + " is only supported if expand = false");
         }
@@ -5592,12 +5961,14 @@ public class SqlToRelConverter {
       case CURSOR:
       case IN:
       case NOT_IN:
+        // 获取此前已经注册并预转换好的子查询上下文数据
         subQuery = getSubQuery(expr, null);
         if (subQuery == null && (kind == SqlKind.SOME || kind == SqlKind.ALL)) {
           break;
         }
         assert subQuery != null;
         rex = requireNonNull(subQuery.expr);
+        // 执行 CAST 校验：确保转换出来的 rex 类型与 SQL 语法层校验出来的验证类型严格对齐
         return StandardConvertletTable.castToValidatedType(expr, rex,
             validator(), rexBuilder, false);
 
@@ -5611,7 +5982,7 @@ public class SqlToRelConverter {
         assert subQuery != null;
         rex = subQuery.expr;
         assert rex != null : "rex != null";
-
+        // 如果发现这个标量子查询已经被提前优化或转换成了一个常量（Literal），直接将其作为结果返回
         if (((kind == SqlKind.SCALAR_QUERY)
             || (kind == SqlKind.EXISTS))
             && isConvertedSubq(rex)) {
@@ -5621,14 +5992,19 @@ public class SqlToRelConverter {
         }
 
         // The indicator column is the last field of the sub-query.
+        // 【核心机制：指示列】
+        // 子查询被转化为右侧连接后，通过在右表最末尾增加一列指示列（Indicator column），
+        // 用来标志子查询结果是否存在，或映射其输出结果。
         RexNode fieldAccess =
             rexBuilder.makeFieldAccess(
                 rex,
-                rex.getType().getFieldCount() - 1);
+                rex.getType().getFieldCount() - 1);// 获取该子查询关联块下的最后一列
 
         // The indicator column will be nullable if it comes from
         // the null-generating side of the join. For EXISTS, add an
         // "IS TRUE" check so that the result is "BOOLEAN NOT NULL".
+        // 对于 EXISTS 而言，如果对应的连接侧是 Null-generating（如左外连接产生 null），
+        // 那么它的指示列就会是 Nullable。此处通过套一层 IS NOT NULL，将其强转为 BOOLEAN NOT NULL
         if (fieldAccess.getType().isNullable()
             && kind == SqlKind.EXISTS) {
           fieldAccess =
@@ -5637,10 +6013,10 @@ public class SqlToRelConverter {
                   fieldAccess);
         }
         return fieldAccess;
-
+      // 路由处理：单独处理窗口函数（OVER 表达式）
       case OVER:
         return convertOver(this, expr);
-
+      // 路由处理：单独处理 Lambda 表达式
       case LAMBDA:
         return convertLambda(this, expr);
 
@@ -5649,6 +6025,10 @@ public class SqlToRelConverter {
       }
 
       // Apply standard conversions.
+      //阶段 5：兜底处理（标准标量与算子转换）
+      // 如果上述所有特异场景（聚合、子查询、窗口函数）全部没有命中，说明它只是一个普通的 SQL 标量表达式（如 1 + 1，user.age）。
+      // 通过调用 expr.accept(this)，小黑板会触发访问者模式（Visitor Pattern），将请求分发给对应的 SqlVisitor 实现（实际上最终由 StandardConvertletTable 完成），
+      // 将其组装为标准的 RexCall 或 RexInputRef 标量表达式并返回。
       rex = expr.accept(this);
       return requireNonNull(rex, "rex");
     }

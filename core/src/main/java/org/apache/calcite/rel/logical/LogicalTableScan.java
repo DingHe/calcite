@@ -115,7 +115,7 @@ public final class LogicalTableScan extends TableScan {
         // 首先，由于这是逻辑算子（Logical），它的执行流派特质（Convention）毫无疑问被贴上 NONE 标签，代表它目前还不属于任何具体的物理引擎。
         cluster.traitSetOf(Convention.NONE)
             // 捕捉并向下继承底层表的天然排序特征（Collation）。
-            // 果这张表在底层确实拥有天然的排序（比如按 id 升序），这个方法会在逻辑扫表算子刚诞生的一瞬间，把这个物理排序特质精准地捕捉到，并强行注入到 LogicalTableScan 的 traitSet 中！
+            // 如果这张表在底层确实拥有天然的排序（比如按 id 升序），这个方法会在逻辑扫表算子刚诞生的一瞬间，把这个物理排序特质精准地捕捉到，并强行注入到 LogicalTableScan 的 traitSet 中！
             .replaceIfs(RelCollationTraitDef.INSTANCE, () -> {
               if (table != null) {
                 return table.getStatistic().getCollations();

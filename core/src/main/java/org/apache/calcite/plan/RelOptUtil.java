@@ -3695,17 +3695,30 @@ public abstract class RelOptUtil {
   }
 
   /** Policies for handling two- and three-valued boolean logic. */
+  // 在 SQL 和数据库查询优化中，三值逻辑（Three-valued logic, 3VL）是一个核心且复杂的概念。
+  // 普通的布尔逻辑只有 TRUE（真）和 FALSE（假），而 SQL 的逻辑由于 NULL（空值）的存在，引入了第三种状态：UNKNOWN（未知）。例如，1 = NULL 的结果既不是 TRUE 也不是 FALSE，而是 UNKNOWN。
+  // Logic 枚举类的主要作用是：定义和管理在将 SQL 语句转换为关系代数或进行查询优化时，如何处理和简化两值（Two-valued）与三值（Three-valued）布尔逻辑的策略。
+  // 通过这个枚举，Calcite 的查询优化器（例如在 LogicVisitor 中）可以明确知道当前的上下文环境下，UNKNOWN 应该被视作 FALSE 还是 TRUE，或者是否可以断定不存在 NULL 从而简化为两值逻辑。
+  // 这对于索引选择、子查询重写（如 IN / NOT IN 转换为 Semi-Join / Anti-Join）以及条件推导至关重要。
   public enum Logic {
     /** Three-valued boolean logic. */
+    // 标准的三值布尔逻辑。
+    // 表示最通用的情况，允许结果为 TRUE、FALSE 或 UNKNOWN。在此策略下，优化器必须严格遵循 SQL 的三值逻辑标准，不能做盲目的简化。
     TRUE_FALSE_UNKNOWN,
 
     /** Nulls are not possible. */
+    // 严格的两值逻辑（非真即假）。
+    // 明确表示在此上下文中不可能出现 Null 值（例如字段有 NOT NULL 约束，或者已经经过了非空过滤）。
+    // 因为没有 NULL，所以也就不会产生 UNKNOWN，逻辑运算可以安全地退化为普通的布尔逻辑，有利于优化器生成更高效的执行计划。
     TRUE_FALSE,
 
     /** Two-valued logic where UNKNOWN is treated as FALSE.
      *
      * <p>"x IS TRUE" produces the same result, and "WHERE x", "JOIN ... ON x"
      * and "HAVING x" have the same effect. */
+    // 将 UNKNOWN 视作 FALSE 处理的两值逻辑
+    // 在 SQL 中，许多子句会将非 TRUE 的结果一律排除。例如 "WHERE x", "JOIN ... ON x" 和 "HAVING x"。
+    // 在这些子句中，表达式计算出 UNKNOWN 和计算出 FALSE 的最终效果是一样的（该行都不会被选中）。因此，优化器可以将表达式中的 UNKNOWN 转换为 FALSE 来简化计算。
     UNKNOWN_AS_FALSE,
 
     /** Two-valued logic where UNKNOWN is treated as TRUE.
@@ -3716,10 +3729,15 @@ public abstract class RelOptUtil {
      * "k IN q" produces TRUE or UNKNOWN, "NOT k IN q" produces FALSE or
      * UNKNOWN and the row is eliminated; if "k IN q" it returns FALSE, the
      * row is retained by the WHERE clause. */
+    // 将 UNKNOWN 视作 TRUE 处理的两值逻辑。
+    // 主要用于处理诸如 "WHERE k NOT IN q" 这样的求反逻辑。
+    // 原理解析：如果 "k IN q" 返回 TRUE 或 UNKNOWN，那么取反后 "NOT k IN q" 就会返回 FALSE 或 UNKNOWN。在 WHERE 子句中，这两种情况都会导致该行被消除。
      UNKNOWN_AS_TRUE,
 
     /** A semi-join will have been applied, so that only rows for which the
      * value is TRUE will have been returned. */
+    // 表示已经应用了半连接（Semi-join）策略
+    // 用于标记该上下文中只有评估结果为 TRUE 的行才会被返回。这是一种优化阶段的中间状态，告诉后续的访问器（Visitor）当前节点已经被过滤，只剩 TRUE 的情况。
     TRUE,
 
     /** An anti-semi-join will have been applied, so that only rows for which
@@ -3727,8 +3745,10 @@ public abstract class RelOptUtil {
      *
      * <p>Currently only used within {@link LogicVisitor}, to ensure that
      * 'NOT (NOT EXISTS (q))' behaves the same as 'EXISTS (q)') */
+    // 表示已经应用了反半连接（Anti-semi-join）策略
+    // 标记该上下文中只有评估结果为 FALSE 的行才会被返回。
     FALSE;
-
+    // 对当前的逻辑策略执行取反（求反）操作，并返回取反后的新策略。
     public Logic negate() {
       switch (this) {
       case UNKNOWN_AS_FALSE:
@@ -3743,6 +3763,7 @@ public abstract class RelOptUtil {
 
     /** Variant of {@link #negate()} to be used within {@link LogicVisitor},
      * where FALSE values may exist. */
+    // negate() 方法的一个变体（变种），专门用于 LogicVisitor 内部，能够额外处理包含 FALSE 状态的取反。
     public Logic negate2() {
       switch (this) {
       case FALSE:
