@@ -2530,20 +2530,38 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param ns            Namespace
    * @param forceNullable Whether to force the type of namespace to be nullable
    */
+  // 不仅把一个新创建的命名空间（SqlValidatorNamespace）登记到全局的缓存 Map 中，
+  // 同时还要把它作为子节点（Child）绑定到其上层的父级作用域（usingScope）中，并赋予它一个别名（alias）。
+  // 这样，当上层子句在解析列名时，就能顺着 Scope 找到这个 Namespace。
   protected void registerNamespace(
+      // 当前 Namespace 所属的父级/上层作用域（即哪一个 Scope 想要在后续的名字解析中看到并使用这个 Namespace）。
+      // 如果传入不为 null，会把当前 Namespace 挂载到该 Scope 的子节点列表里。例如在解析 FROM emp AS e 时，usingScope 就是当前的 SelectScope。
       @Nullable SqlValidatorScope usingScope,
+      // 父级作用域用来引用、称呼这个 Namespace 的别名（Alias）。
+      // 例如 FROM emp AS e 中的 "e"。如果在 SQL 中没有显式写别名，Calcite 通常也会根据表名生成一个默认别名（如 "EMP"）。
       @Nullable String alias,
+      // 当前正在被注册的命名空间对象本身（代表了某个数据源、物理表或子查询结果集）。
       SqlValidatorNamespace ns,
+      // 是否强行将该 Namespace 的行类型（Row Type）标记为可空（Nullable）。
+      // 主要用于处理 LEFT JOIN / RIGHT JOIN / FULL JOIN 等外连接场景。当一张表作为 LEFT JOIN 的右表引入时，虽然它原本的字段可能是 NOT NULL 的，但由于外连接的特性，未能匹配时会产生 NULL，此时该参数传入 true，以确保类型推导的正确性。
       boolean forceNullable) {
+    // 1. 尝试从全局 namespaces 缓存 Map 中获取该节点对应的 Namespace
     SqlValidatorNamespace namespace =
         namespaces.get(requireNonNull(ns.getNode(), () -> "ns.getNode() for " + ns));
+    // 2. 如果全局缓存中还没有注册过这个节点
     if (namespace == null) {
+      // 将当前传入的 ns 放入全局缓存 Map 中，实现全局共享和幂等
       namespaces.put(requireNonNull(ns.getNode()), ns);
       namespace = ns;
     }
+    // 3. 如果指定了父级作用域（usingScope 不为空）
     if (usingScope != null) {
+      // 这是一个断言：既然指定了要将 Namespace 注册进某个 Scope，那么它必须有别名（alias），否则上层无法引用它
       assert alias != null : "Registering namespace " + ns + ", into scope " + usingScope
           + ", so alias must not be null";
+      // 核心操作：调用 Scope 的 addChild 方法，将该 Namespace 正式绑定为 Scope 的子节点
+      // 把“数据源”（Namespace）和“名字查找上下文”（Scope）串联起来的关键。
+      // 举个例子，当把 emp（别名 e）通过 addChild 挂载到 SelectScope 之后，后续在 WHERE 子句或 SELECT 列表中写 e.empno 时，SelectScope 就能顺着内部的 child 映射表识别出 e 代表的就是这个 emp 命名空间，进而解析出 empno 的字段和类型。
       usingScope.addChild(namespace, alias, forceNullable);
     }
   }
@@ -2579,15 +2597,38 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    *                      scope
    * @return registered node, usually the same as {@code node}
    */
+  // 为 FROM 子句中出现的各种关系表达式（表引用、子查询、JOIN、别名、LATERAL、TABLESAMPLE 等各种形式）注册对应的作用域（Scope）和命名空间（Namespace）。
+  // 这个方法需要处理 FROM 子句中几乎所有可能出现的语法形式，例如：
+  // 简单表引用：FROM emp
+  // 带别名的表引用：FROM emp AS e
+  // 子查询：FROM (SELECT ...)
+  // JOIN：FROM a JOIN b ON ...
+  // LATERAL：FROM a, LATERAL (SELECT ... FROM b WHERE b.x = a.x)
+  // TABLESAMPLE：FROM emp TABLESAMPLE BERNOULLI(50)
+  // 表函数：FROM TABLE(f(x))
+  // MATCH_RECOGNIZE、PIVOT、UNPIVOT 等高级语法
   private SqlNode registerFrom(
+      // 父作用域，即该 FROM 项在解析内部标识符时应该"回退"求助的作用域。
+      // 之所以命名带有 0 后缀，是因为方法内部会根据 lateral 参数的值，可能计算出一个新的 parentScope（区别于原始传入的 parentScope0），所以用 0 后缀标记这是"最初传入的、未经处理的"父作用域。
       SqlValidatorScope parentScope0,
+      // 当前命名空间应该把自己"加入"到哪个作用域的子节点列表中
       SqlValidatorScope usingScope,
+      // 是否需要将当前正在处理的这个作用域/命名空间，注册为 usingScope 的子节点。有些场景下（比如内部递归调用处理某个中间层级的表达式时）暂时不希望立即注册，而是交给外层的调用来统一处理注册逻辑。
       boolean register,
+      // 当前命名空间所基于的具体节点，即真正要处理的核心内容节点（比如剥离了别名装饰后的裸节点）。
       final SqlNode node,
+      // 命名空间的"最外层节点"，包含像别名（AS alias）、TABLESAMPLE 子句等装饰性内容。
+      // Javadoc 说明：enclosingNode 和 node 通常相同，只有当存在这些装饰时才会不同——此时 enclosingNode 是最外层（带装饰）的节点，而 node 是去除装饰后的内层节点，两者都会被记录到命名空间中。
       SqlNode enclosingNode,
+      // 该 FROM 项的别名。可以为 null，表示调用时尚未确定别名，需要方法内部逻辑自动生成（比如给一个匿名子查询生成类似 EXPR$1 这样的默认别名）。
       @Nullable String alias,
+      // 扩展列的定义列表，对应 SQL 中 EXTEND 语法（例如 FROM emp EXTEND (bonus DECIMAL(10,2))，允许在查询时临时给表追加额外的列定义）。可以为 null，表示没有扩展列。
       @Nullable SqlNodeList extendList,
+      // 是否强制将该命名空间的行类型标记为"可为空"（nullable）。
+      // 典型应用场景是外连接（OUTER JOIN）：比如 LEFT JOIN 的右表，在没有匹配行时其所有列都会呈现为 NULL，因此需要强制将其类型标记为可空，即使原始列定义是 NOT NULL。
       boolean forceNullable,
+      // 是否指定了 LATERAL 关键字。
+      // 如果为 true，意味着该 FROM 项左侧的（在 JOIN 树中排在它之前的）表项在此处也是可见的（即支持相关子查询这种"横向"引用能力，这是 LATERAL 关键字的核心语义）。
       final boolean lateral) {
     final SqlKind kind = node.getKind();
 
@@ -2596,6 +2637,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
     // Add an alias if necessary.
     SqlNode newNode = node;
+    // 只有当调用方没有显式传入别名时，才需要方法内部自动生成别名。
+    // 这里通过内层的 switch (kind) 对不同种类的节点采取不同的默认别名生成策略：
     if (alias == null) {
       switch (kind) {
       case IDENTIFIER:
@@ -2638,20 +2681,31 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
 
     final SqlValidatorScope parentScope;
+    // 处理 LATERAL 相关的父作用域计算
     if (lateral) {
+      // 如果指定了 LATERAL，意味着该表达式需要能够看到 JOIN 树中排在它左侧的其他表项，因此需要构造一个特殊的作用域来实现这种"横向可见性"：
       SqlValidatorScope s = usingScope;
+      // 不断"剥离"，取其内部的 usingScope，直到找到一个不是 JoinScope 的作用域为止（这是为了穿透多层嵌套的 JOIN 作用域，找到最"根本"的那个非 JOIN 作用域，
+      // 因为 LATERAL 需要的是能囊括左侧所有表的那个层面的作用域信息）。
       while (s instanceof JoinScope) {
         s = ((JoinScope) s).getUsingScope();
       }
+      // 如果找到的 s 不为 null，取其对应的节点 s.getNode()；否则退化使用当前的 node 本身。
       final SqlNode node2 = s != null ? s.getNode() : node;
+      // 基于最初的 parentScope0 和上一步确定的节点，创建一个新的 TableScope（专门用于表引用的作用域类型）
       final TableScope tableScope = new TableScope(parentScope0, node2);
+      // 如果 usingScope 是 ListScope（维护子命名空间列表的作用域类型），则遍历它已有的所有子项（children），
+      // 逐一添加到新创建的 tableScope 中——这一步的目的是把 JOIN 树中左侧已经注册过的表都"复制"进这个新的 tableScope，
+      // 使得 LATERAL 表达式内部能够引用这些左侧的表
       if (usingScope instanceof ListScope) {
         for (ScopeChild child : ((ListScope) usingScope).children) {
           tableScope.addChild(child.namespace, child.name, child.nullable);
         }
       }
+      // 最终将计算好的 tableScope 赋值给 parentScope，作为本次调用后续使用的父作用域。
       parentScope = tableScope;
     } else {
+      // 如果没有指定 LATERAL，直接使用原始传入的 parentScope0，不做任何特殊处理。
       parentScope = parentScope0;
     }
 
@@ -2660,12 +2714,15 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     SqlNode newOperand;
 
     switch (kind) {
+    // 带别名的表达式，如 t AS alias 或 t AS alias(col1, col2)
     case AS:
       call = (SqlCall) node;
       if (alias == null) {
         alias = String.valueOf(call.operand(1));
       }
       expr = call.operand(0);
+      // 如果 AS 调用的操作数超过 2 个，说明存在列名列表，即 AS alias(col1, col2, ...) 这种形式（不仅重命名了表，还重命名了列），此时需要引入专门的命名空间来做列名的映射转换。
+      // 如果被起别名的表达式本身是 VALUES、UNNEST 或 COLLECTION_TABLE（表函数）这几种特殊类型，也同样需要引入别名命名空间（这些类型的处理有特殊性，用于列名转换）。
       final boolean needAliasNamespace = call.operandCount() > 2
           || expr.getKind() == SqlKind.VALUES || expr.getKind() == SqlKind.UNNEST
           || expr.getKind() == SqlKind.COLLECTION_TABLE;
@@ -2673,6 +2730,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
           registerFrom(
               parentScope,
               usingScope,
+              // !needAliasNamespace——如果需要额外的别名命名空间，那么这一层递归调用暂时不注册（false），
+              // 因为注册工作会在后面由专门创建的 AliasNamespace 来完成；反之如果不需要额外命名空间，则直接注册（true）
               !needAliasNamespace,
               expr,
               enclosingNode,
@@ -2686,6 +2745,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
       // If alias has a column list, introduce a namespace to translate
       // column names. We skipped registering it just now.
+      // 如果确实需要别名命名空间（存在列名列表或特殊类型），创建一个 AliasNamespace（专门处理列名映射的命名空间类型），
+      // 并调用 registerNamespace 将其注册到 usingScope 下，使用之前确定的 alias。
       if (needAliasNamespace) {
         registerNamespace(
             usingScope,
@@ -2731,6 +2792,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
     case JOIN:
       final SqlJoin join = (SqlJoin) node;
+      // 为该 JOIN 创建一个专门的 JoinScope（用于表示 JOIN 两侧表的联合可见性作用域）。
       final JoinScope joinScope =
           new JoinScope(parentScope, usingScope, join);
       scopes.put(join, joinScope);
@@ -2738,6 +2800,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       final SqlNode right = join.getRight();
       boolean forceLeftNullable = forceNullable;
       boolean forceRightNullable = forceNullable;
+      // 根据 JOIN 类型确定是否需要强制可空：
       switch (join.getJoinType()) {
       case LEFT:
         forceRightNullable = true;
@@ -2752,6 +2815,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       default:
         break;
       }
+      // 以 joinScope 作为 usingScope（意味着左侧表会被注册为该 JOIN 作用域的子项），别名和扩展列传 null（因为 JOIN 的左右子项本身可能是任意 FROM 表达式，其内部会自行处理别名等细节）。
+      // 如果返回的新节点与原节点不同，调用 join.setLeft(newLeft) 更新。
       final SqlNode newLeft =
           registerFrom(
               parentScope,
@@ -2782,17 +2847,26 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       }
       scopes.putIfAbsent(stripAs(join.getRight()), parentScope);
       scopes.putIfAbsent(stripAs(join.getLeft()), parentScope);
+      // 对 JOIN 的连接条件（ON 子句，比如 a.id = b.id）调用之前详细讲解过的 registerSubQueries 方法，
+      // 检查条件表达式中是否包含子查询（比如 ON a.id = (SELECT MAX(id) FROM b) 这种少见但合法的写法），并注册它们，
+      // 使用 joinScope 作为父作用域（因为条件表达式中可以同时引用左右两个表）。
       registerSubQueries(joinScope, join.getCondition());
       final JoinNamespace joinNamespace = new JoinNamespace(this, join);
+      // 为整个 JOIN 创建一个 JoinNamespace（代表 JOIN 结果作为一个整体的命名空间），
+      // 并注册（这里传入的父作用域和别名都是 null，因为 JOIN 结果通常不需要单独的别名，它是通过左右子项各自的可见性来体现的）。
       registerNamespace(null, null, joinNamespace, forceNullable);
       return join;
 
+    // 简单表标识符引用
     case IDENTIFIER:
       final SqlIdentifier id = (SqlIdentifier) node;
+      // 创建一个 IdentifierNamespace（代表一个具名表引用的命名空间），传入校验器自身、标识符、扩展列定义、外层节点、父作用域。
       final IdentifierNamespace newNs =
           new IdentifierNamespace(
               this, id, extendList, enclosingNode,
               parentScope);
+      // 注册这个新命名空间。这里通过三元表达式判断——只有当外部传入的 register 为 true 时，才真正把它注册到 usingScope 下；
+      // 否则传 null（意味着这次调用不希望立即把该命名空间挂到某个可见的作用域下，可能后续会由外层逻辑另行处理）。
       registerNamespace(register ? usingScope : null, alias, newNs,
           forceNullable);
       if (tableScope == null) {
@@ -2971,6 +3045,13 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param enclosingNode Enclosing node
    * @return Select namespace
    */
+  // 为一个 SELECT 节点创建对应的 SelectNamespace 实例。
+  // SqlNode enclosingNode 是所有 SQL 语法树节点的公共父类型（比标准 SqlSelect 更泛化）
+  // 表示"包裹"这个 SELECT 语句的外层节点。在实际的 SQL 语法树中，一个 SELECT 语句常常不是孤立存在的，而是被其他结构包裹，例如：
+  // 被括号包裹的子查询：(SELECT ...)
+  // 带别名的子查询：(SELECT ...) AS t
+  // 作为 WITH ... AS (SELECT ...) 中的一部分
+  // 作为 UNION、INSERT 等语句的一部分
   protected SelectNamespace createSelectNamespace(
       SqlSelect select,
       SqlNode enclosingNode) {
@@ -3032,13 +3113,25 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param checkUpdate if true, validate that the update feature is supported
    *                    if validating the update statement
    */
+  // 根据传入的查询树节点（SqlNode）类型，为其创建并注册专属的命名空间（SqlValidatorNamespace），同时划分和串联起各类 SQL 子句的作用域（SqlValidatorScope），并深度遍历其内部的所有子查询、操作数进行级联注册。
+  // 是构建 SQL 校验期“可见性上下文网络”和“元数据缓存”的总调度中心。
   private void registerQuery(
+      // 当前查询节点的父级/上级查找作用域。
+      // 当该查询试图去解析、寻找某个标识符（表、列）时，如果自身作用域找不到，就会求助于这个 parentScope。这对于关联子查询向上寻找外层表的列至关重要。
       SqlValidatorScope parentScope,
+      // 当前查询节点应该被挂载到的目标作用域。
+      // 若不为空，当前节点注册好的 Namespace 会作为 child 塞进 usingScope 中。例如，FROM (SELECT * FROM t) AS a，
+      // 这个子查询在注册完 Namespace 后会塞进外层的 SelectScope（即这里的 usingScope）中，使别名 "a" 变得可见。
       @Nullable SqlValidatorScope usingScope,
+      // 当前正在被注册的 SQL 语法树节点（如 SqlSelect, SqlUpdate, SqlMerge 等）。
       SqlNode node,
+      // 包裹/包含当前节点的上层父节点。用于某些特定命名空间在计算行类型时提供上下文引用。
       SqlNode enclosingNode,
+      // 该查询在 usingScope 中对应的别名（如派生表的别名）。
       @Nullable String alias,
+      // 是否强行将该查询产生的命名空间的行类型标记为可空（通常用于外连接场景）。
       boolean forceNullable,
+      // 如果正在校验 UPDATE 语句，是否去校验当前方言/配置支持更新特性。
       boolean checkUpdate) {
     requireNonNull(node, "node");
     requireNonNull(enclosingNode, "enclosingNode");
@@ -3047,18 +3140,32 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     SqlCall call;
     List<SqlNode> operands;
     switch (node.getKind()) {
+    // 1. 核心分支：SqlKind.SELECT（普通的 SELECT 查询语句）
     case SELECT:
       final SqlSelect select = (SqlSelect) node;
+      // 1.1 为当前 SELECT 创建专属的 SelectNamespace
       final SelectNamespace selectNs =
           createSelectNamespace(select, enclosingNode);
+      // 1.2 将该 Namespace 登记到全局，并挂载到 usingScope 中（如果 usingScope 不为空）
       registerNamespace(usingScope, alias, selectNs, forceNullable);
+      // 1.3 确定窗口函数的父作用域，并基于 parentScope 实例创建一个全新的 SelectScope
+      // 为什么窗口函数需要一个单独的父作用域？
+      // 在 SQL 规范中，窗口函数（如 ROW_NUMBER() OVER (...) 或 SUM(sal) OVER (PARTITION BY ...)）通常出现在两个地方：
+      // SELECT 投影列表（Select List）
+      // ORDER BY 子句
+      // 但是，窗口函数有一个至关重要的语义限制：窗口函数不能出现在 FROM 和 WHERE 子句中。
+      // 因为执行顺序上，WHERE 过滤发生在窗口计算之前。为了校验“窗口函数里的表达式是否合法”，Calcite 必须知道：在这个窗口被解析时，它到底能“看见”外层的哪些变量？
+      // 普通情况（无嵌套）：窗口函数只能看到 FROM 子句引入的列。
+      // 嵌套情况（子查询）：如果当前 SELECT 嵌套在另一个 FROM 子句的派生表中，窗口函数不仅能看到当前 SELECT 的 FROM 列，还能看到外层主查询（Parent）里的列（即关联子查询的变量）。
+      // 因此，windowParentScope 就是用来精准定义“在这个 SELECT 块中，窗口函数向外查找变量时的起点边界”。
       final SqlValidatorScope windowParentScope =
           first(usingScope, parentScope);
       SelectScope selectScope =
           new SelectScope(parentScope, windowParentScope, select);
-      scopes.put(select, selectScope);
+      scopes.put(select, selectScope); // 将映射关系存入 scopes 缓存
 
       // Start by registering the WHERE clause
+      // 1.4 开始注册 WHERE 子句的作用域，并递归注册 WHERE 子句里可能藏着的子查询
       clauseScopes.put(IdPair.of(select, Clause.WHERE), selectScope);
       registerOperandSubQueries(
           selectScope,
@@ -3066,6 +3173,20 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
           SqlSelect.WHERE_OPERAND);
 
       // Register subqueries in the QUALIFY clause
+      // 1.5 注册 QUALIFY 子句（用于过滤窗口函数结果）中嵌套的子查询
+      // 在校验阶段，QUALIFY 子句和 WHERE 子句在名字解析上所拥有的“视野”是完全一样的：
+      // 它们都需要看到 FROM 子句引入的所有基表字段。
+      // 它们都能引用外层查询的关联变量。
+      // 虽然在书写顺序上 QUALIFY 靠后，但在 SQL 的标准逻辑执行流水线中，它的位置非常靠前。其标准的执行顺序为：
+      //FROM（定位数据源）
+      //WHERE（初步过滤原始行）
+      //GROUP BY（分组）
+      //HAVING（聚合后过滤）
+      //WINDOW（执行窗口函数计算）
+      //QUALIFY（对窗口函数结果进行行过滤）
+      //SELECT（投影）
+      //DISTINCT（去重）
+      //ORDER BY / LIMIT（排序展现）
       registerOperandSubQueries(
           selectScope,
           select,
@@ -3074,6 +3195,9 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
       // Register FROM with the inherited scope 'parentScope', not
       // 'selectScope', otherwise tables in the FROM clause would be
       // able to see each other.
+      // 1.6 注册 FROM 子句
+      // 特别注意注释：传入的是继承来的 'parentScope' 而非刚刚创建的 'selectScope'。
+      // 理由：防止 FROM 子句里的多张表在未定义连接时能够直接互相看到（遵循 SQL 语义隔离）
       final SqlNode from = select.getFrom();
       if (from != null) {
         final SqlNode newFrom =
@@ -3088,36 +3212,44 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 false,
                 false);
         if (newFrom != from) {
-          select.setFrom(newFrom);
+          select.setFrom(newFrom); // 如果 FROM 节点在注册时被重写或包装，将其回填
         }
       }
 
       // If this is an aggregate query, the SELECT list and HAVING
       // clause use a different scope, where you can only reference
       // columns which are in the GROUP BY clause.
+      // 1.7 划分聚合（Aggregate）作用域
       SqlValidatorScope aggScope = selectScope;
       if (isAggregate(select)) {
+        // 如果是聚合查询（使用了 SUM/COUNT 或有 GROUP BY），SELECT 列表和 HAVING 能够看到的列会受到严格限制
+        // （只能看到分组列或聚合函数），因此需要包裹一层特殊的 AggregatingSelectScope
         aggScope =
             new AggregatingSelectScope(selectScope, select, false);
         clauseScopes.put(IdPair.of(select, Clause.SELECT), aggScope);
       } else {
         clauseScopes.put(IdPair.of(select, Clause.SELECT), selectScope);
       }
+      // 1.8 处理 GROUP BY 子句
       if (select.getGroup() != null) {
         GroupByScope groupByScope =
             new GroupByScope(selectScope, select.getGroup(), select);
         clauseScopes.put(IdPair.of(select, Clause.GROUP_BY), groupByScope);
+        // 注册 GROUP BY 内部的子查询
         registerSubQueries(groupByScope, select.getGroup());
       }
+      // 1.9 使用上面推导出的聚合作用域（aggScope）去注册 HAVING 和 SELECT 字段列表中的子查询
       registerOperandSubQueries(
           aggScope,
           select,
           SqlSelect.HAVING_OPERAND);
       registerSubQueries(aggScope, SqlNonNullableAccessors.getSelectList(select));
+      // 1.10 处理 ORDER BY 子句
       final SqlNodeList orderList = select.getOrderList();
       if (orderList != null) {
         // If the query is 'SELECT DISTINCT', restrict the columns
         // available to the ORDER BY clause.
+        // 如果是 SELECT DISTINCT，ORDER BY 允许访问的列会被进一步收窄，创建严格的 aggScope
         if (select.isDistinct()) {
           aggScope =
               new AggregatingSelectScope(selectScope, select, true);
@@ -3125,8 +3257,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         OrderByScope orderScope =
             new OrderByScope(aggScope, orderList, select);
         clauseScopes.put(IdPair.of(select, Clause.ORDER), orderScope);
-        registerSubQueries(orderScope, orderList);
-
+        registerSubQueries(orderScope, orderList);// 注册 ORDER BY 里的子查询
+        // 语义合法性检查：如果不是聚合查询，那么 ORDER BY 里面绝对不允许出现聚合函数（如 ORDER BY SUM(a)）
         if (!isAggregate(select)) {
           // Since this is not an aggregate query,
           // there cannot be any aggregates in the ORDER BY clause.
@@ -3521,23 +3653,31 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     }
   }
 
+  // 递归地遍历一个 SQL 表达式节点（node）的内部结构，找出其中所有的子查询（sub-query），并为每一个发现的子查询调用 registerQuery 完成"注册"（建立命名空间和作用域）。
   private void registerSubQueries(
+      // 表示当前正在处理的这部分 SQL 语法树所处的父作用域上下文。
+      // 如果在遍历过程中发现了子查询，需要用这个 parentScope 作为其"父作用域"来注册该子查询（使子查询能够正确解析其内部标识符，包括引用外层表的相关子查询场景）。
       SqlValidatorScope parentScope,
+      // 表示待处理的当前 SQL 节点，即需要检查其内部是否包含子查询的那个表达式/节点
       @Nullable SqlNode node) {
+    // 如果传入的节点为 null（对应参数上 @Nullable 的标注），直接结束方法，不做任何处理
     if (node == null) {
       return;
     }
+    // 节点本身就是一个"查询"或特殊构造器
     if (node.getKind().belongsTo(SqlKind.QUERY)
         || node.getKind() == SqlKind.LAMBDA
         || node.getKind() == SqlKind.MULTISET_QUERY_CONSTRUCTOR
         || node.getKind() == SqlKind.MULTISET_VALUE_CONSTRUCTOR) {
       registerQuery(parentScope, null, node, node, null, false);
+    // 节点是一个函数/操作符调用
     } else if (node instanceof SqlCall) {
       validateNodeFeature(node);
       SqlCall call = (SqlCall) node;
       for (int i = 0; i < call.operandCount(); i++) {
         registerOperandSubQueries(parentScope, call, i);
       }
+    // 节点是一个列表（SqlNodeList）
     } else if (node instanceof SqlNodeList) {
       SqlNodeList list = (SqlNodeList) node;
       for (int i = 0, count = list.size(); i < count; i++) {
@@ -3565,14 +3705,26 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
    * @param operandOrdinal Ordinal of operand within call
    * @see SqlOperator#argumentMustBeScalar(int)
    */
+  // 检查一个函数调用（SqlCall）中指定位置的操作数（operand），如果该操作数本身是一个子查询，则对其进行"子查询注册"处理；
+  // 同时，如果该操作符要求该位置的参数必须是标量值（scalar），而当前操作数是一个查询（返回可能是多行多列的结果集），则需要将其包装为"标量子查询"（Scalar Sub-query）。
+  // 子查询注册（Register Sub-query）：Calcite 校验器在校验整个 SQL 语句的过程中，需要为语句中出现的每一个子查询（无论出现在 FROM、WHERE、SELECT 列表还是函数参数中）建立对应的命名空间（Namespace）和作用域（Scope），
+  // 以便后续能够正确解析该子查询内部的标识符、推导其行类型等。这个"建立命名空间/作用域"的过程就称为"注册"（register）。
+  // 标量子查询（Scalar Sub-query）：普通子查询返回的是一个结果集（可能多行多列），但在某些上下文中（比如 WHERE sal > (SELECT AVG(sal) FROM emp)），
+  // 子查询的结果必须是单行单列的标量值才能参与比较运算。这种"要求返回标量值的子查询"在 Calcite AST 中会被专门包装成一个 SCALAR_QUERY 类型的调用节点，用以标记"这是一个应当被当作标量值使用的子查询"，供后续代码生成、类型检查等阶段区别对待。
   private void registerOperandSubQueries(
+      // 表示当前上下文的父作用域。当该操作数内部（如果是子查询）需要被注册时，需要知道它所处的作用域上下文是什么，以便正确建立作用域链（比如子查询内部可以引用哪些外层的表，即相关子查询的场景）。这个参数会被继续传递给内部调用的 registerSubQueries 方法。
       SqlValidatorScope parentScope,
       SqlCall call,
+      // 示要处理的操作数在 call 的操作数列表中的序号（下标）
       int operandOrdinal) {
     SqlNode operand = call.operand(operandOrdinal);
     if (operand == null) {
       return;
     }
+    // 核心判断与转换逻辑
+    // 判断当前操作数节点的"种类"（SqlKind，是 Calcite 中标识 AST 节点类型的枚举，比如 SELECT、UNION、LITERAL、IDENTIFIER、PLUS 等）是否属于 SqlKind.QUERY 这一大类。
+    // SqlKind.QUERY 是一个"分类集合"（在 SqlKind 中定义的一组相关种类的集合，通常包含 SELECT、UNION、INTERSECT、EXCEPT、VALUES、WITH 等所有"可以产生结果集的查询类型"）。
+    // 获取当前调用 call 所使用的操作符（SqlOperator，比如 >、=、+ 等），调用其 argumentMustBeScalar(operandOrdinal) 方法，判断该操作符在指定的操作数位置（operandOrdinal）上，是否要求传入的参数必须是标量值。
     if (operand.getKind().belongsTo(SqlKind.QUERY)
         && call.getOperator().argumentMustBeScalar(operandOrdinal)) {
       operand =
@@ -3581,6 +3733,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
               operand);
       call.setOperand(operandOrdinal, operand);
     }
+    // 无论前面的 if 判断是否触发了标量子查询包装转换，最终都会调用 registerSubQueries 方法，对（可能已经被替换过的）operand 进行"子查询注册"处理。
     registerSubQueries(parentScope, operand);
   }
 
