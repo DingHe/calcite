@@ -261,59 +261,92 @@ public abstract class Prepare {
         validator,
         needsValidation);
   }
-
+  // 接收一条已经解析（parse）好的 SQL 语法树（SqlNode），驱动完成从"SQL 语法树"到"最终可执行的关系表达式计划（PreparedResult）"这一整套完整的转换与优化流程。
+  // 覆盖了 Calcite 查询处理管道中承上启下的关键环节：
+  // 承接**校验（Validation）**之后的产物（虽然方法内部还会视情况触发一次校验）。
+  // 驱动 SQL 到关系代数的转换（SQL-to-Rel，即 SqlToRelConverter）。
+  // 处理 EXPLAIN 语句的特殊逻辑（分不同深度展示不同阶段的执行计划）。
+  // 进行**类型展平（flatten）、子查询去相关化（decorrelate）、无用字段裁剪（trim unused fields）**等一系列关系代数层面的转换。
+  // 触发**优化器（optimize）**生成最终的物理执行计划。
+  // 最终调用 implement 生成可以真正被执行的 PreparedResult。
   public PreparedResult prepareSql(
+      // 待处理的 SQL 语句对应的语法树节点
       SqlNode sqlQuery,
+      // 原始的、未经任何改写的 SQL 语句节点
       SqlNode sqlNodeOriginal,
+      // 运行时上下文的类型
       Class runtimeContextClass,
+      // 已经构建好的 SQL 校验器实例，用于本方法内部驱动 SQL 到关系代数的转换（SqlToRelConverter 需要校验器提供类型推导信息），以及获取校验后的结果类型、字段来源、参数类型等信息。
       SqlValidator validator,
+      // 指示在进行 SQL 到关系代数转换时（SqlToRelConverter.convertQuery 方法），是否还需要额外触发一次校验
       boolean needsValidation) {
+    // 第一段：初始化与配置 SqlToRelConverter
+    // 调用（父类/自身定义的）初始化方法，传入运行时上下文类型，完成必要的前置初始化工作（比如可能涉及类加载器、代码生成环境等的准备，具体实现依赖子类）。
     init(runtimeContextClass);
 
     final SqlToRelConverter.Config config =
         SqlToRelConverter.config()
-            .withTrimUnusedFields(true)
-            .withExpand(THREAD_EXPAND.get())
-            .withInSubQueryThreshold(castNonNull(THREAD_INSUBQUERY_THRESHOLD.get()))
+            .withTrimUnusedFields(true) // 开启"裁剪无用字段"选项
+            .withExpand(THREAD_EXPAND.get()) // 设置"是否展开子查询"的行为，取值来自一个线程本地变量 THREAD_EXPAND（
+            .withInSubQueryThreshold(castNonNull(THREAD_INSUBQUERY_THRESHOLD.get())) // 设置"IN 子查询阈值"，同样来自线程本地变量。这个阈值通常用于决定当 IN (值列表) 中的值数量达到一定规模时，是采用不同的物理实现策略
             .withExplain(sqlQuery.getKind() == SqlKind.EXPLAIN);
+    // 把刚构建好的 config 包装进一个 Holder（一种简单的"可变容器"辅助类，用于在回调/钩子机制中传递并允许被外部修改的引用
     final Holder<SqlToRelConverter.Config> configHolder = Holder.of(config);
+    // 把 configHolder 传递给所有注册了该钩子的监听者。这是 Calcite 提供的一种可扩展点机制——外部代码（比如测试代码、某些定制化场景）可以在这个钩子上注册回调函数，
+    // 从而有机会在标准配置构建完成之后，进一步修改（替换 configHolder 内部持有的配置对象），实现自定义的配置调整能力，而无需修改 Prepare 类本身的代码。
     Hook.SQL2REL_CONVERTER_CONFIG_BUILDER.run(configHolder);
     final SqlToRelConverter sqlToRelConverter =
         getSqlToRelConverter(validator, catalogReader, configHolder.get());
 
+    // 第二段：处理 EXPLAIN 语句，提取真正要执行的语句
     SqlExplain sqlExplain = null;
     if (sqlQuery.getKind() == SqlKind.EXPLAIN) {
       // dig out the underlying SQL statement
       sqlExplain = (SqlExplain) sqlQuery;
+      // 取出 EXPLAIN 关键字后面真正要被解释/展示计划的那条语句（比如 SELECT ... 部分），并重新赋值给 sqlQuery 变量，覆盖掉原来的 EXPLAIN 包装节点
       sqlQuery = sqlExplain.getExplicandum();
+      // 把 EXPLAIN 语句本身携带的"动态参数个数"信息，设置到 sqlToRelConverter 中（因为动态参数——即类似 JDBC 中的 ? 占位符——的数量信息可能需要在转换过程中被正确记录和使用，尤其是在只解释计划、不实际执行的场景下）
       sqlToRelConverter.setDynamicParamCountInExplain(
           sqlExplain.getDynamicParamCount());
     }
-
+    // 第三段：执行 SQL 到关系代数的转换
+    // 第二个参数 needsValidation：正是方法一开始传入的参数，决定转换过程中是否需要顺带触发校验。
+    // 第三个参数 true：根据 SqlToRelConverter.convertQuery 的常见签名，这个布尔值通常表示"是否是顶层查询"（top-level），这里固定传 true，表明这确实是最外层的整条查询语句（而不是某个嵌套调用中的子查询）。
     RelRoot root =
         sqlToRelConverter.convertQuery(sqlQuery, needsValidation, true);
+    // 把刚转换出来的关系代数表达式（root.rel）传递给所有监听该钩子的回调，这也是一种可扩展观察点——通常用于测试或调试时，观察/断言 SQL 转换为关系代数后的中间结果。
     Hook.CONVERTED.run(root.rel);
-
+    // 如果启用了耗时追踪器（timingTracer，Prepare 类的一个字段，用于性能分析/调试），记录一个时间点，标记"SQL 转关系代数"这一阶段结束的时间戳，标签为 "end sql2rel"，便于后续分析各阶段耗时。
     if (timingTracer != null) {
       timingTracer.traceTime("end sql2rel");
     }
-
+    // 第四段：获取校验后的类型信息
+    // 从校验器中获取 sqlQuery 这个节点经过校验后确定的行类型（即最终查询结果的列结构）。
     final RelDataType resultType = validator.getValidatedNodeType(sqlQuery);
+    // 获取查询结果每一列的"来源信息"（fieldOrigins，是 Prepare 类的一个成员字段），即结果集中的每一列究竟来自哪张原始表的哪一列（这在某些场景下，比如权限校验、数据血缘分析中会用到）。
     fieldOrigins = validator.getFieldOrigins(sqlQuery);
     assert fieldOrigins.size() == resultType.getFieldCount();
-
+    // 获取该查询语句中动态参数（比如 ? 占位符）对应的"参数行类型"（即每个参数位置期望的数据类型），
+    // 赋值给 Prepare 类的成员字段 parameterRowType，供后续（比如执行时绑定实际参数值）使用。
     parameterRowType = validator.getParameterRowType(sqlQuery);
 
     // Display logical plans before view expansion, plugging in physical
     // storage and decorrelation
+    // 第五段：处理 EXPLAIN 语句在"逻辑计划之前"阶段的展示需求
+    // 这段代码专门处理 EXPLAIN 语句中，用户可能要求展示的较浅层次的计划信息——即在真正进行视图展开、接入物理存储、去相关化等更深入的转换之前，就可以直接返回结果的两种情况。
     if (sqlExplain != null) {
+      // 获取用户在 EXPLAIN 语句中指定的"展示深度"（比如 EXPLAIN PLAN WITH TYPE FOR ...、EXPLAIN PLAN FOR ...——不同深度对应展示不同阶段的计划信息，比如只展示结果类型，还是展示逻辑计划，或是最终的物理计划）。
       SqlExplain.Depth explainDepth = sqlExplain.getDepth();
+      // 获取用户指定的展示格式（比如文本、JSON、XML 等不同的输出格式）。
       SqlExplainFormat format = sqlExplain.getFormat();
+      // 获取用户指定的详细程度级别（比如是否要展示每个算子的代价估算信息等）。
       SqlExplainLevel detailLevel = sqlExplain.getDetailLevel();
       switch (explainDepth) {
+      // 用户只想看结果的类型信息，不需要具体的计划
       case TYPE:
         return createPreparedExplanation(resultType, parameterRowType, null,
             format, detailLevel);
+      // 用户想看逻辑计划，即刚完成 SQL 到关系代数转换、但尚未经过任何进一步优化/物理化处理的计划
       case LOGICAL:
         return createPreparedExplanation(null, parameterRowType, root, format,
             detailLevel);
@@ -323,13 +356,17 @@ public abstract class Prepare {
 
     // Structured type flattening, view expansion, and plugging in physical
     // storage.
+    // 第六段：结构化类型展平
+    // 对关系表达式树进行"结构化类型展平"（Structured Type Flattening）处理。
+    // 背景知识：某些复杂的数据类型（比如结构体类型 ROW、数组等嵌套/复合类型）在真正的物理执行层面，往往需要被"拍平"成更简单的、扁平化的形式，才能被底层执行引擎正确处理。
     root = root.withRel(flattenTypes(root.rel, true));
 
+    // 第七段：子查询去相关化（可选）
     if (this.context.config().forceDecorrelate()) {
       // Sub-query decorrelation.
       root = root.withRel(decorrelate(sqlToRelConverter, sqlQuery, root.rel));
     }
-
+    // 第八段：裁剪无用字段（根据配置）
     if (configHolder.get().isTrimUnusedFields()) {
       // Trim unused fields.
       root = trimUnusedFields(root);
@@ -338,6 +375,7 @@ public abstract class Prepare {
     }
 
     // Display physical plan after decorrelation.
+    // 第九段：处理 EXPLAIN 语句在"物理计划"阶段的展示需求
     if (sqlExplain != null) {
       switch (sqlExplain.getDepth()) {
       case PHYSICAL:
@@ -347,7 +385,7 @@ public abstract class Prepare {
             sqlExplain.getFormat(), sqlExplain.getDetailLevel());
       }
     }
-
+    // 第十段：真正执行查询优化（非 EXPLAIN 场景，或者说走到这里说明前面都没有提前返回）
     root = optimize(root, getMaterializations(), getLattices());
 
     if (timingTracer != null) {
@@ -357,9 +395,12 @@ public abstract class Prepare {
     // For transformation from DML -> DML, use result of rewrite
     // (e.g. UPDATE -> MERGE).  For anything else (e.g. CALL -> SELECT),
     // use original kind.
+    // 第十一段：修正结果的 SqlKind
     if (!root.kind.belongsTo(SqlKind.DML)) {
       root = root.withKind(sqlNodeOriginal.getKind());
     }
+    // 调用 implement 方法（通常由具体子类实现，负责把最终优化好的关系表达式计划真正转换/绑定为一个可以被执行的 PreparedResult 对象，
+    // 比如生成实际可运行的代码、或者构建执行算子树等），并将其结果作为整个 prepareSql 方法的最终返回值。这是正常（非 EXPLAIN）流程下方法的最终出口。
     return implement(root);
   }
 

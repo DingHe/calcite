@@ -6653,6 +6653,8 @@ public class SqlToRelConverter {
     /** Returns the {@code decorrelationEnabled} option. Controls whether to
      * disable sub-query decorrelation when needed. e.g. if outer joins are not
      * supported. */
+    // 获取是否启用子查询“去关联化”的开关。
+    // 去关联化是指将形如 WHERE EXISTS (SELECT 1 FROM t WHERE t.id = outer.id) 的关联子查询优化、拉升为 Join 关系。
     @Value.Default default boolean isDecorrelationEnabled() {
       return true;
     }
@@ -6662,6 +6664,8 @@ public class SqlToRelConverter {
 
     /** Returns the {@code trimUnusedFields} option. Controls whether to trim
      * unused fields as part of the conversion process. */
+    // 获取是否在 AST 转换关系代数的期间，直接裁剪掉没用到的列（字段）。
+    // 如果开启，Calcite 会在转换时对关系树进行投影合并与裁剪，减少后续优化器的开销。
     @Value.Default default boolean isTrimUnusedFields() {
       return false;
     }
@@ -6672,6 +6676,8 @@ public class SqlToRelConverter {
     /** Returns the {@code createValuesRel} option. Controls whether instances
      * of {@link org.apache.calcite.rel.logical.LogicalValues} are generated.
      * These may not be supported by all physical implementations. */
+    // 控制当遇到静态字面量或常量行（例如 VALUES (1, 'a'), (2, 'b')）时，
+    // 是否将其直接转化为关系树中的 LogicalValues 节点。
     @Value.Default default boolean isCreateValuesRel() {
       return true;
     }
@@ -6681,6 +6687,8 @@ public class SqlToRelConverter {
 
     /** Returns the {@code explain} option. Describes whether the current
      * statement is part of an EXPLAIN PLAN statement. */
+    // 表示当前的这条 SQL 语句是否是一个 EXPLAIN PLAN FOR ... 语句的一部分。
+    // 转换器可以根据此状态决定是否略过某些不必要的深层推导。
     @Value.Default default boolean isExplain() {
       return false;
     }
@@ -6694,6 +6702,9 @@ public class SqlToRelConverter {
      *
      * <p>Setting {@code expand} to true is deprecated. Expansion still works,
      * but there will be less development effort in that area. */
+    // 控制是否展开子查询。
+    // 如果为 true，Calcite 会在转换期间把子查询强行打碎并重写进 Join/Correlate。
+    // 如果为 false（推荐做法），子查询会保持为一个高阶行表达式对象 RexSubQuery。
     @Value.Default default boolean isExpand() {
       return false;
     }
@@ -6712,6 +6723,9 @@ public class SqlToRelConverter {
      * a predicate. A threshold of 0 forces usage of an inline table in all
      * cases; a threshold of {@link Integer#MAX_VALUE} forces usage of OR in all
      * cases. */
+    // 获取 IN (常量列表) 转换为 OR 谓词的长度阈值。
+    // 如果常量列表的长度小于这个阈值，a IN (1, 2, 3) 会被重写为 a = 1 OR a = 2 OR a = 3。
+    // 如果长度大于等于这个阈值，它会被优化，转化为将左侧列与一个内存虚拟内联表（LogicalValues）执行 JOIN。
     @Value.Default default int getInSubQueryThreshold() {
       return DEFAULT_IN_SUB_QUERY_THRESHOLD;
     }
@@ -6724,6 +6738,8 @@ public class SqlToRelConverter {
      * Because the remove does not change the semantics,
      * in many cases this is a promotion.
      * Default is true. */
+    // 控制当子查询（如 IN 内部的 SELECT）含有 ORDER BY，且该排序没有附带 LIMIT（fetch）和 OFFSET 位移属性时，是否直接将该 Sort 算子移除。
+    // 由于集合内部在没有限制行数时的纯排序并不影响外层结果集语义，将其移除属于一种性能提速（Promotion）。
     @Value.Default default boolean isRemoveSortInSubQuery() {
       return true;
     }
@@ -6733,6 +6749,8 @@ public class SqlToRelConverter {
 
     /** Returns the factory to create {@link RelBuilder}, never null. Default is
      * {@link RelFactories#LOGICAL_BUILDER}. */
+    // 获取用于创建关系表达式构造器（RelBuilder）的工厂实例。
+    // SqlToRelConverter 在组装关系代数树时，所有的节点（如 Project, Filter, Join）底层都是调用 RelBuilder 拼装的。默认是 RelFactories.LOGICAL_BUILDER
     RelBuilderFactory getRelBuilderFactory();
 
     /** Sets {@link #getRelBuilderFactory()}. */
@@ -6740,6 +6758,9 @@ public class SqlToRelConverter {
 
     /** Returns a function that takes a {@link RelBuilder.Config} and returns
      * another. Default is the identity function. */
+    // 获取一个一元操作符函数（UnaryOperator）。
+    // 它的职责是：输入一个 RelBuilder.Config，对其加工/改写后，返回一个新的 RelBuilder.Config。
+    // 默认为恒等函数（Identity Function，即输入什么就原样输出什么）。
     UnaryOperator<RelBuilder.Config> getRelBuilderConfigTransform();
 
     /** Sets {@link #getRelBuilderConfigTransform()}.
@@ -6761,6 +6782,8 @@ public class SqlToRelConverter {
     HintStrategyTable getHintStrategyTable();
 
     /** Sets {@link #getHintStrategyTable()}. */
+    // 获取 SQL 提示（Hint，如 SELECT /*+ BROADCAST(t) */）的传播与处理策略表。
+    // 它决定了 SQL 中的特殊 Hint 应该如何往下透传给转换出来的 RelNode 节点。默认是空表（HintStrategyTable.EMPTY）。
     Config withHintStrategyTable(HintStrategyTable hintStrategyTable);
 
     /**
